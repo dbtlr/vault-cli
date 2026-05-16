@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use rusqlite::Connection;
 use serde_json::Value;
 
 fn fixture_root() -> PathBuf {
@@ -41,6 +43,14 @@ fn vault_error(args: &[&str]) -> String {
     String::from_utf8(output.stderr).expect("stderr should be UTF-8")
 }
 
+fn temp_cache_dir() -> PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("vault-cli-cache-{unique}"))
+}
+
 #[test]
 fn graph_documents_jsonl_contract() {
     let root = fixture_root();
@@ -76,6 +86,49 @@ fn graph_documents_jsonl_contract() {
             "message": "frontmatter could not be parsed"
         })
     );
+}
+
+#[test]
+fn graph_build_writes_sqlite_cache() {
+    let root = fixture_root();
+    let cache_dir = temp_cache_dir();
+    let output = vault(&[
+        "graph",
+        "build",
+        "--root",
+        root.to_str().unwrap(),
+        "--cache",
+        cache_dir.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    let cache_path = cache_dir.join("graph.sqlite");
+    assert_eq!(value["cache_path"], cache_path.to_str().unwrap());
+    assert_eq!(value["documents"], 7);
+    assert_eq!(value["links"], 9);
+    assert!(cache_path.exists());
+
+    let connection = Connection::open(&cache_path).expect("cache should open");
+    let document_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .unwrap();
+    let link_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM links", [], |row| row.get(0))
+        .unwrap();
+    let missing_reason: String = connection
+        .query_row(
+            "SELECT unresolved_reason FROM links WHERE raw = '[[missing]]'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(document_count, 7);
+    assert_eq!(link_count, 9);
+    assert_eq!(missing_reason, "target-missing");
+
+    std::fs::remove_dir_all(cache_dir).ok();
 }
 
 #[test]

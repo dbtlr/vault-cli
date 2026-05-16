@@ -3,7 +3,7 @@ use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use vault_core::{Document, GraphIndex, Link, LinkStatus};
-use vault_index::{build_index, concise_diagnostics, has_errors};
+use vault_index::{build_index, concise_diagnostics, has_errors, write_sqlite_cache};
 
 #[derive(Debug, Parser)]
 #[command(name = "vault")]
@@ -26,11 +26,24 @@ struct GraphCommand {
 
 #[derive(Debug, Subcommand)]
 enum GraphSubcommand {
+    Build(BuildArgs),
     Documents(GraphArgs),
     Links(GraphArgs),
     Unresolved(GraphArgs),
     Backlinks(TargetGraphArgs),
     Inspect(TargetGraphArgs),
+}
+
+#[derive(Debug, Parser)]
+struct BuildArgs {
+    #[arg(long, default_value = ".")]
+    root: Utf8PathBuf,
+    #[arg(long)]
+    cache: Utf8PathBuf,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    format: OutputFormat,
+    #[arg(long)]
+    verbose: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -79,6 +92,13 @@ fn main() -> Result<()> {
 fn run(cli: Cli) -> Result<i32> {
     match cli.command {
         Command::Graph(graph) => match graph.command {
+            GraphSubcommand::Build(args) => {
+                let mut index = build_index(&args.root)?;
+                trim_diagnostics(&mut index, args.verbose);
+                let summary = write_sqlite_cache(&index, &args.cache)?;
+                write_item_output(&summary, args.format)?;
+                Ok(exit_code_for(&index))
+            }
             GraphSubcommand::Documents(args) => {
                 let mut index = build_index(&args.root)?;
                 trim_diagnostics(&mut index, args.verbose);

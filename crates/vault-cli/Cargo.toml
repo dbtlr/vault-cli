@@ -16,3 +16,6 @@ serde.workspace = true
 serde_json.workspace = true
 vault-core = { path = "../vault-core" }
 vault-index = { path = "../vault-index" }
+
+[dev-dependencies]
+rusqlite.workspace = true
