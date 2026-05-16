@@ -1,0 +1,18 @@
+[package]
+name = "vault-cli"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "vault"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+camino.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+vault-core = { path = "../vault-core" }
+vault-index = { path = "../vault-index" }

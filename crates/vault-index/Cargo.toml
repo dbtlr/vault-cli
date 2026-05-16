@@ -1,0 +1,16 @@
+[package]
+name = "vault-index"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+blake3.workspace = true
+camino.workspace = true
+pulldown-cmark.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+vault-core = { path = "../vault-core" }
+walkdir.workspace = true

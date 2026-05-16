@@ -1,0 +1,3 @@
+# Gamma
+
+No outgoing links.
