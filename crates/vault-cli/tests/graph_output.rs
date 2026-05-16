@@ -63,6 +63,7 @@ fn graph_help_describes_contracts() {
     assert!(output.contains("Query and cache derived Markdown vault graph facts"));
     assert!(output.contains("Emit parsed Markdown documents"));
     assert!(output.contains("Write a SQLite graph cache"));
+    assert!(output.contains("Emit document parse diagnostics"));
 }
 
 #[test]
@@ -276,6 +277,31 @@ fn graph_unresolved_json_contract() {
     assert_eq!(links[3]["raw"], "[[duplicate]]");
     assert_eq!(links[3]["source_span"]["line"], 18);
     assert_eq!(links[3]["status"], "ambiguous");
+}
+
+#[test]
+fn graph_diagnostics_jsonl_contract() {
+    let root = fixture_root();
+    let output = vault(&[
+        "graph",
+        "diagnostics",
+        "--root",
+        root.to_str().unwrap(),
+        "--format",
+        "jsonl",
+    ]);
+
+    let diagnostics = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["path"], "broken-frontmatter.md");
+    assert_eq!(
+        diagnostics[0]["diagnostic"]["code"],
+        "frontmatter-parse-failed"
+    );
 }
 
 #[test]

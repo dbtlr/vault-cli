@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
-use vault_core::{Document, GraphIndex, Link, LinkStatus};
+use vault_core::{Diagnostic, Document, GraphIndex, Link, LinkStatus};
 use vault_index::{build_index, concise_diagnostics, has_errors, write_sqlite_cache};
 
 #[derive(Debug, Parser)]
@@ -39,6 +39,8 @@ enum GraphSubcommand {
     Links(GraphArgs),
     #[command(about = "Emit unresolved and ambiguous link facts")]
     Unresolved(GraphArgs),
+    #[command(about = "Emit document parse diagnostics")]
+    Diagnostics(GraphArgs),
     #[command(about = "Emit incoming links for an exact path or unique stem")]
     Backlinks(TargetGraphArgs),
     #[command(about = "Emit one document plus incoming, outgoing, and unresolved outgoing links")]
@@ -111,6 +113,12 @@ struct InspectOutput {
     unresolved_outgoing_links: Vec<Link>,
 }
 
+#[derive(Debug, Serialize)]
+struct DocumentDiagnostic {
+    path: Utf8PathBuf,
+    diagnostic: Diagnostic,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let exit_code = run(cli)?;
@@ -146,6 +154,13 @@ fn run(cli: Cli) -> Result<i32> {
                 trim_diagnostics(&mut index, args.verbose);
                 let links = unresolved_links(&index);
                 write_output(&links, args.format)?;
+                Ok(exit_code_for(&index))
+            }
+            GraphSubcommand::Diagnostics(args) => {
+                let mut index = build_index(&args.root)?;
+                trim_diagnostics(&mut index, args.verbose);
+                let diagnostics = all_diagnostics(&index);
+                write_output(&diagnostics, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Backlinks(args) => {
@@ -192,6 +207,23 @@ fn unresolved_links(index: &GraphIndex) -> Vec<&Link> {
         .iter()
         .flat_map(|document| document.links.iter())
         .filter(|link| link.status != LinkStatus::Resolved)
+        .collect()
+}
+
+fn all_diagnostics(index: &GraphIndex) -> Vec<DocumentDiagnostic> {
+    index
+        .documents
+        .iter()
+        .flat_map(|document| {
+            document
+                .diagnostics
+                .iter()
+                .cloned()
+                .map(|diagnostic| DocumentDiagnostic {
+                    path: document.path.clone(),
+                    diagnostic,
+                })
+        })
         .collect()
 }
 
