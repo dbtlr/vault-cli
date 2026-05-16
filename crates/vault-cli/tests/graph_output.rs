@@ -79,6 +79,69 @@ fn graph_documents_jsonl_contract() {
 }
 
 #[test]
+fn graph_documents_filters_frontmatter_scalars() {
+    let root = fixture_root();
+    let output = vault(&[
+        "graph",
+        "documents",
+        "--root",
+        root.to_str().unwrap(),
+        "--filter",
+        "status:draft",
+        "--format",
+        "jsonl",
+    ]);
+
+    let documents = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0]["path"], "alpha.md");
+}
+
+#[test]
+fn graph_documents_filters_frontmatter_lists() {
+    let root = fixture_root();
+    let output = vault(&[
+        "graph",
+        "documents",
+        "--root",
+        root.to_str().unwrap(),
+        "--filter",
+        "aliases:First Note",
+        "--format",
+        "jsonl",
+    ]);
+
+    let documents = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0]["path"], "alpha.md");
+}
+
+#[test]
+fn graph_documents_rejects_invalid_filters() {
+    let root = fixture_root();
+    let stderr = vault_error(&[
+        "graph",
+        "documents",
+        "--root",
+        root.to_str().unwrap(),
+        "--filter",
+        "status",
+        "--format",
+        "jsonl",
+    ]);
+
+    assert!(stderr.contains("invalid filter, expected field:value"));
+}
+
+#[test]
 fn graph_links_jsonl_contract() {
     let root = fixture_root();
     let output = vault(&[

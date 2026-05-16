@@ -37,6 +37,8 @@ enum GraphSubcommand {
 struct GraphArgs {
     #[arg(long, default_value = ".")]
     root: Utf8PathBuf,
+    #[arg(long = "filter")]
+    filters: Vec<String>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl)]
     format: OutputFormat,
     #[arg(long)]
@@ -80,7 +82,8 @@ fn run(cli: Cli) -> Result<i32> {
             GraphSubcommand::Documents(args) => {
                 let mut index = build_index(&args.root)?;
                 trim_diagnostics(&mut index, args.verbose);
-                write_output(&index.documents, args.format)?;
+                let documents = filter_documents(&index, &args.filters)?;
+                write_output(&documents, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Links(args) => {
@@ -208,6 +211,62 @@ fn inspect_document(index: &GraphIndex, target_path: &Utf8PathBuf) -> Result<Ins
         outgoing_links,
         unresolved_outgoing_links,
     })
+}
+
+fn filter_documents<'a>(index: &'a GraphIndex, filters: &[String]) -> Result<Vec<&'a Document>> {
+    let parsed_filters = filters
+        .iter()
+        .map(|filter| parse_filter(filter))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(index
+        .documents
+        .iter()
+        .filter(|document| {
+            parsed_filters
+                .iter()
+                .all(|(field, expected)| frontmatter_matches(document, field, expected))
+        })
+        .collect())
+}
+
+fn parse_filter(filter: &str) -> Result<(String, String)> {
+    let Some((field, value)) = filter.split_once(':') else {
+        bail!("invalid filter, expected field:value: {filter}");
+    };
+
+    let field = field.trim();
+    let value = value.trim();
+    if field.is_empty() || value.is_empty() {
+        bail!("invalid filter, expected non-empty field and value: {filter}");
+    }
+
+    Ok((field.to_string(), value.to_string()))
+}
+
+fn frontmatter_matches(document: &Document, field: &str, expected: &str) -> bool {
+    let Some(frontmatter) = &document.frontmatter else {
+        return false;
+    };
+    let Some(value) = frontmatter.get(field) else {
+        return false;
+    };
+
+    match value {
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| scalar_value_matches(value, expected)),
+        other => scalar_value_matches(other, expected),
+    }
+}
+
+fn scalar_value_matches(value: &serde_json::Value, expected: &str) -> bool {
+    match value {
+        serde_json::Value::String(actual) => actual == expected,
+        serde_json::Value::Bool(actual) => actual.to_string() == expected,
+        serde_json::Value::Number(actual) => actual.to_string() == expected,
+        _ => false,
+    }
 }
 
 fn write_output<T: Serialize>(items: &[T], format: OutputFormat) -> Result<()> {
