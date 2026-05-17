@@ -4,7 +4,7 @@ use anyhow::Result;
 use camino::Utf8PathBuf;
 use serde::Serialize;
 use vault_core::{Diagnostic, Document, GraphIndex, Link, LinkStatus, Severity};
-use vault_index::{pattern_matches_path, ValidateConfig, ValidateRuleConfig};
+use vault_graph::{pattern_matches_path, ValidateConfig, ValidateRuleConfig};
 
 #[derive(Debug, Serialize)]
 pub struct ValidateFinding {

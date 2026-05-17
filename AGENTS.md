@@ -7,8 +7,10 @@ This repo builds `vault`, a Rust CLI for deterministic Markdown vault graph/inde
 Workspace crates:
 
 - `crates/vault-core` — serializable graph data types and diagnostics.
-- `crates/vault-index` — stateless vault walking, Markdown/frontmatter parsing, link resolution, and SQLite cache writing.
-- `crates/vault-cli` — `clap` command surface for the `vault` binary.
+- `crates/vault-frontmatter` — YAML frontmatter extraction and shallow property/offset utilities.
+- `crates/vault-links` — CommonMark link parsing, wikilink parsing, block IDs, anchor helpers, and link resolution.
+- `crates/vault-graph` — vault walking, build/index entry points, SQLite cache, and pattern matching. Depends on vault-frontmatter and vault-links.
+- `crates/vault-cli` — `clap` command surface for the `vault` binary. Depends on vault-graph.
 
 The binary package is `vault-cli`; the installed command is `vault`.
 

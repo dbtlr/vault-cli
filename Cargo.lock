@@ -565,7 +565,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "vault-core",
- "vault-index",
+ "vault-graph",
 ]
 
 [[package]]
@@ -588,7 +588,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vault-index"
+name = "vault-graph"
 version = "0.14.0"
 dependencies = [
  "blake3",

@@ -2,7 +2,7 @@ use std::fs;
 
 use anyhow::Result;
 use camino::Utf8PathBuf;
-use vault_index::{IndexOptions, ValidateConfig, VaultConfig};
+use vault_graph::{IndexOptions, ValidateConfig, VaultConfig};
 
 use crate::validate::validate_config_value;
 

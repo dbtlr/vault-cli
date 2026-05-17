@@ -10,7 +10,7 @@ use std::process;
 use anyhow::Result;
 use clap::Parser;
 use vault_core::{GraphIndex, LinkStatus};
-use vault_index::{build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache};
+use vault_graph::{build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache};
 
 use crate::cli::{Cli, Command, GraphSubcommand};
 use crate::config::{effective_cwd, load_config, resolve_path};
