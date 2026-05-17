@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here.
 
+## v0.19.0 - Unreleased
+
+Human inspection and workflow documentation release.
+
+### Added
+
+- Added `table` and `paths` output formats for document inventory inspection.
+- Added `table` output for validation summaries.
+- Commands with human renderers now default to table output on terminals and JSON output when stdout is piped or captured.
+
+### Changed
+
+- Documented deterministic drift healing as the product direction: detect, plan, apply, and verify.
+
 ## v0.18.0 - 2026-05-17
 
 Validation triage ergonomics release.

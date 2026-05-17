@@ -130,6 +130,7 @@ fn graph_documents_help_documents_frontmatter_filter() {
     assert!(output.contains("--path"));
     assert!(output.contains("--has"));
     assert!(output.contains("--missing"));
+    assert!(output.contains("[possible values: json, jsonl, table, paths]"));
 }
 
 #[test]
@@ -142,6 +143,49 @@ fn docs_summary_help_documents_count_by() {
 fn docs_inspect_defaults_to_json() {
     let output = vault(&["docs", "inspect", "--help"]);
     assert!(output.contains("[default: json]"));
+}
+
+#[test]
+fn omitted_list_format_defaults_to_json_when_stdout_is_piped() {
+    let root = fixture_root();
+    let output = vault(&["-C", root.to_str().unwrap(), "docs", "list"]);
+
+    let documents = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert!(documents.as_array().unwrap().iter().any(|document| {
+        document["path"] == "alpha.md" && document["frontmatter"]["title"] == "Alpha"
+    }));
+}
+
+#[test]
+fn docs_list_supports_table_and_paths_formats() {
+    let root = fixture_root();
+    let table = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "docs",
+        "list",
+        "--format",
+        "table",
+    ]);
+
+    assert!(table.contains("path"));
+    assert!(table.contains("title"));
+    assert!(table.contains("diagnostics"));
+    assert!(table.contains("alpha.md"));
+    assert!(table.contains("Alpha"));
+
+    let paths = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "docs",
+        "list",
+        "--format",
+        "paths",
+    ]);
+
+    assert!(paths.lines().any(|line| line == "alpha.md"));
+    assert!(paths.lines().any(|line| line == "folder/gamma.md"));
+    assert!(!paths.contains('{'));
 }
 
 #[test]
@@ -512,6 +556,35 @@ fn validate_summary_reports_grouped_counts() {
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn omitted_validate_summary_format_defaults_to_json_when_stdout_is_piped() {
+    let root = fixture_root();
+    let output = vault(&["-C", root.to_str().unwrap(), "validate", "--summary"]);
+
+    let summary = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(summary["findings"], 7);
+    assert_eq!(summary["codes"]["link-unresolved"], 5);
+}
+
+#[test]
+fn validate_summary_supports_table_format() {
+    let root = fixture_root();
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "validate",
+        "--summary",
+        "--format",
+        "table",
+    ]);
+
+    assert!(output.contains("metric"));
+    assert!(output.contains("findings"));
+    assert!(output.contains("codes"));
+    assert!(output.contains("link-unresolved"));
+    assert!(output.contains("path_prefixes"));
 }
 
 #[test]

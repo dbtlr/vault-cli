@@ -18,7 +18,10 @@ use crate::config::{effective_cwd, load_config, resolve_path};
 use crate::filter::{
     filter_documents, index_frontmatter_keys, summarize_documents, DocumentFilterOptions,
 };
-use crate::output::{is_broken_pipe, write_item_output, write_output};
+use crate::output::{
+    is_broken_pipe, resolve_format, write_document_summary, write_documents, write_files,
+    write_findings, write_item_output, write_links, write_validate_summary,
+};
 use crate::target::{
     backlinks, inspect_document, resolve_backlink_target_path, resolve_target_path,
 };
@@ -53,7 +56,7 @@ fn run(cli: Cli) -> Result<i32> {
                     missing: &args.missing,
                 };
                 let documents = filter_documents(&index, &options)?;
-                write_output(&documents, args.format)?;
+                write_documents(&documents, resolve_format(args.format))?;
                 Ok(exit_code_for(&index))
             }
             DocsSubcommand::Summary(args) => {
@@ -68,7 +71,7 @@ fn run(cli: Cli) -> Result<i32> {
                 let known_fields = index_frontmatter_keys(&index);
                 let documents = filter_documents(&index, &options)?;
                 let summary = summarize_documents(&documents, &args.count_by, &known_fields);
-                write_item_output(&summary, args.format)?;
+                write_document_summary(&summary, resolve_format(args.format))?;
                 Ok(exit_code_for(&index))
             }
             DocsSubcommand::Inspect(args) => {
@@ -84,7 +87,7 @@ fn run(cli: Cli) -> Result<i32> {
             let mut index = build_index_for(&cwd, config_path.as_ref())?;
             trim_diagnostics(&mut index, verbose);
             let files: Vec<_> = index.files.iter().collect();
-            write_output(&files, args.format)?;
+            write_files(&files, resolve_format(args.format))?;
             Ok(exit_code_for(&index))
         }
         Command::Links(links_command) => match links_command.command {
@@ -96,7 +99,7 @@ fn run(cli: Cli) -> Result<i32> {
                     .iter()
                     .flat_map(|d| d.links.iter())
                     .collect();
-                write_output(&links, args.format)?;
+                write_links(&links, resolve_format(args.format))?;
                 Ok(exit_code_for(&index))
             }
             LinksSubcommand::Unresolved(args) => {
@@ -108,7 +111,7 @@ fn run(cli: Cli) -> Result<i32> {
                     .flat_map(|d| d.links.iter())
                     .filter(|l| l.status != LinkStatus::Resolved)
                     .collect();
-                write_output(&links, args.format)?;
+                write_links(&links, resolve_format(args.format))?;
                 Ok(exit_code_for(&index))
             }
             LinksSubcommand::Backlinks(args) => {
@@ -116,7 +119,7 @@ fn run(cli: Cli) -> Result<i32> {
                 trim_diagnostics(&mut index, verbose);
                 let target_path = resolve_backlink_target_path(&index, &args.target)?;
                 let links = backlinks(&index, &target_path);
-                write_output(&links, args.format)?;
+                write_links(&links, resolve_format(args.format))?;
                 Ok(exit_code_for(&index))
             }
         },
@@ -126,7 +129,7 @@ fn run(cli: Cli) -> Result<i32> {
                 trim_diagnostics(&mut index, verbose);
                 let cache_path = resolve_path(&cwd, &args.cache);
                 let summary = write_sqlite_cache(&index, &cache_path)?;
-                write_item_output(&summary, args.format)?;
+                write_item_output(&summary, resolve_format(args.format))?;
                 Ok(exit_code_for(&index))
             }
         },
@@ -139,9 +142,9 @@ fn run(cli: Cli) -> Result<i32> {
             let findings = filter_findings(findings, &filters)?;
             if args.summary {
                 let summary = summarize(&findings);
-                write_item_output(&summary, args.format)?;
+                write_validate_summary(&summary, resolve_format(args.format))?;
             } else {
-                write_output(&findings, args.format)?;
+                write_findings(&findings, resolve_format(args.format))?;
             }
             Ok(exit_code_for(&index))
         }

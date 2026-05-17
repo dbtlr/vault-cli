@@ -26,6 +26,11 @@ review workflows should prefer table, path-list, or Markdown-style output where
 available, while preserving the machine-readable schemas that agents and
 scripts consume.
 
+When `--format` is omitted, commands with human renderers use table output on a
+terminal and JSON output when stdout is piped or captured. Pass `--format json`
+or `--format jsonl` explicitly for stable machine-readable contracts, and pass
+`--format paths` when a command supports path-list output.
+
 The core workflow should not depend on QMD, embeddings, or semantic retrieval.
 Those can remain useful adjacent layers, but `vault` should provide deterministic
 path, frontmatter, graph, validation, search, repair-plan, and apply surfaces
@@ -69,6 +74,8 @@ just run -C fixtures/basic docs list --format jsonl
 
 ```bash
 vault docs list --format jsonl
+vault docs list --format table
+vault docs list --format paths
 vault docs list --filter status:draft --format jsonl
 vault docs list --path "Workspaces/**/tasks/*.md" --has workspace --format jsonl
 vault docs summary --count-by status --format json
@@ -82,6 +89,7 @@ vault validate --format jsonl
 vault validate --code frontmatter-invalid-type --field created --format jsonl
 vault validate --rule note-base --path "Workspaces/**" --summary --format json
 vault validate --summary --format json
+vault validate --summary --format table
 vault -C <path> validate --summary --format json
 ```
 
@@ -191,6 +199,22 @@ Comma-separated values are ORed within a filter dimension, and different
 dimensions are ANDed. Filters apply before both raw output and `--summary`, and
 filtered summaries keep the same JSON schema while counting only the filtered
 finding set.
+
+For human inspection, use table output:
+
+```bash
+vault docs list
+vault docs list --format paths
+vault validate --summary
+```
+
+For agents and scripts, request the JSON contract explicitly:
+
+```bash
+vault docs list --path "Workspaces/**/tasks/*.md" --format json
+vault validate --code frontmatter-invalid-type --field created --format jsonl
+vault validate --summary --format json
+```
 
 `vault docs list` supports small inventory filters: `--path <glob>` for
 vault-relative paths, repeatable `--filter field:value` for frontmatter scalar

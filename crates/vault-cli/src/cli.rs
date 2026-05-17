@@ -113,8 +113,8 @@ pub struct BuildArgs {
         help = "SQLite cache file path or directory. Directories receive graph.sqlite; --format only controls stdout"
     )]
     pub cache: Utf8PathBuf,
-    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Stdout format")]
-    pub format: OutputFormat,
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Parser)]
@@ -133,14 +133,14 @@ pub struct DocumentsArgs {
     pub has: Vec<String>,
     #[arg(long, help = "Require a missing or null frontmatter field")]
     pub missing: Vec<String>,
-    #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
-    pub format: OutputFormat,
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Parser)]
 pub struct GraphArgs {
-    #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
-    pub format: OutputFormat,
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Parser)]
@@ -149,8 +149,8 @@ pub struct TargetGraphArgs {
         help = "Exact vault-relative path or unique document stem. Stem matching is case-insensitive"
     )]
     pub target: String,
-    #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
-    pub format: OutputFormat,
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Parser)]
@@ -184,14 +184,14 @@ pub struct DocsSummaryArgs {
     pub has: Vec<String>,
     #[arg(long, help = "Require a missing or null frontmatter field")]
     pub missing: Vec<String>,
-    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Stdout format")]
-    pub format: OutputFormat,
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Parser)]
 pub struct ValidateArgs {
-    #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
-    pub format: OutputFormat,
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
     #[arg(
         long,
         help = "Emit grouped validation finding counts instead of raw findings"
@@ -223,6 +223,8 @@ pub struct ValidateArgs {
 pub enum OutputFormat {
     Json,
     Jsonl,
+    Table,
+    Paths,
 }
 
 #[derive(Debug, Serialize)]
