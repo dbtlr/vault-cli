@@ -176,6 +176,7 @@ Use semver-style tags for milestones:
 - `v0.4.0` — same-note references, Markdown image links, file queries, and graph contract polish
 - `v0.5.0` — explicit graph ignore config and mutation-ready frontmatter spans
 - `v0.6.0` — read-only doctor reports
+- `v0.7.0` — scoped doctor rules
 
 For a release bump:
 

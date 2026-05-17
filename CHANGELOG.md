@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## v0.7.0 - 2026-05-17
+
+- Added scoped `doctor.rules` with `match.path`.
+- Added scoped `required_frontmatter` checks.
+- Preserved global `doctor.required_frontmatter` for simple configs.
+- Added `rule` context to scoped missing-frontmatter doctor findings.
+- Documented scoped doctor rule configuration.
+
 ## v0.6.0 - 2026-05-16
 
 - Added read-only `vault doctor`.
