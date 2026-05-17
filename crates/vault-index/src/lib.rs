@@ -77,6 +77,8 @@ pub struct ValidateRuleConfig {
     pub r#match: ValidateRuleMatchConfig,
     #[serde(default)]
     pub required_frontmatter: Vec<String>,
+    #[serde(default)]
+    pub allowed_values: HashMap<String, Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

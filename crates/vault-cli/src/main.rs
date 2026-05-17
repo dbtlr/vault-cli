@@ -188,6 +188,10 @@ struct ValidateFinding {
     #[serde(skip_serializing_if = "Option::is_none")]
     rule: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    actual_value: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allowed_values: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     link: Option<Link>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostic: Option<Diagnostic>,
@@ -418,6 +422,14 @@ fn validate_rule_value(
         )?;
     }
 
+    if let Some(allowed_values) = mapping_get(rule, "allowed_values") {
+        validate_allowed_values(
+            config_path,
+            &format!("{rule_path}.allowed_values"),
+            allowed_values,
+        )?;
+    }
+
     Ok(())
 }
 
@@ -458,6 +470,40 @@ fn validate_frontmatter_predicates(
             anyhow::bail!(
                 "invalid config {config_path}: {field_path}.{field} must be a string, boolean, or number"
             );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_allowed_values(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(fields) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {field_path} must be a mapping");
+    };
+
+    for (field, allowed_values) in fields {
+        let Some(field) = field.as_str() else {
+            anyhow::bail!("invalid config {config_path}: {field_path} keys must be strings");
+        };
+
+        let Some(values) = allowed_values.as_sequence() else {
+            anyhow::bail!("invalid config {config_path}: {field_path}.{field} must be a sequence");
+        };
+
+        if values.is_empty() {
+            anyhow::bail!("invalid config {config_path}: {field_path}.{field} must not be empty");
+        }
+
+        for (index, allowed_value) in values.iter().enumerate() {
+            if !is_scalar_yaml_value(allowed_value) {
+                anyhow::bail!(
+                    "invalid config {config_path}: {field_path}.{field}[{index}] must be a string, boolean, or number"
+                );
+            }
         }
     }
 
@@ -602,6 +648,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                 message: diagnostic.message.clone(),
                 field: None,
                 rule: None,
+                actual_value: None,
+                allowed_values: None,
                 link: None,
                 diagnostic: Some(diagnostic.clone()),
             });
@@ -616,6 +664,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                     message: format!("required frontmatter field is missing: {field}"),
                     field: Some(field.clone()),
                     rule: None,
+                    actual_value: None,
+                    allowed_values: None,
                     link: None,
                     diagnostic: None,
                 });
@@ -633,9 +683,33 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                         message: format!("required frontmatter field is missing: {field}"),
                         field: Some(field.clone()),
                         rule: rule_name.clone(),
+                        actual_value: None,
+                        allowed_values: None,
                         link: None,
                         diagnostic: None,
                     });
+                }
+            }
+
+            for (field, allowed_values) in &rule.allowed_values {
+                if let Some(actual_value) = document_frontmatter_field(document, field) {
+                    if !allowed_values
+                        .iter()
+                        .any(|allowed_value| frontmatter_value_matches(actual_value, allowed_value))
+                    {
+                        findings.push(ValidateFinding {
+                            code: "frontmatter-field-value-not-allowed".to_string(),
+                            severity: Severity::Warning,
+                            path: document.path.clone(),
+                            message: format!("frontmatter field has a disallowed value: {field}"),
+                            field: Some(field.clone()),
+                            rule: rule_name.clone(),
+                            actual_value: Some(actual_value.clone()),
+                            allowed_values: Some(allowed_values.clone()),
+                            link: None,
+                            diagnostic: None,
+                        });
+                    }
                 }
             }
         }
@@ -651,6 +725,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                         message: format!("unresolved link target: {}", link.target),
                         field: None,
                         rule: None,
+                        actual_value: None,
+                        allowed_values: None,
                         link: Some(link.clone()),
                         diagnostic: None,
                     });
@@ -663,6 +739,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                         message: format!("ambiguous link target: {}", link.target),
                         field: None,
                         rule: None,
+                        actual_value: None,
+                        allowed_values: None,
                         link: Some(link.clone()),
                         diagnostic: None,
                     });
@@ -710,7 +788,7 @@ fn path_prefix_key(path: &Utf8PathBuf) -> String {
     let path = path.as_str();
     match path.split_once('/') {
         Some((prefix, _)) if !prefix.is_empty() => prefix.to_string(),
-        _ => ".".to_string(),
+        _ => "root".to_string(),
     }
 }
 
@@ -767,11 +845,18 @@ fn frontmatter_value_matches(actual: &serde_json::Value, expected: &serde_json::
 }
 
 fn document_has_frontmatter_field(document: &Document, field: &str) -> bool {
+    document_frontmatter_field(document, field).is_some()
+}
+
+fn document_frontmatter_field<'a>(
+    document: &'a Document,
+    field: &str,
+) -> Option<&'a serde_json::Value> {
     document
         .frontmatter
         .as_ref()
         .and_then(|frontmatter| frontmatter.get(field))
-        .is_some_and(|value| !value.is_null())
+        .filter(|value| !value.is_null())
 }
 
 fn backlinks<'a>(index: &'a GraphIndex, target_path: &Utf8PathBuf) -> Vec<&'a Link> {

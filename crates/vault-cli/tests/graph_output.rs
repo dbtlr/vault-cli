@@ -301,9 +301,119 @@ fn validate_summary_reports_grouped_counts() {
     assert_eq!(summary["severities"]["warning"], 3);
     assert_eq!(summary["rules"]["note-kind"], 1);
     assert_eq!(summary["rules"]["task-status"], 1);
-    assert_eq!(summary["path_prefixes"]["."], 1);
+    assert_eq!(summary["path_prefixes"]["root"], 1);
     assert_eq!(summary["path_prefixes"]["Notes"], 1);
     assert_eq!(summary["path_prefixes"]["Tasks"], 1);
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn validate_reports_allowed_value_findings() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: task-status-values\n      match:\n        path: \"**/*.md\"\n        frontmatter:\n          type: task\n      required_frontmatter:\n        - status\n      allowed_values:\n        status:\n          - backlog\n          - in_progress\n          - completed\n          - wont_do\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(
+        root.join("task.md"),
+        "---\ntype: task\nstatus: someday\n---\n# Task\n",
+    )
+    .expect("task should write");
+    fs::write(
+        root.join("valid-task.md"),
+        "---\ntype: task\nstatus: completed\n---\n# Task\n",
+    )
+    .expect("task should write");
+
+    let output = vault(&[
+        "validate",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 1);
+    assert_eq!(findings[0]["code"], "frontmatter-field-value-not-allowed");
+    assert_eq!(findings[0]["path"], "task.md");
+    assert_eq!(findings[0]["field"], "status");
+    assert_eq!(findings[0]["rule"], "task-status-values");
+    assert_eq!(findings[0]["actual_value"], "someday");
+    assert_eq!(
+        findings[0]["allowed_values"],
+        serde_json::json!(["backlog", "in_progress", "completed", "wont_do"])
+    );
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn validate_allowed_values_do_not_coerce_types() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: numeric-priority\n      match:\n        path: \"**/*.md\"\n      allowed_values:\n        priority:\n          - \"1\"\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("task.md"), "---\npriority: 1\n---\n# Task\n").expect("task should write");
+
+    let output = vault(&[
+        "validate",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 1);
+    assert_eq!(findings[0]["code"], "frontmatter-field-value-not-allowed");
+    assert_eq!(findings[0]["actual_value"], 1);
+    assert_eq!(findings[0]["allowed_values"], serde_json::json!(["1"]));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn validate_rejects_malformed_allowed_values() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: bad-values\n      allowed_values:\n        status: completed\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(
+        root.join("task.md"),
+        "---\nstatus: completed\n---\n# Task\n",
+    )
+    .expect("task should write");
+
+    let error = vault_error(&[
+        "validate",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+    ]);
+
+    assert!(error.contains("invalid config"));
+    assert!(error.contains("validate.rules[0].allowed_values.status must be a sequence"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();

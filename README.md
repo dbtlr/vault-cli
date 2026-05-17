@@ -78,6 +78,19 @@ validate:
           type: note
       required_frontmatter:
         - kind
+    - name: task-status
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      required_frontmatter:
+        - status
+      allowed_values:
+        status:
+          - backlog
+          - in_progress
+          - completed
+          - wont_do
 ```
 
 Configured ignores are applied before file inventory and document parsing. With no config, the graph remains a raw filesystem view except for hidden files/directories.
@@ -92,7 +105,7 @@ Frontmatter link extraction is intentionally shallow in v0.x: it scans top-level
 
 Use `source_context.area` and `source_context.property` to distinguish body links from frontmatter/property links. Frontmatter links now include `source_span` for the shallow extraction cases. `vault graph files` emits the file inventory, and `vault graph backlinks <exact-file-path>` can query incoming links to non-Markdown attachment targets.
 
-`vault validate` is read-only. It reports unresolved links, ambiguous links, document diagnostics, and configured missing frontmatter fields without mutating files. Global `validate.required_frontmatter` applies to every document. Scoped `validate.rules` apply additional requirements only to documents matched by `match.path` and `match.frontmatter`; findings include `rule` when a scoped rule produced them.
+`vault validate` is read-only. It reports unresolved links, ambiguous links, document diagnostics, configured missing frontmatter fields, and configured disallowed frontmatter values without mutating files. Global `validate.required_frontmatter` applies to every document. Scoped `validate.rules` apply additional requirements only to documents matched by `match.path` and `match.frontmatter`; findings include `rule` when a scoped rule produced them.
 
 Use `vault validate --summary` to emit grouped finding counts instead of raw
 findings. Summary output includes total findings plus counts by `code`,
@@ -117,6 +130,8 @@ semantics:
 Scoped validate rules support path and frontmatter predicates. All predicates are
 ANDed. Missing frontmatter fields do not match. Frontmatter predicates use exact,
 type-sensitive equality for strings, booleans, and numbers.
+Rules can also constrain allowed scalar field values with `allowed_values`.
+Allowed-value checks are exact and type-sensitive.
 
 ```yaml
 validate:
@@ -136,4 +151,10 @@ validate:
           type: task
       required_frontmatter:
         - status
+      allowed_values:
+        status:
+          - backlog
+          - in_progress
+          - completed
+          - wont_do
 ```
