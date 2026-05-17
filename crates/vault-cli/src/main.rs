@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
-use vault_core::{Diagnostic, Document, GraphIndex, Link, LinkStatus};
+use vault_core::{Diagnostic, Document, GraphIndex, Link, LinkStatus, VaultFile};
 use vault_index::{build_index, concise_diagnostics, has_errors, write_sqlite_cache};
 
 #[derive(Debug, Parser)]
@@ -37,6 +37,8 @@ enum GraphSubcommand {
     Documents(DocumentsArgs),
     #[command(about = "Emit all parsed link facts")]
     Links(GraphArgs),
+    #[command(about = "Emit inventoried vault files")]
+    Files(GraphArgs),
     #[command(about = "Emit unresolved and ambiguous link facts")]
     Unresolved(GraphArgs),
     #[command(about = "Emit document parse diagnostics")]
@@ -151,6 +153,13 @@ fn run(cli: Cli) -> Result<i32> {
                 write_output(&links, args.format)?;
                 Ok(exit_code_for(&index))
             }
+            GraphSubcommand::Files(args) => {
+                let mut index = build_index(&args.root)?;
+                trim_diagnostics(&mut index, args.verbose);
+                let files = all_files(&index);
+                write_output(&files, args.format)?;
+                Ok(exit_code_for(&index))
+            }
             GraphSubcommand::Unresolved(args) => {
                 let mut index = build_index(&args.root)?;
                 trim_diagnostics(&mut index, args.verbose);
@@ -168,7 +177,7 @@ fn run(cli: Cli) -> Result<i32> {
             GraphSubcommand::Backlinks(args) => {
                 let mut index = build_index(&args.root)?;
                 trim_diagnostics(&mut index, args.verbose);
-                let target_path = resolve_target_path(&index, &args.target)?;
+                let target_path = resolve_backlink_target_path(&index, &args.target)?;
                 let links = backlinks(&index, &target_path);
                 write_output(&links, args.format)?;
                 Ok(exit_code_for(&index))
@@ -201,6 +210,10 @@ fn all_links(index: &GraphIndex) -> Vec<&Link> {
         .iter()
         .flat_map(|document| document.links.iter())
         .collect()
+}
+
+fn all_files(index: &GraphIndex) -> Vec<&VaultFile> {
+    index.files.iter().collect()
 }
 
 fn unresolved_links(index: &GraphIndex) -> Vec<&Link> {
@@ -236,6 +249,14 @@ fn backlinks<'a>(index: &'a GraphIndex, target_path: &Utf8PathBuf) -> Vec<&'a Li
         .flat_map(|document| document.links.iter())
         .filter(|link| link.resolved_path.as_ref() == Some(target_path))
         .collect()
+}
+
+fn resolve_backlink_target_path(index: &GraphIndex, target: &str) -> Result<Utf8PathBuf> {
+    if let Some(file) = index.files.iter().find(|file| file.path == target) {
+        return Ok(file.path.clone());
+    }
+
+    resolve_target_path(index, target)
 }
 
 fn resolve_target_path(index: &GraphIndex, target: &str) -> Result<Utf8PathBuf> {

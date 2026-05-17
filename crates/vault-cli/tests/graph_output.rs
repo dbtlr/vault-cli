@@ -62,6 +62,7 @@ fn graph_help_describes_contracts() {
     let output = vault(&["graph", "--help"]);
     assert!(output.contains("Query and cache derived Markdown vault graph facts"));
     assert!(output.contains("Emit parsed Markdown documents"));
+    assert!(output.contains("Emit inventoried vault files"));
     assert!(output.contains("Write a SQLite graph cache"));
     assert!(output.contains("Emit document parse diagnostics"));
 }
@@ -311,6 +312,32 @@ fn graph_documents_rejects_invalid_filters() {
 }
 
 #[test]
+fn graph_files_jsonl_contract() {
+    let root = fixture_root();
+    let output = vault(&[
+        "graph",
+        "files",
+        "--root",
+        root.to_str().unwrap(),
+        "--format",
+        "jsonl",
+    ]);
+
+    let files = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(files.len(), 12);
+    assert!(files.iter().any(|file| file["path"] == "Assets/pic.png"
+        && file["stem"] == "pic"
+        && file["extension"] == "png"));
+    assert!(files.iter().any(|file| file["path"] == "alpha.md"
+        && file["stem"] == "alpha"
+        && file["extension"] == "md"));
+}
+
+#[test]
 fn graph_links_jsonl_contract() {
     let root = fixture_root();
     let output = vault(&[
@@ -545,6 +572,25 @@ fn graph_backlinks_accepts_exact_path() {
     assert_eq!(link["kind"], "markdown");
     assert_eq!(link["anchor"], "Delta-Heading");
     assert_eq!(link["source_span"]["line"], 20);
+}
+
+#[test]
+fn graph_backlinks_accepts_file_path() {
+    let root = fixture_root();
+    let output = vault(&[
+        "graph",
+        "backlinks",
+        "Assets/pic.png",
+        "--root",
+        root.to_str().unwrap(),
+        "--format",
+        "jsonl",
+    ]);
+
+    let link = serde_json::from_str::<Value>(output.trim()).expect("output should be JSON");
+    assert_eq!(link["kind"], "embed");
+    assert_eq!(link["raw"], "Assets/pic.png");
+    assert_eq!(link["resolved_path"], "Assets/pic.png");
 }
 
 #[test]
