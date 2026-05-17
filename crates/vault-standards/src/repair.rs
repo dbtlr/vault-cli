@@ -1,0 +1,244 @@
+use camino::Utf8PathBuf;
+use serde::Serialize;
+use serde_json::Value;
+use vault_core::Severity;
+
+use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
+use crate::findings::{Finding, FindingBody};
+
+const REPAIR_PLAN_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RepairPlanFilters {
+    pub code: Vec<String>,
+    pub severity: Vec<String>,
+    pub field: Vec<String>,
+    pub rule: Vec<String>,
+    pub path: Vec<String>,
+    pub target: Vec<String>,
+    pub reason: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RepairPlan {
+    pub schema_version: u32,
+    pub vault_root: Utf8PathBuf,
+    pub source_filters: RepairPlanFilters,
+    pub summary: RepairPlanSummary,
+    pub changes: Vec<PlannedChange>,
+    pub unsupported_findings: Vec<RepairPlanFinding>,
+    pub manual_decisions: Vec<RepairPlanFinding>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RepairPlanSummary {
+    pub findings: usize,
+    pub planned_changes: usize,
+    pub unsupported_findings: usize,
+    pub manual_decisions: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlannedChange {
+    pub path: Utf8PathBuf,
+    pub finding_code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finding_rule: Option<String>,
+    pub repair_rule: String,
+    pub operation: String,
+    pub field: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_old_value: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_value: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RepairPlanFinding {
+    pub path: Utf8PathBuf,
+    pub code: String,
+    pub severity: Severity,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    pub reason: String,
+}
+
+pub fn plan_repairs(
+    vault_root: Utf8PathBuf,
+    filters: RepairPlanFilters,
+    findings: Vec<Finding>,
+    config: &RepairConfig,
+) -> RepairPlan {
+    let mut changes = Vec::new();
+    let mut unsupported_findings = Vec::new();
+    let mut manual_decisions = Vec::new();
+
+    for finding in &findings {
+        if let Some((rule, action)) = matching_repair_rule(finding, &config.rules) {
+            match planned_change(finding, rule, action) {
+                Some(change) => changes.push(change),
+                None => unsupported_findings.push(plan_finding(
+                    finding,
+                    "matched repair rule cannot repair this finding",
+                )),
+            }
+        } else if requires_manual_decision(finding) {
+            manual_decisions.push(plan_finding(
+                finding,
+                "finding requires a manual decision or a future planner",
+            ));
+        } else {
+            unsupported_findings.push(plan_finding(
+                finding,
+                "no configured deterministic repair rule matched",
+            ));
+        }
+    }
+
+    RepairPlan {
+        schema_version: REPAIR_PLAN_SCHEMA_VERSION,
+        vault_root,
+        source_filters: filters,
+        summary: RepairPlanSummary {
+            findings: findings.len(),
+            planned_changes: changes.len(),
+            unsupported_findings: unsupported_findings.len(),
+            manual_decisions: manual_decisions.len(),
+        },
+        changes,
+        unsupported_findings,
+        manual_decisions,
+    }
+}
+
+fn matching_repair_rule<'a>(
+    finding: &Finding,
+    rules: &'a [RepairRule],
+) -> Option<(&'a RepairRule, &'a RepairAction)> {
+    rules
+        .iter()
+        .find(|rule| repair_match_applies(finding, &rule.r#match))
+        .map(|rule| (rule, &rule.action))
+}
+
+fn repair_match_applies(finding: &Finding, rule_match: &RepairRuleMatch) -> bool {
+    rule_match
+        .code
+        .as_ref()
+        .is_none_or(|code| code == &finding.code)
+        && rule_match
+            .rule
+            .as_ref()
+            .is_none_or(|rule| finding_rule(finding).as_ref() == Some(rule))
+        && rule_match
+            .field
+            .as_ref()
+            .is_none_or(|field| finding_field(finding).as_ref() == Some(field))
+        && rule_match
+            .actual_value
+            .as_ref()
+            .is_none_or(|actual_value| finding_actual_value(finding) == Some(actual_value))
+}
+
+fn planned_change(
+    finding: &Finding,
+    rule: &RepairRule,
+    action: &RepairAction,
+) -> Option<PlannedChange> {
+    let repair_rule = rule
+        .name
+        .clone()
+        .unwrap_or_else(|| "unnamed-repair-rule".to_string());
+    match action {
+        RepairAction::SetFrontmatter { field, value } => Some(PlannedChange {
+            path: finding.path.clone(),
+            finding_code: finding.code.clone(),
+            finding_rule: finding_rule(finding),
+            repair_rule,
+            operation: "set_frontmatter".to_string(),
+            field: field.clone(),
+            expected_old_value: finding_actual_value(finding).cloned(),
+            new_value: Some(value.clone()),
+        }),
+        RepairAction::RemoveFrontmatter { field } => Some(PlannedChange {
+            path: finding.path.clone(),
+            finding_code: finding.code.clone(),
+            finding_rule: finding_rule(finding),
+            repair_rule,
+            operation: "remove_frontmatter".to_string(),
+            field: field.clone(),
+            expected_old_value: finding_actual_value(finding).cloned(),
+            new_value: None,
+        }),
+    }
+}
+
+fn requires_manual_decision(finding: &Finding) -> bool {
+    matches!(
+        finding.body,
+        FindingBody::LinkIssue { .. }
+            | FindingBody::RequiredFrontmatterMissing { .. }
+            | FindingBody::DocumentMisrouted { .. }
+            | FindingBody::GraphDiagnostic { .. }
+    )
+}
+
+fn plan_finding(finding: &Finding, reason: &str) -> RepairPlanFinding {
+    RepairPlanFinding {
+        path: finding.path.clone(),
+        code: finding.code.clone(),
+        severity: finding.severity.clone(),
+        message: finding.message.clone(),
+        rule: finding_rule(finding),
+        field: finding_field(finding),
+        target: finding_target(finding),
+        reason: reason.to_string(),
+    }
+}
+
+fn finding_rule(finding: &Finding) -> Option<String> {
+    match &finding.body {
+        FindingBody::RequiredFrontmatterMissing { rule, .. }
+        | FindingBody::DisallowedValue { rule, .. }
+        | FindingBody::InvalidFieldType { rule, .. }
+        | FindingBody::ForbiddenField { rule, .. }
+        | FindingBody::DocumentMisrouted { rule, .. } => rule.clone(),
+        FindingBody::GraphDiagnostic { .. } | FindingBody::LinkIssue { .. } => None,
+    }
+}
+
+fn finding_field(finding: &Finding) -> Option<String> {
+    match &finding.body {
+        FindingBody::RequiredFrontmatterMissing { field, .. }
+        | FindingBody::DisallowedValue { field, .. }
+        | FindingBody::InvalidFieldType { field, .. }
+        | FindingBody::ForbiddenField { field, .. } => Some(field.clone()),
+        FindingBody::GraphDiagnostic { .. }
+        | FindingBody::LinkIssue { .. }
+        | FindingBody::DocumentMisrouted { .. } => None,
+    }
+}
+
+fn finding_actual_value(finding: &Finding) -> Option<&Value> {
+    match &finding.body {
+        FindingBody::DisallowedValue { actual_value, .. }
+        | FindingBody::InvalidFieldType { actual_value, .. }
+        | FindingBody::ForbiddenField { actual_value, .. } => Some(actual_value),
+        FindingBody::GraphDiagnostic { .. }
+        | FindingBody::LinkIssue { .. }
+        | FindingBody::RequiredFrontmatterMissing { .. }
+        | FindingBody::DocumentMisrouted { .. } => None,
+    }
+}
+
+fn finding_target(finding: &Finding) -> Option<String> {
+    match &finding.body {
+        FindingBody::LinkIssue { link } => Some(link.target.clone()),
+        _ => None,
+    }
+}

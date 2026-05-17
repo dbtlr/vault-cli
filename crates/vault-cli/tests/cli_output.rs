@@ -139,6 +139,7 @@ fn vault_help_documents_global_cwd() {
     assert!(output.contains("links"));
     assert!(output.contains("search"));
     assert!(output.contains("registry"));
+    assert!(output.contains("repair"));
     assert!(output.contains("cache"));
 }
 
@@ -170,6 +171,10 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("list"));
     assert!(output.contains("remove"));
 
+    let output = vault(&["repair", "--help"]);
+    assert!(output.contains("Plan and apply deterministic vault repairs"));
+    assert!(output.contains("plan"));
+
     let output = vault(&["search", "--help"]);
     assert!(output.contains("Deterministic document search"));
     assert!(output.contains("--filter"));
@@ -177,6 +182,79 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("--has"));
     assert!(output.contains("--missing"));
     assert!(output.contains("--text"));
+}
+
+#[test]
+fn repair_plan_generates_configured_frontmatter_change() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: task-status\n      match:\n        frontmatter:\n          type: task\n      allowed_values:\n        status:\n          - backlog\n          - in_progress\n          - completed\n          - wont_do\nrepair:\n  rules:\n    - name: map-someday-status\n      match:\n        code: frontmatter-disallowed-value\n        rule: task-status\n        field: status\n        actual_value: someday\n      set_frontmatter:\n        field: status\n        value: backlog\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(
+        root.join("task.md"),
+        "---\ntype: task\nstatus: someday\n---\n# Task\n",
+    )
+    .expect("task should write");
+
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--code",
+        "frontmatter-disallowed-value",
+        "--field",
+        "status",
+    ]);
+
+    let plan = serde_json::from_str::<Value>(&output).expect("repair plan should be JSON");
+    assert_eq!(plan["schema_version"], 1);
+    assert_eq!(plan["summary"]["findings"], 1);
+    assert_eq!(plan["summary"]["planned_changes"], 1);
+    assert_eq!(plan["summary"]["unsupported_findings"], 0);
+    assert_eq!(plan["changes"][0]["path"], "task.md");
+    assert_eq!(plan["changes"][0]["repair_rule"], "map-someday-status");
+    assert_eq!(plan["changes"][0]["operation"], "set_frontmatter");
+    assert_eq!(plan["changes"][0]["field"], "status");
+    assert_eq!(plan["changes"][0]["expected_old_value"], "someday");
+    assert_eq!(plan["changes"][0]["new_value"], "backlog");
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn repair_config_rejects_ambiguous_actions() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "repair:\n  rules:\n    - name: bad\n      set_frontmatter:\n        field: status\n        value: backlog\n      remove_frontmatter:\n        field: status\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("task.md"), "# Task\n").expect("task should write");
+
+    let error = vault_error(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+    ]);
+
+    assert!(error.contains("invalid config"));
+    assert!(error.contains("repair.rules[0] must declare exactly one repair action"));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
 }
 
 #[test]

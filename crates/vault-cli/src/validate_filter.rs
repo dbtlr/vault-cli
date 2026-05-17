@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use vault_graph::pattern_matches_path;
 use vault_standards::{Finding, FindingBody};
 
-use crate::cli::ValidateArgs;
+use crate::cli::{RepairPlanArgs, ValidateArgs};
 
 #[derive(Debug)]
 pub struct ValidateFilterOptions<'a> {
@@ -19,6 +19,20 @@ pub struct ValidateFilterOptions<'a> {
 
 impl<'a> From<&'a ValidateArgs> for ValidateFilterOptions<'a> {
     fn from(args: &'a ValidateArgs) -> Self {
+        Self {
+            codes: &args.code,
+            severities: &args.severity,
+            fields: &args.field,
+            rules: &args.rule,
+            paths: &args.path,
+            targets: &args.target,
+            reasons: &args.reason,
+        }
+    }
+}
+
+impl<'a> From<&'a RepairPlanArgs> for ValidateFilterOptions<'a> {
+    fn from(args: &'a RepairPlanArgs) -> Self {
         Self {
             codes: &args.code,
             severities: &args.severity,

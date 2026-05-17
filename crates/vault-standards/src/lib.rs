@@ -4,12 +4,15 @@ mod config_schema;
 mod engine;
 mod findings;
 mod predicates;
+mod repair;
 mod summary;
 
 pub use config::{
-    FilesConfig, RuleExclude, RuleSelector, ValidateConfig, ValidateRule, VaultConfig,
+    FilesConfig, RepairAction, RepairConfig, RepairRule, RepairRuleMatch, RuleExclude,
+    RuleSelector, ValidateConfig, ValidateRule, VaultConfig,
 };
 pub use config_schema::validate_config_yaml;
 pub use engine::validate;
 pub use findings::{Finding, FindingBody};
+pub use repair::{plan_repairs, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary};
 pub use summary::{summarize, Summary};

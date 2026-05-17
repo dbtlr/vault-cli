@@ -12,10 +12,11 @@ use anyhow::Result;
 use clap::Parser;
 use vault_core::{GraphIndex, LinkStatus};
 use vault_graph::{build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache};
-use vault_standards::{summarize, validate};
+use vault_standards::{plan_repairs, summarize, validate, RepairPlanFilters};
 
 use crate::cli::{
     CacheSubcommand, Cli, Command, DocsSubcommand, LinksSubcommand, RegistrySubcommand,
+    RepairSubcommand,
 };
 use crate::config::{effective_cwd, load_config, resolve_path};
 use crate::filter::{
@@ -152,6 +153,24 @@ fn run(cli: Cli) -> Result<i32> {
             write_documents(&documents, resolve_format(args.format))?;
             Ok(exit_code_for(&index))
         }
+        Command::Repair(repair_command) => match repair_command.command {
+            RepairSubcommand::Plan(args) => {
+                let loaded_config = load_config(&cwd, config_path.as_ref())?;
+                let mut index = build_index_with_options(&cwd, &loaded_config.index_options)?;
+                trim_diagnostics(&mut index, verbose);
+                let findings = validate(&index, &loaded_config.validate);
+                let filters = ValidateFilterOptions::from(&args);
+                let findings = filter_findings(findings, &filters)?;
+                let plan = plan_repairs(
+                    cwd.clone(),
+                    repair_plan_filters(&args),
+                    findings,
+                    &loaded_config.repair,
+                );
+                write_item_output(&plan, args.format)?;
+                Ok(exit_code_for(&index))
+            }
+        },
         Command::Cache(cache) => match cache.command {
             CacheSubcommand::Build(args) => {
                 let mut index = build_index_for(&cwd, config_path.as_ref())?;
@@ -198,6 +217,18 @@ fn run_registry(command: RegistrySubcommand) -> Result<i32> {
             registry::remove_vault(&args.name)?;
             Ok(0)
         }
+    }
+}
+
+fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
+    RepairPlanFilters {
+        code: args.code.clone(),
+        severity: args.severity.clone(),
+        field: args.field.clone(),
+        rule: args.rule.clone(),
+        path: args.path.clone(),
+        target: args.target.clone(),
+        reason: args.reason.clone(),
     }
 }
 

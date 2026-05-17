@@ -12,6 +12,7 @@ Human inspection and workflow documentation release.
 - Added `table` output for validation summaries.
 - Added top-level `vault search` with document path filters, frontmatter filters, field presence filters, literal text filters, and JSON/JSONL/table/paths output.
 - Added `vault registry add/list/remove` and global `--vault <name>` targeting using an XDG-style registry file.
+- Added read-only `vault repair plan` with schema-versioned JSON plans, configured frontmatter repair rules, unsupported finding reporting, and manual-decision reporting.
 - Commands with human renderers now default to table output on terminals and JSON output when stdout is piped or captured.
 - Documented validation cleanup recipes for filtered summaries, JSONL queues, link failure modes, and raw `--target` matching.
 

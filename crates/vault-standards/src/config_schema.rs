@@ -58,7 +58,162 @@ pub fn validate_config_yaml(config_path: &Utf8PathBuf, value: &serde_yaml::Value
         }
     }
 
+    if let Some(repair) = mapping_get(root, "repair") {
+        validate_repair_config(config_path, repair)?;
+    }
+
     Ok(())
+}
+
+fn validate_repair_config(config_path: &Utf8PathBuf, value: &serde_yaml::Value) -> Result<()> {
+    let Some(repair) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: repair must be a mapping");
+    };
+
+    validate_known_mapping_keys(config_path, "repair", repair, &["rules"])?;
+
+    if let Some(rules) = mapping_get(repair, "rules") {
+        let Some(rules) = rules.as_sequence() else {
+            anyhow::bail!("invalid config {config_path}: repair.rules must be a sequence");
+        };
+
+        for (index, rule) in rules.iter().enumerate() {
+            validate_repair_rule(config_path, &format!("repair.rules[{index}]"), rule)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_repair_rule(
+    config_path: &Utf8PathBuf,
+    rule_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(rule) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {rule_path} must be a mapping");
+    };
+
+    validate_known_mapping_keys(
+        config_path,
+        rule_path,
+        rule,
+        &["name", "match", "set_frontmatter", "remove_frontmatter"],
+    )?;
+
+    if let Some(name) = mapping_get(rule, "name") {
+        if name.as_str().is_none() {
+            anyhow::bail!("invalid config {config_path}: {rule_path}.name must be a string");
+        }
+    }
+
+    if let Some(rule_match) = mapping_get(rule, "match") {
+        validate_repair_match(config_path, &format!("{rule_path}.match"), rule_match)?;
+    }
+
+    let has_set = mapping_get(rule, "set_frontmatter").is_some();
+    let has_remove = mapping_get(rule, "remove_frontmatter").is_some();
+    match (has_set, has_remove) {
+        (true, true) => anyhow::bail!(
+            "invalid config {config_path}: {rule_path} must declare exactly one repair action"
+        ),
+        (false, false) => {
+            anyhow::bail!("invalid config {config_path}: {rule_path} must declare a repair action")
+        }
+        _ => {}
+    }
+
+    if let Some(action) = mapping_get(rule, "set_frontmatter") {
+        validate_set_frontmatter_action(
+            config_path,
+            &format!("{rule_path}.set_frontmatter"),
+            action,
+        )?;
+    }
+    if let Some(action) = mapping_get(rule, "remove_frontmatter") {
+        validate_remove_frontmatter_action(
+            config_path,
+            &format!("{rule_path}.remove_frontmatter"),
+            action,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_repair_match(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(rule_match) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {field_path} must be a mapping");
+    };
+
+    validate_known_mapping_keys(
+        config_path,
+        field_path,
+        rule_match,
+        &["code", "rule", "field", "actual_value"],
+    )?;
+
+    for key in ["code", "rule", "field"] {
+        if let Some(value) = mapping_get(rule_match, key) {
+            if value.as_str().is_none() {
+                anyhow::bail!("invalid config {config_path}: {field_path}.{key} must be a string");
+            }
+        }
+    }
+
+    if let Some(actual_value) = mapping_get(rule_match, "actual_value") {
+        if !is_scalar_yaml_value(actual_value) {
+            anyhow::bail!(
+                "invalid config {config_path}: {field_path}.actual_value must be a string, boolean, or number"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_set_frontmatter_action(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(action) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {field_path} must be a mapping");
+    };
+
+    validate_known_mapping_keys(config_path, field_path, action, &["field", "value"])?;
+
+    match mapping_get(action, "field").and_then(serde_yaml::Value::as_str) {
+        Some(field) if !field.is_empty() => {}
+        _ => anyhow::bail!("invalid config {config_path}: {field_path}.field must be a string"),
+    }
+
+    if mapping_get(action, "value").is_none() {
+        anyhow::bail!("invalid config {config_path}: {field_path}.value is required");
+    }
+
+    Ok(())
+}
+
+fn validate_remove_frontmatter_action(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(action) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {field_path} must be a mapping");
+    };
+
+    validate_known_mapping_keys(config_path, field_path, action, &["field"])?;
+
+    match mapping_get(action, "field").and_then(serde_yaml::Value::as_str) {
+        Some(field) if !field.is_empty() => Ok(()),
+        _ => anyhow::bail!("invalid config {config_path}: {field_path}.field must be a string"),
+    }
 }
 
 fn validate_rule_value(

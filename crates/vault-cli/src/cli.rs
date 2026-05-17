@@ -51,6 +51,8 @@ pub enum Command {
     Search(SearchArgs),
     #[command(about = "Manage named vault roots")]
     Registry(RegistryCommand),
+    #[command(about = "Plan and apply deterministic vault repairs")]
+    Repair(RepairCommand),
     #[command(about = "Local SQLite projection of the graph")]
     Cache(CacheCommand),
     #[command(
@@ -140,6 +142,47 @@ pub struct RegistryListArgs {
 #[derive(Debug, Parser)]
 pub struct RegistryRemoveArgs {
     pub name: String,
+}
+
+#[derive(Debug, Parser)]
+pub struct RepairCommand {
+    #[command(subcommand)]
+    pub command: RepairSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RepairSubcommand {
+    #[command(
+        about = "Generate an explicit repair plan from validation findings",
+        long_about = "Generate an explicit repair plan from validation findings.\n\nRepair planning is read-only. It uses configured deterministic repair rules and reports unsupported or manual-decision findings explicitly."
+    )]
+    Plan(RepairPlanArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct RepairPlanArgs {
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Stdout format")]
+    pub format: OutputFormat,
+    #[arg(
+        long,
+        help = "Filter findings by code. Comma-separated values match any listed code"
+    )]
+    pub code: Vec<String>,
+    #[arg(long, help = "Filter findings by severity")]
+    pub severity: Vec<String>,
+    #[arg(long, help = "Filter findings by frontmatter field")]
+    pub field: Vec<String>,
+    #[arg(long, help = "Filter findings by validate rule name")]
+    pub rule: Vec<String>,
+    #[arg(
+        long,
+        help = "Filter findings by vault-relative path glob using config glob semantics"
+    )]
+    pub path: Vec<String>,
+    #[arg(long, help = "Filter link findings by link target")]
+    pub target: Vec<String>,
+    #[arg(long, help = "Filter link findings by unresolved reason")]
+    pub reason: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]

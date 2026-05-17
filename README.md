@@ -84,6 +84,7 @@ vault search --path "Workspaces/**/tasks/*.md" --has workspace --format paths
 vault registry add atlas /path/to/atlas
 vault registry list --format table
 vault --vault atlas validate --summary --format json
+vault --vault atlas repair plan --code frontmatter-disallowed-value --field status --format json
 vault cache build --cache .vault/cache --format json
 vault links list --format jsonl
 vault files --format jsonl
@@ -166,6 +167,17 @@ validate:
         - kind
       allowed_paths:
         - "Workspaces/**/agent-artifacts/*.md"
+repair:
+  rules:
+    - name: legacy-task-status-someday
+      match:
+        code: frontmatter-disallowed-value
+        rule: task-status
+        field: status
+        actual_value: someday
+      set_frontmatter:
+        field: status
+        value: backlog
 ```
 
 For the conceptual model of validate rules, see [docs/rule-shape.md](docs/rule-shape.md).
@@ -267,6 +279,71 @@ vault validate --code frontmatter-invalid-type --field modified --format jsonl
 These recipes are intentionally just command combinations. Config-defined saved
 filters or presets may be worth adding later, but the current surface avoids a
 new query language while repair planning is still being designed.
+
+## Repair Planning
+
+`vault repair plan` is read-only. It runs validation, applies the same triage
+filters as `vault validate`, and converts findings matched by configured
+`repair.rules` into an explicit JSON repair plan. Findings without a matching
+deterministic rule are reported as `unsupported_findings` or
+`manual_decisions`; they are not silently dropped.
+
+The plan schema includes:
+
+- `schema_version`
+- `vault_root`
+- `source_filters`
+- `summary`
+- `changes`
+- `unsupported_findings`
+- `manual_decisions`
+
+The first supported repair actions are frontmatter-only:
+
+```yaml
+repair:
+  rules:
+    - name: legacy-task-status-someday
+      match:
+        code: frontmatter-disallowed-value
+        rule: task-status
+        field: status
+        actual_value: someday
+      set_frontmatter:
+        field: status
+        value: backlog
+
+    - name: remove-forbidden-kind
+      match:
+        code: frontmatter-forbidden-field
+        field: kind
+      remove_frontmatter:
+        field: kind
+```
+
+Repair rule `match` supports `code`, `rule`, `field`, and `actual_value`.
+Matches are exact and type-sensitive. A rule must declare exactly one action:
+`set_frontmatter` or `remove_frontmatter`.
+
+Example detect -> plan workflow:
+
+```bash
+vault --vault atlas validate --summary --format json
+vault --vault atlas validate --code frontmatter-disallowed-value --field status --summary --format json
+vault --vault atlas repair plan --code frontmatter-disallowed-value --field status --format json > repair.json
+```
+
+Example search-assisted workflow:
+
+```bash
+vault --vault atlas search --filter type:task --has status --format paths
+vault --vault atlas validate --rule task-status --summary --format table
+vault --vault atlas repair plan --rule task-status --format json
+```
+
+Repair planning does not apply changes. Apply behavior is a separate explicit
+step planned for a later release and must reject stale or unsupported plans
+rather than guessing.
 
 `vault docs list` supports small inventory filters: `--path <glob>` for
 vault-relative paths, repeatable `--filter field:value` for frontmatter scalar

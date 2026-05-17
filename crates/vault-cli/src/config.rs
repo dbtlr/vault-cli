@@ -3,11 +3,12 @@ use std::fs;
 use anyhow::Result;
 use camino::Utf8PathBuf;
 use vault_graph::IndexOptions;
-use vault_standards::{validate_config_yaml, ValidateConfig, VaultConfig};
+use vault_standards::{validate_config_yaml, RepairConfig, ValidateConfig, VaultConfig};
 
 pub struct LoadedConfig {
     pub index_options: IndexOptions,
     pub validate: ValidateConfig,
+    pub repair: RepairConfig,
 }
 
 pub fn effective_cwd(cwd: Option<&Utf8PathBuf>, vault: Option<&str>) -> Result<Utf8PathBuf> {
@@ -75,5 +76,6 @@ pub fn load_config(cwd: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Resu
             ignore: config.files.ignore,
         },
         validate: config.validate,
+        repair: config.repair,
     })
 }
