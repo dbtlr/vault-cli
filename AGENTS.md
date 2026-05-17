@@ -65,6 +65,17 @@ vault graph inspect <path-or-stem> --root <path> --format json
 vault graph build --root <path> --cache .vault/cache --format json
 ```
 
+All graph commands accept `--config <path>` for explicit YAML configuration. Current config shape:
+
+```yaml
+graph:
+  ignore:
+    - __pycache__/**
+    - "*.pyc"
+```
+
+Ignore patterns are applied before file inventory and document parsing. Supported v0.5 patterns are exact vault-relative paths, directory prefixes ending in `/**`, and simple `*` wildcards. Build summaries include `ignored_files` so count changes are visible.
+
 Lookup rules:
 
 - exact vault-relative paths are case-sensitive
@@ -92,7 +103,7 @@ In the no-schema baseline, parse what Obsidian treats as internal links:
 - Markdown image links to local files
 - existing non-Markdown attachment targets
 
-Frontmatter link extraction is shallow in v0.x. It scans top-level scalar strings and top-level lists of strings, preserving the top-level property name in `source_context.property`. Do not assume nested YAML leaves are graph links until that boundary is deliberately expanded.
+Frontmatter link extraction is shallow in v0.x. It scans top-level scalar strings and top-level lists of strings, preserving the top-level property name in `source_context.property` and adding `source_span` for those shallow cases. Do not assume nested YAML leaves are graph links until that boundary is deliberately expanded.
 
 Future standards packs should layer semantic meaning on top of the raw graph. For example, `workspace: "[[vault-cli]]"` and a prose body link are both raw links, but they are different semantic relationships.
 
