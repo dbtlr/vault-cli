@@ -47,6 +47,23 @@ fn vault_error(args: &[&str]) -> String {
     String::from_utf8(output.stderr).expect("stderr should be UTF-8")
 }
 
+fn vault_in_dir(args: &[&str], current_dir: &PathBuf) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .current_dir(current_dir)
+        .args(args)
+        .output()
+        .expect("vault command should run");
+
+    assert!(
+        output.status.success(),
+        "vault command failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8(output.stdout).expect("stdout should be UTF-8")
+}
+
 fn temp_cache_dir() -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -61,6 +78,12 @@ fn temp_cache_dir() -> PathBuf {
 fn vault_version_reports_package_version() {
     let output = vault(&["--version"]);
     assert!(output.contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn vault_help_documents_global_cwd() {
+    let output = vault(&["--help"]);
+    assert!(output.contains("-C, --cwd"));
 }
 
 #[test]
@@ -134,7 +157,7 @@ fn validate_jsonl_reports_graph_findings_and_diagnostics() {
     let root = fixture_root();
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -182,7 +205,7 @@ fn validate_reports_required_frontmatter_from_config() {
     let config_path = root.with_extension("yaml");
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -198,6 +221,104 @@ fn validate_reports_required_frontmatter_from_config() {
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn validate_discovers_default_config_from_cwd() {
+    let root = temp_cache_dir();
+    fs::create_dir_all(root.join(".vault")).expect("config dir should be created");
+    fs::write(
+        root.join(".vault/config.yaml"),
+        "validate:\n  required_frontmatter:\n    - title\n",
+    )
+    .expect("config should write");
+    fs::write(root.join("missing-title.md"), "# Missing\n").expect("note should write");
+
+    let output = vault(&["-C", root.to_str().unwrap(), "validate", "--format", "json"]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 1);
+    assert_eq!(findings[0]["field"], "title");
+
+    fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn validate_missing_default_config_uses_defaults() {
+    let root = temp_cache_dir();
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("note.md"), "---\ntitle: Present\n---\n# Note\n")
+        .expect("note should write");
+
+    let output = vault(&["-C", root.to_str().unwrap(), "validate", "--format", "json"]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 0);
+
+    fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn commands_default_to_process_current_directory() {
+    let root = temp_cache_dir();
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("note.md"), "# Note\n").expect("note should write");
+
+    let output = vault_in_dir(&["graph", "documents", "--format", "json"], &root);
+
+    let documents = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(documents.as_array().unwrap().len(), 1);
+    assert_eq!(documents[0]["path"], "note.md");
+
+    fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn validate_invalid_discovered_config_fails() {
+    let root = temp_cache_dir();
+    fs::create_dir_all(root.join(".vault")).expect("config dir should be created");
+    fs::write(
+        root.join(".vault/config.yaml"),
+        "validate:\n  rules:\n    - name: bad\n      match:\n        path: 123\n",
+    )
+    .expect("config should write");
+    fs::write(root.join("note.md"), "# Note\n").expect("note should write");
+
+    let error = vault_error(&["-C", root.to_str().unwrap(), "validate"]);
+
+    assert!(error.contains("invalid config"));
+    assert!(error.contains(".vault/config.yaml"));
+    assert!(error.contains("validate.rules[0].match.path must be a string"));
+
+    fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn validate_resolves_explicit_relative_config_against_cwd() {
+    let root = temp_cache_dir();
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(
+        root.join("vault.yaml"),
+        "validate:\n  required_frontmatter:\n    - title\n",
+    )
+    .expect("config should write");
+    fs::write(root.join("missing-title.md"), "# Missing\n").expect("note should write");
+
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "validate",
+        "--config",
+        "vault.yaml",
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 1);
+    assert_eq!(findings[0]["field"], "title");
+
+    fs::remove_dir_all(root).ok();
 }
 
 #[test]
@@ -226,7 +347,7 @@ fn validate_reports_scoped_required_frontmatter_from_config() {
 
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -286,7 +407,7 @@ fn validate_summary_reports_grouped_counts() {
 
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -332,7 +453,7 @@ fn validate_reports_allowed_value_findings() {
 
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -370,7 +491,7 @@ fn validate_allowed_values_do_not_coerce_types() {
 
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -406,7 +527,7 @@ fn validate_rejects_malformed_allowed_values() {
 
     let error = vault_error(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -444,7 +565,7 @@ fn validate_rules_match_frontmatter_predicates() {
 
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -492,7 +613,7 @@ fn validate_rules_do_not_coerce_frontmatter_predicate_types() {
 
     let output = vault(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -521,7 +642,7 @@ fn validate_rejects_unknown_match_keys() {
 
     let error = vault_error(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -548,7 +669,7 @@ fn validate_rejects_non_scalar_frontmatter_predicates() {
 
     let error = vault_error(&[
         "validate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
@@ -568,7 +689,7 @@ fn graph_documents_jsonl_contract() {
     let output = vault(&[
         "graph",
         "documents",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -657,7 +778,7 @@ fn graph_build_writes_sqlite_cache() {
     let output = vault(&[
         "graph",
         "build",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--cache",
         cache_dir.to_str().unwrap(),
@@ -716,6 +837,31 @@ fn graph_build_writes_sqlite_cache() {
 }
 
 #[test]
+fn graph_build_resolves_relative_cache_against_cwd() {
+    let root = temp_cache_dir();
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("note.md"), "# Note\n").expect("note should write");
+
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "graph",
+        "build",
+        "--cache",
+        ".vault/cache",
+        "--format",
+        "json",
+    ]);
+
+    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    let cache_path = root.join(".vault/cache/graph.sqlite");
+    assert_eq!(value["cache_path"], cache_path.to_str().unwrap());
+    assert!(cache_path.exists());
+
+    fs::remove_dir_all(root).ok();
+}
+
+#[test]
 fn graph_config_ignores_files_before_indexing() {
     let root = temp_cache_dir();
     fs::create_dir_all(root.join("__pycache__")).expect("temp dirs should be created");
@@ -731,7 +877,7 @@ fn graph_config_ignores_files_before_indexing() {
     let documents = vault(&[
         "graph",
         "documents",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         root.join("vault.yaml").to_str().unwrap(),
@@ -745,7 +891,7 @@ fn graph_config_ignores_files_before_indexing() {
     let files = vault(&[
         "graph",
         "files",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         root.join("vault.yaml").to_str().unwrap(),
@@ -768,7 +914,7 @@ fn graph_config_ignores_files_before_indexing() {
     let build = vault(&[
         "graph",
         "build",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--config",
         root.join("vault.yaml").to_str().unwrap(),
@@ -792,7 +938,7 @@ fn graph_build_accepts_sqlite_file_path() {
     let output = vault(&[
         "graph",
         "build",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--cache",
         cache_path.to_str().unwrap(),
@@ -819,7 +965,7 @@ fn graph_documents_filters_frontmatter_scalars() {
     let output = vault(&[
         "graph",
         "documents",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--filter",
         "status:draft",
@@ -842,7 +988,7 @@ fn graph_documents_filters_frontmatter_lists() {
     let output = vault(&[
         "graph",
         "documents",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--filter",
         "aliases:First Note",
@@ -865,7 +1011,7 @@ fn graph_documents_rejects_invalid_filters() {
     let stderr = vault_error(&[
         "graph",
         "documents",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--filter",
         "status",
@@ -882,7 +1028,7 @@ fn graph_files_jsonl_contract() {
     let output = vault(&[
         "graph",
         "files",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -908,7 +1054,7 @@ fn graph_links_jsonl_contract() {
     let output = vault(&[
         "graph",
         "links",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1043,7 +1189,7 @@ fn graph_unresolved_json_contract() {
     let output = vault(&[
         "graph",
         "unresolved",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "json",
@@ -1075,7 +1221,7 @@ fn graph_diagnostics_jsonl_contract() {
     let output = vault(&[
         "graph",
         "diagnostics",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1101,7 +1247,7 @@ fn graph_backlinks_jsonl_contract() {
         "graph",
         "backlinks",
         "beta",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1129,7 +1275,7 @@ fn graph_backlinks_accepts_exact_path() {
         "graph",
         "backlinks",
         "folder/delta.md",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1148,7 +1294,7 @@ fn graph_backlinks_accepts_file_path() {
         "graph",
         "backlinks",
         "Assets/pic.png",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1167,7 +1313,7 @@ fn graph_backlinks_accepts_case_insensitive_stem() {
         "graph",
         "backlinks",
         "BETA",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1188,7 +1334,7 @@ fn graph_inspect_accepts_case_insensitive_stem() {
         "graph",
         "inspect",
         "ALPHA",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1205,7 +1351,7 @@ fn graph_backlinks_rejects_ambiguous_stem() {
         "graph",
         "backlinks",
         "duplicate",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",
@@ -1223,7 +1369,7 @@ fn graph_inspect_json_contract() {
         "graph",
         "inspect",
         "alpha.md",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "json",
@@ -1279,7 +1425,7 @@ fn graph_inspect_accepts_unique_stem() {
         "graph",
         "inspect",
         "beta",
-        "--root",
+        "-C",
         root.to_str().unwrap(),
         "--format",
         "jsonl",

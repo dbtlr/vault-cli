@@ -34,26 +34,34 @@ With `just` installed, common commands are available as:
 just build
 just test
 just verify
-just run graph documents --root fixtures/basic --format jsonl
+just run -C fixtures/basic graph documents --format jsonl
 ```
 
 ## v0 Scope
 
 ```bash
-vault graph documents --root <path> --format jsonl
-vault graph documents --root <path> --filter status:draft --format jsonl
-vault graph build --root <path> --cache .vault/cache --format json
-vault graph links --root <path> --format jsonl
-vault graph files --root <path> --format jsonl
-vault graph unresolved --root <path> --format jsonl
-vault graph diagnostics --root <path> --format jsonl
-vault graph backlinks <path-or-stem-or-file> --root <path> --format jsonl
-vault graph inspect <path-or-stem> --root <path> --format json
-vault validate --root <path> --config <path> --format jsonl
-vault validate --root <path> --config <path> --summary --format json
+vault graph documents --format jsonl
+vault graph documents --filter status:draft --format jsonl
+vault graph build --cache .vault/cache --format json
+vault graph links --format jsonl
+vault graph files --format jsonl
+vault graph unresolved --format jsonl
+vault graph diagnostics --format jsonl
+vault graph backlinks <path-or-stem-or-file> --format jsonl
+vault graph inspect <path-or-stem> --format json
+vault validate --format jsonl
+vault validate --summary --format json
+vault -C <path> validate --summary --format json
 ```
 
-Every graph command accepts `--config <path>` for explicit YAML configuration. The current config shape is:
+Commands run against the current directory by default. Use global `-C, --cwd
+<dir>` to run against another vault directory. When `--config` is omitted,
+`vault` discovers `<cwd>/.vault/config.yaml` if it exists; missing discovered
+config is fine and uses defaults. Explicit relative `--config` paths and
+relative `--cache` paths resolve against the effective cwd.
+
+Every graph and validate command accepts `--config <path>` for explicit YAML
+configuration. The current config shape is:
 
 ```yaml
 graph:

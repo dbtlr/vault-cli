@@ -16,6 +16,14 @@ use vault_index::{
 #[command(about = "Deterministic Markdown vault graph tools")]
 #[command(version)]
 struct Cli {
+    #[arg(
+        short = 'C',
+        long,
+        global = true,
+        default_value = ".",
+        help = "Run as if vault started in this directory"
+    )]
+    cwd: Utf8PathBuf,
     #[command(subcommand)]
     command: Command,
 }
@@ -80,8 +88,6 @@ enum GraphSubcommand {
 
 #[derive(Debug, Parser)]
 struct BuildArgs {
-    #[arg(long, default_value = ".", help = "Vault root to index")]
-    root: Utf8PathBuf,
     #[arg(long, help = "YAML config file with graph.ignore patterns")]
     config: Option<Utf8PathBuf>,
     #[arg(
@@ -97,8 +103,6 @@ struct BuildArgs {
 
 #[derive(Debug, Parser)]
 struct DocumentsArgs {
-    #[arg(long, default_value = ".", help = "Vault root to index")]
-    root: Utf8PathBuf,
     #[arg(long, help = "YAML config file with graph.ignore patterns")]
     config: Option<Utf8PathBuf>,
     #[arg(
@@ -114,8 +118,6 @@ struct DocumentsArgs {
 
 #[derive(Debug, Parser)]
 struct GraphArgs {
-    #[arg(long, default_value = ".", help = "Vault root to index")]
-    root: Utf8PathBuf,
     #[arg(long, help = "YAML config file with graph.ignore patterns")]
     config: Option<Utf8PathBuf>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
@@ -130,8 +132,6 @@ struct TargetGraphArgs {
         help = "Exact vault-relative path or unique document stem. Stem matching is case-insensitive"
     )]
     target: String,
-    #[arg(long, default_value = ".", help = "Vault root to index")]
-    root: Utf8PathBuf,
     #[arg(long, help = "YAML config file with graph.ignore patterns")]
     config: Option<Utf8PathBuf>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
@@ -142,8 +142,6 @@ struct TargetGraphArgs {
 
 #[derive(Debug, Parser)]
 struct ValidateArgs {
-    #[arg(long, default_value = ".", help = "Vault root to validate")]
-    root: Utf8PathBuf,
     #[arg(long, help = "YAML config file with graph.ignore and validate rules")]
     config: Option<Utf8PathBuf>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
@@ -218,52 +216,55 @@ fn main() -> Result<()> {
 }
 
 fn run(cli: Cli) -> Result<i32> {
+    let cwd = effective_cwd(&cli.cwd)?;
+
     match cli.command {
         Command::Graph(graph) => match graph.command {
             GraphSubcommand::Build(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
-                let summary = write_sqlite_cache(&index, &args.cache)?;
+                let cache_path = resolve_path(&cwd, &args.cache);
+                let summary = write_sqlite_cache(&index, &cache_path)?;
                 write_item_output(&summary, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Documents(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
                 let documents = filter_documents(&index, &args.filters)?;
                 write_output(&documents, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Links(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
                 let links = all_links(&index);
                 write_output(&links, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Files(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
                 let files = all_files(&index);
                 write_output(&files, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Unresolved(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
                 let links = unresolved_links(&index);
                 write_output(&links, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Diagnostics(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
                 let diagnostics = all_diagnostics(&index);
                 write_output(&diagnostics, args.format)?;
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Backlinks(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
                 let target_path = resolve_backlink_target_path(&index, &args.target)?;
                 let links = backlinks(&index, &target_path);
@@ -271,7 +272,7 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
             GraphSubcommand::Inspect(args) => {
-                let mut index = build_index_for(&args.root, args.config.as_ref())?;
+                let mut index = build_index_for(&cwd, args.config.as_ref())?;
                 trim_diagnostics(&mut index, args.verbose);
                 let target_path = resolve_target_path(&index, &args.target)?;
                 let output = inspect_document(&index, &target_path)?;
@@ -280,8 +281,8 @@ fn run(cli: Cli) -> Result<i32> {
             }
         },
         Command::Validate(args) => {
-            let loaded_config = load_config(args.config.as_ref())?;
-            let mut index = build_index_with_options(&args.root, &loaded_config.index_options)?;
+            let loaded_config = load_config(&cwd, args.config.as_ref())?;
+            let mut index = build_index_with_options(&cwd, &loaded_config.index_options)?;
             trim_diagnostics(&mut index, args.verbose);
             let findings = validate_findings(&index, &loaded_config.validate);
             if args.summary {
@@ -295,24 +296,28 @@ fn run(cli: Cli) -> Result<i32> {
     }
 }
 
-fn build_index_for(root: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Result<GraphIndex> {
-    let loaded_config = load_config(config_path)?;
-    Ok(build_index_with_options(
-        root,
-        &loaded_config.index_options,
-    )?)
+fn build_index_for(cwd: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Result<GraphIndex> {
+    let loaded_config = load_config(cwd, config_path)?;
+    Ok(build_index_with_options(cwd, &loaded_config.index_options)?)
 }
 
-fn load_config(config_path: Option<&Utf8PathBuf>) -> Result<LoadedConfig> {
-    let config = match config_path {
+fn load_config(cwd: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Result<LoadedConfig> {
+    let resolved_config_path = config_path
+        .map(|config_path| resolve_path(cwd, config_path))
+        .or_else(|| {
+            let discovered = cwd.join(".vault/config.yaml");
+            discovered.exists().then_some(discovered)
+        });
+
+    let config = match resolved_config_path {
         Some(config_path) => {
-            let config_text = fs::read_to_string(config_path)
+            let config_text = fs::read_to_string(&config_path)
                 .map_err(|error| anyhow::anyhow!("failed to read config {config_path}: {error}"))?;
             let config_value =
                 serde_yaml::from_str::<serde_yaml::Value>(&config_text).map_err(|error| {
                     anyhow::anyhow!("failed to parse config {config_path}: {error}")
                 })?;
-            validate_config_value(config_path, &config_value)?;
+            validate_config_value(&config_path, &config_value)?;
             serde_yaml::from_value::<VaultConfig>(config_value)
                 .map_err(|error| anyhow::anyhow!("failed to parse config {config_path}: {error}"))?
         }
@@ -325,6 +330,27 @@ fn load_config(config_path: Option<&Utf8PathBuf>) -> Result<LoadedConfig> {
         },
         validate: config.validate,
     })
+}
+
+fn effective_cwd(cwd: &Utf8PathBuf) -> Result<Utf8PathBuf> {
+    if cwd.is_absolute() {
+        return Ok(cwd.clone());
+    }
+
+    let current_dir = std::env::current_dir()
+        .map_err(|error| anyhow::anyhow!("failed to read current directory: {error}"))?;
+    let current_dir = Utf8PathBuf::from_path_buf(current_dir).map_err(|path| {
+        anyhow::anyhow!("current directory is not valid UTF-8: {}", path.display())
+    })?;
+    Ok(current_dir.join(cwd))
+}
+
+fn resolve_path(cwd: &Utf8PathBuf, path: &Utf8PathBuf) -> Utf8PathBuf {
+    if path.is_absolute() {
+        path.clone()
+    } else {
+        cwd.join(path)
+    }
 }
 
 fn validate_config_value(config_path: &Utf8PathBuf, value: &serde_yaml::Value) -> Result<()> {
@@ -552,7 +578,9 @@ mod config_validation_tests {
             "validate:\n  rules:\n    - name: bad\n      match:\n        path: 123\n      required_frontmatter:\n        - type\n",
         );
 
-        let message = match load_config(Some(&config_path)) {
+        let cwd =
+            Utf8PathBuf::from_path_buf(std::env::temp_dir()).expect("temp path should be utf8");
+        let message = match load_config(&cwd, Some(&config_path)) {
             Ok(_) => panic!("config should fail validation"),
             Err(error) => error.to_string(),
         };
@@ -567,7 +595,9 @@ mod config_validation_tests {
             "validate:\n  rules:\n    - name: bad\n      match:\n        path: Workspaces/**/*.md\n      required_frontmatter:\n        - 123\n",
         );
 
-        let message = match load_config(Some(&config_path)) {
+        let cwd =
+            Utf8PathBuf::from_path_buf(std::env::temp_dir()).expect("temp path should be utf8");
+        let message = match load_config(&cwd, Some(&config_path)) {
             Ok(_) => panic!("config should fail validation"),
             Err(error) => error.to_string(),
         };

@@ -30,22 +30,22 @@ run *args:
     cargo run -q -p vault-cli -- {{args}}
 
 fixture-documents root="fixtures/basic":
-    cargo run -q -p vault-cli -- graph documents --root '{{root}}' --format jsonl
+    cargo run -q -p vault-cli -- -C '{{root}}' graph documents --format jsonl
 
 fixture-links root="fixtures/basic":
-    cargo run -q -p vault-cli -- graph links --root '{{root}}' --format jsonl
+    cargo run -q -p vault-cli -- -C '{{root}}' graph links --format jsonl
 
 fixture-unresolved root="fixtures/basic":
-    cargo run -q -p vault-cli -- graph unresolved --root '{{root}}' --format json
+    cargo run -q -p vault-cli -- -C '{{root}}' graph unresolved --format json
 
 fixture-diagnostics root="fixtures/basic":
-    cargo run -q -p vault-cli -- graph diagnostics --root '{{root}}' --format jsonl
+    cargo run -q -p vault-cli -- -C '{{root}}' graph diagnostics --format jsonl
 
 fixture-backlinks target="beta" root="fixtures/basic":
-    cargo run -q -p vault-cli -- graph backlinks '{{target}}' --root '{{root}}' --format jsonl
+    cargo run -q -p vault-cli -- -C '{{root}}' graph backlinks '{{target}}' --format jsonl
 
 fixture-inspect target="alpha.md" root="fixtures/basic":
-    cargo run -q -p vault-cli -- graph inspect '{{target}}' --root '{{root}}' --format json
+    cargo run -q -p vault-cli -- -C '{{root}}' graph inspect '{{target}}' --format json
 
 fixture-build-cache cache="/tmp/vault-cli-cache" root="fixtures/basic":
-    cargo run -q -p vault-cli -- graph build --root '{{root}}' --cache '{{cache}}' --format json
+    cargo run -q -p vault-cli -- -C '{{root}}' graph build --cache '{{cache}}' --format json
