@@ -450,6 +450,7 @@ fn graph_links_jsonl_contract() {
     assert_eq!(missing_anchor["unresolved_reason"], "anchor-missing");
     assert_eq!(missing_block["unresolved_reason"], "block-ref-missing");
     assert_eq!(ambiguous["status"], "ambiguous");
+    assert_eq!(ambiguous["unresolved_reason"], "ambiguous");
     assert_eq!(path_qualified_case["resolved_path"], "other/duplicate.md");
     assert_eq!(path_qualified_case["status"], "resolved");
     assert_eq!(attachment_embed["resolved_path"], "Assets/diagram.png");
@@ -500,6 +501,7 @@ fn graph_unresolved_json_contract() {
     assert_eq!(links[5]["raw"], "[[duplicate]]");
     assert_eq!(links[5]["source_span"]["line"], 26);
     assert_eq!(links[5]["status"], "ambiguous");
+    assert_eq!(links[5]["unresolved_reason"], "ambiguous");
 }
 
 #[test]
@@ -699,6 +701,10 @@ fn graph_inspect_json_contract() {
         "block-ref-missing"
     );
     assert_eq!(value["unresolved_outgoing_links"][5]["target"], "duplicate");
+    assert_eq!(
+        value["unresolved_outgoing_links"][5]["unresolved_reason"],
+        "ambiguous"
+    );
 }
 
 #[test]

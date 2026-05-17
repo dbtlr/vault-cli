@@ -549,7 +549,7 @@ fn resolve_links(files: &[VaultFile], documents: &mut [Document]) {
                 many => {
                     link.status = LinkStatus::Ambiguous;
                     link.resolved_path = None;
-                    link.unresolved_reason = None;
+                    link.unresolved_reason = Some(UnresolvedReason::Ambiguous);
                     link.candidates = many.to_vec();
                 }
             }
@@ -1062,6 +1062,7 @@ fn unresolved_reason_name(reason: &UnresolvedReason) -> &'static str {
         UnresolvedReason::TargetMissing => "target-missing",
         UnresolvedReason::AnchorMissing => "anchor-missing",
         UnresolvedReason::BlockRefMissing => "block-ref-missing",
+        UnresolvedReason::Ambiguous => "ambiguous",
     }
 }
 

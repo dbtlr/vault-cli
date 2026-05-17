@@ -95,6 +95,7 @@ pub enum UnresolvedReason {
     TargetMissing,
     AnchorMissing,
     BlockRefMissing,
+    Ambiguous,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
