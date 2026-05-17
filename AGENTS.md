@@ -185,6 +185,7 @@ Use semver-style tags for milestones:
 - `v0.6.0` — read-only doctor reports
 - `v0.7.0` — scoped doctor rules
 - `v0.8.0` — path-segment glob semantics and config validation
+- `v0.9.0` — frontmatter-aware doctor rule matching
 
 For a release bump:
 

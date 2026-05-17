@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## v0.9.0 - 2026-05-17
+
+- Added `doctor.rules[].match.frontmatter` predicates for top-level frontmatter equality matching.
+- ANDed path and frontmatter predicates for scoped doctor rules.
+- Added type-sensitive string, boolean, and number comparisons without coercion.
+- Rejected unknown `match.*` keys and non-scalar frontmatter predicate values during config validation.
+- Updated docs and examples for frontmatter-aware doctor rules and recursive ignore patterns.
+
 ## v0.8.0 - 2026-05-17
 
 - Tightened config path glob semantics so `*` matches within one path segment and `**` matches recursive path segments.
