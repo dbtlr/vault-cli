@@ -9,7 +9,6 @@ use vault_core::{
     Document, Heading, Link, LinkKind, LinkSourceArea, LinkSourceContext, LinkStatus, SourceSpan,
     UnresolvedReason, VaultFile,
 };
-
 use vault_frontmatter::frontmatter_property_strings;
 
 pub(crate) fn parse_commonmark(

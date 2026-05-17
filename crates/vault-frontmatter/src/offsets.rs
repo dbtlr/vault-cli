@@ -46,7 +46,7 @@ pub fn frontmatter_property_strings<'a>(
     strings
 }
 
-pub fn frontmatter_scalar_offset(
+fn frontmatter_scalar_offset(
     content: &str,
     frontmatter_range: Option<Range<usize>>,
     property: &str,
@@ -68,7 +68,7 @@ pub fn frontmatter_scalar_offset(
     None
 }
 
-pub fn frontmatter_list_item_offset(
+fn frontmatter_list_item_offset(
     content: &str,
     frontmatter_range: Option<Range<usize>>,
     property: &str,
