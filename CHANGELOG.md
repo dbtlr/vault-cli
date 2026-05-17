@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## v0.11.0 - 2026-05-17
+
+- Added `validate.rules[].allowed_values` for type-sensitive scalar frontmatter value validation.
+- Added `frontmatter-field-value-not-allowed` findings with `field`, `rule`, `actual_value`, and `allowed_values` context.
+- Added config validation for malformed `allowed_values` maps and non-scalar allowed values.
+- Changed validation summary root-file path prefix from `.` to `root`.
+- Documented allowed-value validation examples.
+
 ## v0.10.0 - 2026-05-17
 
 - Renamed the read-only standards checking command from `vault doctor` to `vault validate`.
