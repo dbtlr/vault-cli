@@ -57,8 +57,8 @@ Every graph command accepts `--config <path>` for explicit YAML configuration. T
 ```yaml
 graph:
   ignore:
-    - __pycache__/**
-    - "*.pyc"
+    - "**/__pycache__/**"
+    - "**/*.pyc"
 doctor:
   required_frontmatter:
     - title
@@ -70,6 +70,13 @@ doctor:
         - type
         - kind
         - workspace
+    - name: typed-note
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: note
+      required_frontmatter:
+        - kind
 ```
 
 Configured ignores are applied before file inventory and document parsing. With no config, the graph remains a raw filesystem view except for hidden files/directories.
@@ -84,7 +91,7 @@ Frontmatter link extraction is intentionally shallow in v0.x: it scans top-level
 
 Use `source_context.area` and `source_context.property` to distinguish body links from frontmatter/property links. Frontmatter links now include `source_span` for the shallow extraction cases. `vault graph files` emits the file inventory, and `vault graph backlinks <exact-file-path>` can query incoming links to non-Markdown attachment targets.
 
-`vault doctor` is read-only. It reports unresolved links, ambiguous links, document diagnostics, and configured missing frontmatter fields without mutating files. Global `doctor.required_frontmatter` applies to every document. Scoped `doctor.rules` apply additional requirements only to documents matched by `match.path`; findings include `rule` when a scoped rule produced them.
+`vault doctor` is read-only. It reports unresolved links, ambiguous links, document diagnostics, and configured missing frontmatter fields without mutating files. Global `doctor.required_frontmatter` applies to every document. Scoped `doctor.rules` apply additional requirements only to documents matched by `match.path` and `match.frontmatter`; findings include `rule` when a scoped rule produced them.
 
 ## Glob Matching
 
@@ -99,3 +106,29 @@ semantics:
 - `Workspaces/**/notes/*.md` matches files directly inside a `notes` directory,
   including nested workspace paths, but not files in subdirectories below
   `notes`.
+
+## Doctor Rule Matching
+
+Scoped doctor rules support path and frontmatter predicates. All predicates are
+ANDed. Missing frontmatter fields do not match. Frontmatter predicates use exact,
+type-sensitive equality for strings, booleans, and numbers.
+
+```yaml
+doctor:
+  rules:
+    - name: note-kind
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: note
+      required_frontmatter:
+        - kind
+
+    - name: task-status
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      required_frontmatter:
+        - status
+```

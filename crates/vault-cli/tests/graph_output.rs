@@ -261,6 +261,149 @@ fn doctor_reports_scoped_required_frontmatter_from_config() {
 }
 
 #[test]
+fn doctor_rules_match_frontmatter_predicates() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "doctor:\n  rules:\n    - name: note-kind\n      match:\n        path: \"**/*.md\"\n        frontmatter:\n          type: note\n      required_frontmatter:\n        - kind\n    - name: task-status\n      match:\n        path: \"**/*.md\"\n        frontmatter:\n          type: task\n      required_frontmatter:\n        - status\n    - name: published-note\n      match:\n        path: \"**/*.md\"\n        frontmatter:\n          type: note\n          published: true\n      required_frontmatter:\n        - published_at\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("note.md"), "---\ntype: note\n---\n# Note\n").expect("note should write");
+    fs::write(root.join("task.md"), "---\ntype: task\n---\n# Task\n").expect("task should write");
+    fs::write(
+        root.join("published-note.md"),
+        "---\ntype: note\nkind: reference\npublished: true\n---\n# Published\n",
+    )
+    .expect("published note should write");
+    fs::write(
+        root.join("artifact.md"),
+        "---\ntype: agent-artifact\n---\n# Artifact\n",
+    )
+    .expect("artifact should write");
+
+    let output = vault(&[
+        "doctor",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 3);
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "note.md" && finding["field"] == "kind" && finding["rule"] == "note-kind"
+    }));
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "task.md"
+            && finding["field"] == "status"
+            && finding["rule"] == "task-status"
+    }));
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "published-note.md"
+            && finding["field"] == "published_at"
+            && finding["rule"] == "published-note"
+    }));
+    assert!(!findings
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|finding| finding["path"] == "artifact.md"));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn doctor_rules_do_not_coerce_frontmatter_predicate_types() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "doctor:\n  rules:\n    - name: string-one\n      match:\n        path: \"**/*.md\"\n        frontmatter:\n          priority: \"1\"\n      required_frontmatter:\n        - status\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("number.md"), "---\npriority: 1\n---\n# Number\n")
+        .expect("note should write");
+
+    let output = vault(&[
+        "doctor",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 0);
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn doctor_rejects_unknown_match_keys() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "doctor:\n  rules:\n    - name: typo\n      match:\n        fronmatter:\n          type: note\n      required_frontmatter:\n        - kind\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("note.md"), "---\ntype: note\n---\n# Note\n").expect("note should write");
+
+    let error = vault_error(&[
+        "doctor",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+    ]);
+
+    assert!(error.contains("invalid config"));
+    assert!(error.contains("unknown key doctor.rules[0].match.fronmatter"));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn doctor_rejects_non_scalar_frontmatter_predicates() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "doctor:\n  rules:\n    - name: list\n      match:\n        frontmatter:\n          type:\n            - note\n      required_frontmatter:\n        - kind\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(root.join("note.md"), "---\ntype: note\n---\n# Note\n").expect("note should write");
+
+    let error = vault_error(&[
+        "doctor",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+    ]);
+
+    assert!(error.contains("invalid config"));
+    assert!(error.contains("doctor.rules[0].match.frontmatter.type"));
+    assert!(error.contains("must be a string, boolean, or number"));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
 fn graph_documents_jsonl_contract() {
     let root = fixture_root();
     let output = vault(&[

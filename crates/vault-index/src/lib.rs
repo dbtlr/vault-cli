@@ -82,6 +82,8 @@ pub struct DoctorRuleConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct DoctorRuleMatchConfig {
     pub path: Option<String>,
+    #[serde(default)]
+    pub frontmatter: HashMap<String, serde_json::Value>,
 }
 
 pub fn build_index(root: impl AsRef<Utf8Path>) -> Result<GraphIndex, IndexError> {

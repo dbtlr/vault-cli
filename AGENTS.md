@@ -71,8 +71,8 @@ All graph commands accept `--config <path>` for explicit YAML configuration. Cur
 ```yaml
 graph:
   ignore:
-    - __pycache__/**
-    - "*.pyc"
+    - "**/__pycache__/**"
+    - "**/*.pyc"
 doctor:
   required_frontmatter:
     - title
@@ -84,13 +84,20 @@ doctor:
         - type
         - kind
         - workspace
+    - name: typed-note
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: note
+      required_frontmatter:
+        - kind
 ```
 
 Ignore patterns and scoped doctor `match.path` values are applied to vault-relative paths. `*` matches within one path segment only, and `**` matches zero or more complete path segments. Build summaries include `ignored_files` so count changes are visible.
 
 Ignored targets remain outside the graph. If an indexed Markdown document links to an ignored file, that link is reported as unresolved rather than hidden.
 
-`vault doctor` is read-only. It reports unresolved links, ambiguous links, document diagnostics, and configured missing frontmatter fields. Global `doctor.required_frontmatter` applies to every document. Scoped `doctor.rules` apply additional requirements only to documents matched by `match.path`; findings include `rule` when a scoped rule produced them. Do not add mutation behavior to doctor; use future plan/apply commands for edits.
+`vault doctor` is read-only. It reports unresolved links, ambiguous links, document diagnostics, and configured missing frontmatter fields. Global `doctor.required_frontmatter` applies to every document. Scoped `doctor.rules` apply additional requirements only to documents matched by `match.path` and `match.frontmatter`; findings include `rule` when a scoped rule produced them. Frontmatter predicates are top-level, exact, and type-sensitive; missing fields do not match. Unknown `match.*` keys should remain config errors so typoed rules do not broaden silently. Do not add mutation behavior to doctor; use future plan/apply commands for edits.
 
 Lookup rules:
 

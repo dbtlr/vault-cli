@@ -366,12 +366,27 @@ fn validate_doctor_rule_value(
             anyhow::bail!("invalid config {config_path}: {rule_path}.match must be a mapping");
         };
 
+        validate_known_mapping_keys(
+            config_path,
+            &format!("{rule_path}.match"),
+            rule_match,
+            &["path", "frontmatter"],
+        )?;
+
         if let Some(path) = mapping_get(rule_match, "path") {
             if path.as_str().is_none() {
                 anyhow::bail!(
                     "invalid config {config_path}: {rule_path}.match.path must be a string"
                 );
             }
+        }
+
+        if let Some(frontmatter) = mapping_get(rule_match, "frontmatter") {
+            validate_frontmatter_predicates(
+                config_path,
+                &format!("{rule_path}.match.frontmatter"),
+                frontmatter,
+            )?;
         }
     }
 
@@ -384,6 +399,56 @@ fn validate_doctor_rule_value(
     }
 
     Ok(())
+}
+
+fn validate_known_mapping_keys(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    mapping: &serde_yaml::Mapping,
+    known_keys: &[&str],
+) -> Result<()> {
+    for key in mapping.keys() {
+        let Some(key) = key.as_str() else {
+            anyhow::bail!("invalid config {config_path}: {field_path} keys must be strings");
+        };
+
+        if !known_keys.contains(&key) {
+            anyhow::bail!("invalid config {config_path}: unknown key {field_path}.{key}");
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_frontmatter_predicates(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(predicates) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {field_path} must be a mapping");
+    };
+
+    for (field, expected) in predicates {
+        let Some(field) = field.as_str() else {
+            anyhow::bail!("invalid config {config_path}: {field_path} keys must be strings");
+        };
+
+        if !is_scalar_yaml_value(expected) {
+            anyhow::bail!(
+                "invalid config {config_path}: {field_path}.{field} must be a string, boolean, or number"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn is_scalar_yaml_value(value: &serde_yaml::Value) -> bool {
+    matches!(
+        value,
+        serde_yaml::Value::String(_) | serde_yaml::Value::Bool(_) | serde_yaml::Value::Number(_)
+    )
 }
 
 fn validate_string_sequence(
@@ -600,9 +665,44 @@ fn matching_doctor_rules<'a>(
 }
 
 fn doctor_rule_matches(document: &Document, rule: &DoctorRuleConfig) -> bool {
-    match &rule.r#match.path {
-        Some(path_pattern) => pattern_matches_path(path_pattern, &document.path),
-        None => true,
+    if let Some(path_pattern) = &rule.r#match.path {
+        if !pattern_matches_path(path_pattern, &document.path) {
+            return false;
+        }
+    }
+
+    frontmatter_predicates_match(document, &rule.r#match.frontmatter)
+}
+
+fn frontmatter_predicates_match(
+    document: &Document,
+    predicates: &std::collections::HashMap<String, serde_json::Value>,
+) -> bool {
+    if predicates.is_empty() {
+        return true;
+    }
+
+    let Some(frontmatter) = document.frontmatter.as_ref() else {
+        return false;
+    };
+
+    predicates.iter().all(|(field, expected)| {
+        frontmatter
+            .get(field)
+            .is_some_and(|actual| frontmatter_value_matches(actual, expected))
+    })
+}
+
+fn frontmatter_value_matches(actual: &serde_json::Value, expected: &serde_json::Value) -> bool {
+    match (actual, expected) {
+        (serde_json::Value::String(actual), serde_json::Value::String(expected)) => {
+            actual == expected
+        }
+        (serde_json::Value::Bool(actual), serde_json::Value::Bool(expected)) => actual == expected,
+        (serde_json::Value::Number(actual), serde_json::Value::Number(expected)) => {
+            actual == expected
+        }
+        _ => false,
     }
 }
 
