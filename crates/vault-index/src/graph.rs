@@ -4,11 +4,11 @@ use std::path::Path;
 use camino::{Utf8Path, Utf8PathBuf};
 use vault_core::{Diagnostic, Document, GraphIndex, Severity, VaultFile};
 use vault_frontmatter::extract_frontmatter;
-use walkdir::WalkDir;
-
-use crate::links::{
+use vault_links::{
     parse_block_ids, parse_commonmark, parse_frontmatter_wikilinks, parse_wikilinks, resolve_links,
 };
+use walkdir::WalkDir;
+
 use crate::pattern::pattern_matches_path;
 use crate::{IndexError, IndexOptions};
 

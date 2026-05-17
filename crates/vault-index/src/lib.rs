@@ -1,7 +1,6 @@
 mod cache;
 mod config;
 mod graph;
-mod links;
 mod pattern;
 
 use camino::Utf8PathBuf;
