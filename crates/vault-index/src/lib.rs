@@ -52,12 +52,20 @@ pub struct IndexOptions {
 pub struct VaultConfig {
     #[serde(default)]
     pub graph: GraphConfig,
+    #[serde(default)]
+    pub doctor: DoctorConfig,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct GraphConfig {
     #[serde(default)]
     pub ignore: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DoctorConfig {
+    #[serde(default)]
+    pub required_frontmatter: Vec<String>,
 }
 
 pub fn build_index(root: impl AsRef<Utf8Path>) -> Result<GraphIndex, IndexError> {

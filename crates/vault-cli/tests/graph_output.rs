@@ -116,6 +116,85 @@ fn graph_backlinks_help_documents_file_targets() {
 }
 
 #[test]
+fn doctor_help_documents_read_only_contract() {
+    let output = vault(&["doctor", "--help"]);
+    assert!(output.contains("Emit read-only vault health findings"));
+    assert!(output.contains("Doctor does not mutate files"));
+    assert!(output.contains("--config"));
+}
+
+#[test]
+fn doctor_jsonl_reports_graph_findings_and_diagnostics() {
+    let root = fixture_root();
+    let output = vault(&[
+        "doctor",
+        "--root",
+        root.to_str().unwrap(),
+        "--format",
+        "jsonl",
+    ]);
+
+    let findings = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert!(findings
+        .iter()
+        .any(|finding| finding["code"] == "link-unresolved"
+            && finding["path"] == "alpha.md"
+            && finding["link"]["raw"] == "[[missing]]"));
+    assert!(findings
+        .iter()
+        .any(|finding| finding["code"] == "link-ambiguous"
+            && finding["path"] == "alpha.md"
+            && finding["link"]["raw"] == "[[duplicate]]"
+            && finding["link"]["unresolved_reason"] == "ambiguous"));
+    assert!(findings
+        .iter()
+        .any(|finding| finding["code"] == "frontmatter-parse-failed"
+            && finding["path"] == "broken-frontmatter.md"
+            && finding["diagnostic"]["code"] == "frontmatter-parse-failed"));
+}
+
+#[test]
+fn doctor_reports_required_frontmatter_from_config() {
+    let root = temp_cache_dir();
+    fs::write(
+        root.with_extension("yaml"),
+        "doctor:\n  required_frontmatter:\n    - title\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(
+        root.join("has-title.md"),
+        "---\ntitle: Present\n---\n# Present\n",
+    )
+    .expect("note should write");
+    fs::write(root.join("missing-title.md"), "# Missing\n").expect("note should write");
+
+    let config_path = root.with_extension("yaml");
+    let output = vault(&[
+        "doctor",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 1);
+    assert_eq!(findings[0]["code"], "frontmatter-required-field-missing");
+    assert_eq!(findings[0]["path"], "missing-title.md");
+    assert_eq!(findings[0]["field"], "title");
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
 fn graph_documents_jsonl_contract() {
     let root = fixture_root();
     let output = vault(&[

@@ -4,10 +4,10 @@ use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
-use vault_core::{Diagnostic, Document, GraphIndex, Link, LinkStatus, VaultFile};
+use vault_core::{Diagnostic, Document, GraphIndex, Link, LinkStatus, Severity, VaultFile};
 use vault_index::{
-    build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache, IndexOptions,
-    VaultConfig,
+    build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache, DoctorConfig,
+    IndexOptions, VaultConfig,
 };
 
 #[derive(Debug, Parser)]
@@ -23,6 +23,11 @@ struct Cli {
 enum Command {
     #[command(about = "Query and cache derived Markdown vault graph facts")]
     Graph(GraphCommand),
+    #[command(
+        about = "Emit read-only vault health findings",
+        long_about = "Emit read-only vault health findings.\n\nDoctor reports reuse graph/index facts to surface unresolved links, ambiguous links, document diagnostics, and configured frontmatter requirements. Doctor does not mutate files."
+    )]
+    Doctor(DoctorArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -134,6 +139,18 @@ struct TargetGraphArgs {
     verbose: bool,
 }
 
+#[derive(Debug, Parser)]
+struct DoctorArgs {
+    #[arg(long, default_value = ".", help = "Vault root to inspect")]
+    root: Utf8PathBuf,
+    #[arg(long, help = "YAML config file with graph.ignore and doctor rules")]
+    config: Option<Utf8PathBuf>,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
+    format: OutputFormat,
+    #[arg(long, help = "Include verbose diagnostic details")]
+    verbose: bool,
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum OutputFormat {
     Json,
@@ -152,6 +169,25 @@ struct InspectOutput {
 struct DocumentDiagnostic {
     path: Utf8PathBuf,
     diagnostic: Diagnostic,
+}
+
+#[derive(Debug, Serialize)]
+struct DoctorFinding {
+    code: String,
+    severity: Severity,
+    path: Utf8PathBuf,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link: Option<Link>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostic: Option<Diagnostic>,
+}
+
+struct LoadedConfig {
+    index_options: IndexOptions,
+    doctor: DoctorConfig,
 }
 
 fn main() -> Result<()> {
@@ -222,25 +258,42 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
         },
+        Command::Doctor(args) => {
+            let loaded_config = load_config(args.config.as_ref())?;
+            let mut index = build_index_with_options(&args.root, &loaded_config.index_options)?;
+            trim_diagnostics(&mut index, args.verbose);
+            let findings = doctor_findings(&index, &loaded_config.doctor);
+            write_output(&findings, args.format)?;
+            Ok(exit_code_for(&index))
+        }
     }
 }
 
 fn build_index_for(root: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Result<GraphIndex> {
-    let options = match config_path {
+    let loaded_config = load_config(config_path)?;
+    Ok(build_index_with_options(
+        root,
+        &loaded_config.index_options,
+    )?)
+}
+
+fn load_config(config_path: Option<&Utf8PathBuf>) -> Result<LoadedConfig> {
+    let config = match config_path {
         Some(config_path) => {
             let config_text = fs::read_to_string(config_path)
                 .map_err(|error| anyhow::anyhow!("failed to read config {config_path}: {error}"))?;
-            let config = serde_yaml::from_str::<VaultConfig>(&config_text).map_err(|error| {
-                anyhow::anyhow!("failed to parse config {config_path}: {error}")
-            })?;
-            IndexOptions {
-                ignore: config.graph.ignore,
-            }
+            serde_yaml::from_str::<VaultConfig>(&config_text)
+                .map_err(|error| anyhow::anyhow!("failed to parse config {config_path}: {error}"))?
         }
-        None => IndexOptions::default(),
+        None => VaultConfig::default(),
     };
 
-    Ok(build_index_with_options(root, &options)?)
+    Ok(LoadedConfig {
+        index_options: IndexOptions {
+            ignore: config.graph.ignore,
+        },
+        doctor: config.doctor,
+    })
 }
 
 fn trim_diagnostics(index: &mut GraphIndex, verbose: bool) {
@@ -289,6 +342,76 @@ fn all_diagnostics(index: &GraphIndex) -> Vec<DocumentDiagnostic> {
                 })
         })
         .collect()
+}
+
+fn doctor_findings(index: &GraphIndex, config: &DoctorConfig) -> Vec<DoctorFinding> {
+    let mut findings = Vec::new();
+
+    for document in &index.documents {
+        for diagnostic in &document.diagnostics {
+            findings.push(DoctorFinding {
+                code: diagnostic.code.clone(),
+                severity: diagnostic.severity.clone(),
+                path: document.path.clone(),
+                message: diagnostic.message.clone(),
+                field: None,
+                link: None,
+                diagnostic: Some(diagnostic.clone()),
+            });
+        }
+
+        for field in &config.required_frontmatter {
+            if !document_has_frontmatter_field(document, field) {
+                findings.push(DoctorFinding {
+                    code: "frontmatter-required-field-missing".to_string(),
+                    severity: Severity::Warning,
+                    path: document.path.clone(),
+                    message: format!("required frontmatter field is missing: {field}"),
+                    field: Some(field.clone()),
+                    link: None,
+                    diagnostic: None,
+                });
+            }
+        }
+
+        for link in &document.links {
+            match link.status {
+                LinkStatus::Resolved => {}
+                LinkStatus::Unresolved => {
+                    findings.push(DoctorFinding {
+                        code: "link-unresolved".to_string(),
+                        severity: Severity::Warning,
+                        path: document.path.clone(),
+                        message: format!("unresolved link target: {}", link.target),
+                        field: None,
+                        link: Some(link.clone()),
+                        diagnostic: None,
+                    });
+                }
+                LinkStatus::Ambiguous => {
+                    findings.push(DoctorFinding {
+                        code: "link-ambiguous".to_string(),
+                        severity: Severity::Warning,
+                        path: document.path.clone(),
+                        message: format!("ambiguous link target: {}", link.target),
+                        field: None,
+                        link: Some(link.clone()),
+                        diagnostic: None,
+                    });
+                }
+            }
+        }
+    }
+
+    findings
+}
+
+fn document_has_frontmatter_field(document: &Document, field: &str) -> bool {
+    document
+        .frontmatter
+        .as_ref()
+        .and_then(|frontmatter| frontmatter.get(field))
+        .is_some_and(|value| !value.is_null())
 }
 
 fn backlinks<'a>(index: &'a GraphIndex, target_path: &Utf8PathBuf) -> Vec<&'a Link> {
