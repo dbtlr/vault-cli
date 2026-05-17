@@ -66,6 +66,22 @@ pub struct GraphConfig {
 pub struct DoctorConfig {
     #[serde(default)]
     pub required_frontmatter: Vec<String>,
+    #[serde(default)]
+    pub rules: Vec<DoctorRuleConfig>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DoctorRuleConfig {
+    pub name: Option<String>,
+    #[serde(default)]
+    pub r#match: DoctorRuleMatchConfig,
+    #[serde(default)]
+    pub required_frontmatter: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DoctorRuleMatchConfig {
+    pub path: Option<String>,
 }
 
 pub fn build_index(root: impl AsRef<Utf8Path>) -> Result<GraphIndex, IndexError> {
@@ -938,7 +954,7 @@ fn is_ignored(path: &Utf8Path, patterns: &[String]) -> bool {
         .any(|pattern| pattern_matches_path(pattern, path))
 }
 
-fn pattern_matches_path(pattern: &str, path: &Utf8Path) -> bool {
+pub fn pattern_matches_path(pattern: &str, path: &Utf8Path) -> bool {
     let path = path.as_str();
     if let Some(prefix) = pattern.strip_suffix("/**") {
         return path == prefix || path.starts_with(&format!("{prefix}/"));

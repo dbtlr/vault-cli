@@ -6,8 +6,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use vault_core::{Diagnostic, Document, GraphIndex, Link, LinkStatus, Severity, VaultFile};
 use vault_index::{
-    build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache, DoctorConfig,
-    IndexOptions, VaultConfig,
+    build_index_with_options, concise_diagnostics, has_errors, pattern_matches_path,
+    write_sqlite_cache, DoctorConfig, DoctorRuleConfig, IndexOptions, VaultConfig,
 };
 
 #[derive(Debug, Parser)]
@@ -179,6 +179,8 @@ struct DoctorFinding {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rule: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     link: Option<Link>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -355,6 +357,7 @@ fn doctor_findings(index: &GraphIndex, config: &DoctorConfig) -> Vec<DoctorFindi
                 path: document.path.clone(),
                 message: diagnostic.message.clone(),
                 field: None,
+                rule: None,
                 link: None,
                 diagnostic: Some(diagnostic.clone()),
             });
@@ -368,9 +371,28 @@ fn doctor_findings(index: &GraphIndex, config: &DoctorConfig) -> Vec<DoctorFindi
                     path: document.path.clone(),
                     message: format!("required frontmatter field is missing: {field}"),
                     field: Some(field.clone()),
+                    rule: None,
                     link: None,
                     diagnostic: None,
                 });
+            }
+        }
+
+        for rule in matching_doctor_rules(document, &config.rules) {
+            let rule_name = rule.name.clone();
+            for field in &rule.required_frontmatter {
+                if !document_has_frontmatter_field(document, field) {
+                    findings.push(DoctorFinding {
+                        code: "frontmatter-required-field-missing".to_string(),
+                        severity: Severity::Warning,
+                        path: document.path.clone(),
+                        message: format!("required frontmatter field is missing: {field}"),
+                        field: Some(field.clone()),
+                        rule: rule_name.clone(),
+                        link: None,
+                        diagnostic: None,
+                    });
+                }
             }
         }
 
@@ -384,6 +406,7 @@ fn doctor_findings(index: &GraphIndex, config: &DoctorConfig) -> Vec<DoctorFindi
                         path: document.path.clone(),
                         message: format!("unresolved link target: {}", link.target),
                         field: None,
+                        rule: None,
                         link: Some(link.clone()),
                         diagnostic: None,
                     });
@@ -395,6 +418,7 @@ fn doctor_findings(index: &GraphIndex, config: &DoctorConfig) -> Vec<DoctorFindi
                         path: document.path.clone(),
                         message: format!("ambiguous link target: {}", link.target),
                         field: None,
+                        rule: None,
                         link: Some(link.clone()),
                         diagnostic: None,
                     });
@@ -404,6 +428,23 @@ fn doctor_findings(index: &GraphIndex, config: &DoctorConfig) -> Vec<DoctorFindi
     }
 
     findings
+}
+
+fn matching_doctor_rules<'a>(
+    document: &Document,
+    rules: &'a [DoctorRuleConfig],
+) -> Vec<&'a DoctorRuleConfig> {
+    rules
+        .iter()
+        .filter(|rule| doctor_rule_matches(document, rule))
+        .collect()
+}
+
+fn doctor_rule_matches(document: &Document, rule: &DoctorRuleConfig) -> bool {
+    match &rule.r#match.path {
+        Some(path_pattern) => pattern_matches_path(path_pattern, &document.path),
+        None => true,
+    }
 }
 
 fn document_has_frontmatter_field(document: &Document, field: &str) -> bool {

@@ -195,6 +195,67 @@ fn doctor_reports_required_frontmatter_from_config() {
 }
 
 #[test]
+fn doctor_reports_scoped_required_frontmatter_from_config() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "doctor:\n  required_frontmatter:\n    - title\n  rules:\n    - name: workspace-notes\n      match:\n        path: \"Workspaces/**/notes/*.md\"\n      required_frontmatter:\n        - type\n        - workspace\n    - name: workspace-tasks\n      match:\n        path: \"Workspaces/**/tasks/*.md\"\n      required_frontmatter:\n        - status\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Workspaces/demo/notes")).expect("note dirs should be created");
+    fs::create_dir_all(root.join("Workspaces/demo/tasks")).expect("task dirs should be created");
+    fs::write(
+        root.join("Workspaces/demo/notes/note.md"),
+        "---\ntitle: Note\n---\n# Note\n",
+    )
+    .expect("note should write");
+    fs::write(
+        root.join("Workspaces/demo/tasks/task.md"),
+        "---\ntitle: Task\n---\n# Task\n",
+    )
+    .expect("task should write");
+    fs::write(root.join("loose.md"), "---\ntitle: Loose\n---\n# Loose\n")
+        .expect("loose note should write");
+
+    let output = vault(&[
+        "doctor",
+        "--root",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 3);
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "Workspaces/demo/notes/note.md"
+            && finding["field"] == "type"
+            && finding["rule"] == "workspace-notes"
+    }));
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "Workspaces/demo/notes/note.md"
+            && finding["field"] == "workspace"
+            && finding["rule"] == "workspace-notes"
+    }));
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "Workspaces/demo/tasks/task.md"
+            && finding["field"] == "status"
+            && finding["rule"] == "workspace-tasks"
+    }));
+    assert!(!findings
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|finding| finding["path"] == "loose.md"));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
 fn graph_documents_jsonl_contract() {
     let root = fixture_root();
     let output = vault(&[
