@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/vault-core",
+    "crates/vault-frontmatter",
     "crates/vault-index",
     "crates/vault-cli",
 ]

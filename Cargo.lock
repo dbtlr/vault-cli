@@ -578,6 +578,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vault-frontmatter"
+version = "0.14.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "vault-core",
+]
+
+[[package]]
 name = "vault-index"
 version = "0.14.0"
 dependencies = [
@@ -591,6 +601,7 @@ dependencies = [
  "serde_yaml",
  "thiserror",
  "vault-core",
+ "vault-frontmatter",
  "walkdir",
 ]
 
