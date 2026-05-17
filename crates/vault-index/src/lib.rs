@@ -955,54 +955,118 @@ fn is_ignored(path: &Utf8Path, patterns: &[String]) -> bool {
 }
 
 pub fn pattern_matches_path(pattern: &str, path: &Utf8Path) -> bool {
-    let path = path.as_str();
-    if let Some(prefix) = pattern.strip_suffix("/**") {
-        return path == prefix || path.starts_with(&format!("{prefix}/"));
+    let pattern = pattern.trim().trim_matches('/');
+    if pattern.is_empty() {
+        return false;
     }
 
-    if let Some(extension) = pattern.strip_prefix("*.") {
-        return path
-            .rsplit_once('.')
-            .is_some_and(|(_, path_extension)| path_extension == extension);
-    }
+    let path = path.as_str().trim_matches('/');
+    let pattern_segments = pattern.split('/').collect::<Vec<_>>();
+    let path_segments = if path.is_empty() {
+        Vec::new()
+    } else {
+        path.split('/').collect::<Vec<_>>()
+    };
 
-    if pattern.contains('*') {
-        return glob_star_matches(pattern, path);
-    }
-
-    path == pattern
+    pattern_segments_match(&pattern_segments, &path_segments)
 }
 
-fn glob_star_matches(pattern: &str, path: &str) -> bool {
+fn pattern_segments_match(pattern: &[&str], path: &[&str]) -> bool {
+    match (pattern.first(), path.first()) {
+        (None, None) => true,
+        (None, Some(_)) => false,
+        (Some(&"**"), _) => {
+            pattern_segments_match(&pattern[1..], path)
+                || path
+                    .get(1..)
+                    .is_some_and(|remaining_path| pattern_segments_match(pattern, remaining_path))
+        }
+        (Some(_), None) => false,
+        (Some(pattern_segment), Some(path_segment)) => {
+            segment_matches(pattern_segment, path_segment)
+                && pattern_segments_match(&pattern[1..], &path[1..])
+        }
+    }
+}
+
+fn segment_matches(pattern: &str, path: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+
+    if !pattern.contains('*') {
+        return pattern == path;
+    }
+
     let parts = pattern.split('*').collect::<Vec<_>>();
     let mut remainder = path;
 
-    if let Some(first) = parts.first() {
-        if !first.is_empty() {
-            let Some(after_prefix) = remainder.strip_prefix(first) else {
-                return false;
-            };
-            remainder = after_prefix;
-        }
-    }
-
-    for part in parts.iter().skip(1).take(parts.len().saturating_sub(2)) {
+    for (index, part) in parts.iter().enumerate() {
         if part.is_empty() {
             continue;
         }
-        let Some(index) = remainder.find(part) else {
+
+        if index == 0 {
+            let Some(stripped) = remainder.strip_prefix(part) else {
+                return false;
+            };
+            remainder = stripped;
+            continue;
+        }
+
+        let Some(position) = remainder.find(part) else {
             return false;
         };
-        remainder = &remainder[index + part.len()..];
+        remainder = &remainder[position + part.len()..];
     }
 
-    if let Some(last) = parts.last() {
-        if !last.is_empty() {
-            return remainder.ends_with(last);
-        }
+    pattern.ends_with('*') || remainder.is_empty()
+}
+
+#[cfg(test)]
+mod pattern_match_tests {
+    use super::pattern_matches_path;
+    use camino::Utf8Path;
+
+    #[test]
+    fn single_star_does_not_cross_path_segments() {
+        assert!(pattern_matches_path(
+            "Workspaces/*/*.md",
+            Utf8Path::new("Workspaces/app/root.md")
+        ));
+        assert!(!pattern_matches_path(
+            "Workspaces/*/*.md",
+            Utf8Path::new("Workspaces/app/agent-artifacts/nested.md")
+        ));
     }
 
-    true
+    #[test]
+    fn double_star_matches_recursive_path_segments() {
+        assert!(pattern_matches_path(
+            "Workspaces/**/*.md",
+            Utf8Path::new("Workspaces/app/root.md")
+        ));
+        assert!(pattern_matches_path(
+            "Workspaces/**/*.md",
+            Utf8Path::new("Workspaces/app/agent-artifacts/nested.md")
+        ));
+    }
+
+    #[test]
+    fn double_star_can_anchor_later_segments() {
+        assert!(pattern_matches_path(
+            "Workspaces/**/notes/*.md",
+            Utf8Path::new("Workspaces/app/notes/note.md")
+        ));
+        assert!(pattern_matches_path(
+            "Workspaces/**/notes/*.md",
+            Utf8Path::new("Workspaces/app/areas/notes/note.md")
+        ));
+        assert!(!pattern_matches_path(
+            "Workspaces/**/notes/*.md",
+            Utf8Path::new("Workspaces/app/notes/deep/note.md")
+        ));
+    }
 }
 
 fn heading_level(level: HeadingLevel) -> u8 {

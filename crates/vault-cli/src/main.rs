@@ -284,7 +284,12 @@ fn load_config(config_path: Option<&Utf8PathBuf>) -> Result<LoadedConfig> {
         Some(config_path) => {
             let config_text = fs::read_to_string(config_path)
                 .map_err(|error| anyhow::anyhow!("failed to read config {config_path}: {error}"))?;
-            serde_yaml::from_str::<VaultConfig>(&config_text)
+            let config_value =
+                serde_yaml::from_str::<serde_yaml::Value>(&config_text).map_err(|error| {
+                    anyhow::anyhow!("failed to parse config {config_path}: {error}")
+                })?;
+            validate_config_value(config_path, &config_value)?;
+            serde_yaml::from_value::<VaultConfig>(config_value)
                 .map_err(|error| anyhow::anyhow!("failed to parse config {config_path}: {error}"))?
         }
         None => VaultConfig::default(),
@@ -296,6 +301,160 @@ fn load_config(config_path: Option<&Utf8PathBuf>) -> Result<LoadedConfig> {
         },
         doctor: config.doctor,
     })
+}
+
+fn validate_config_value(config_path: &Utf8PathBuf, value: &serde_yaml::Value) -> Result<()> {
+    let Some(root) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: root must be a mapping");
+    };
+
+    if let Some(graph) = mapping_get(root, "graph") {
+        let Some(graph) = graph.as_mapping() else {
+            anyhow::bail!("invalid config {config_path}: graph must be a mapping");
+        };
+
+        if let Some(ignore) = mapping_get(graph, "ignore") {
+            validate_string_sequence(config_path, "graph.ignore", ignore)?;
+        }
+    }
+
+    if let Some(doctor) = mapping_get(root, "doctor") {
+        let Some(doctor) = doctor.as_mapping() else {
+            anyhow::bail!("invalid config {config_path}: doctor must be a mapping");
+        };
+
+        if let Some(required_frontmatter) = mapping_get(doctor, "required_frontmatter") {
+            validate_string_sequence(
+                config_path,
+                "doctor.required_frontmatter",
+                required_frontmatter,
+            )?;
+        }
+
+        if let Some(rules) = mapping_get(doctor, "rules") {
+            let Some(rules) = rules.as_sequence() else {
+                anyhow::bail!("invalid config {config_path}: doctor.rules must be a sequence");
+            };
+
+            for (index, rule) in rules.iter().enumerate() {
+                let rule_path = format!("doctor.rules[{index}]");
+                validate_doctor_rule_value(config_path, &rule_path, rule)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_doctor_rule_value(
+    config_path: &Utf8PathBuf,
+    rule_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(rule) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {rule_path} must be a mapping");
+    };
+
+    if let Some(name) = mapping_get(rule, "name") {
+        if name.as_str().is_none() {
+            anyhow::bail!("invalid config {config_path}: {rule_path}.name must be a string");
+        }
+    }
+
+    if let Some(rule_match) = mapping_get(rule, "match") {
+        let Some(rule_match) = rule_match.as_mapping() else {
+            anyhow::bail!("invalid config {config_path}: {rule_path}.match must be a mapping");
+        };
+
+        if let Some(path) = mapping_get(rule_match, "path") {
+            if path.as_str().is_none() {
+                anyhow::bail!(
+                    "invalid config {config_path}: {rule_path}.match.path must be a string"
+                );
+            }
+        }
+    }
+
+    if let Some(required_frontmatter) = mapping_get(rule, "required_frontmatter") {
+        validate_string_sequence(
+            config_path,
+            &format!("{rule_path}.required_frontmatter"),
+            required_frontmatter,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_string_sequence(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(items) = value.as_sequence() else {
+        anyhow::bail!("invalid config {config_path}: {field_path} must be a sequence");
+    };
+
+    for (index, item) in items.iter().enumerate() {
+        if item.as_str().is_none() {
+            anyhow::bail!("invalid config {config_path}: {field_path}[{index}] must be a string");
+        }
+    }
+
+    Ok(())
+}
+
+fn mapping_get<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a serde_yaml::Value> {
+    mapping.get(&serde_yaml::Value::String(key.to_string()))
+}
+
+#[cfg(test)]
+mod config_validation_tests {
+    use super::load_config;
+    use camino::Utf8PathBuf;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn rejects_malformed_doctor_rule_match_path() {
+        let config_path = write_temp_config(
+            "doctor:\n  rules:\n    - name: bad\n      match:\n        path: 123\n      required_frontmatter:\n        - type\n",
+        );
+
+        let message = match load_config(Some(&config_path)) {
+            Ok(_) => panic!("config should fail validation"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(message.contains("invalid config"));
+        assert!(message.contains("doctor.rules[0].match.path must be a string"));
+    }
+
+    #[test]
+    fn rejects_malformed_scoped_required_frontmatter() {
+        let config_path = write_temp_config(
+            "doctor:\n  rules:\n    - name: bad\n      match:\n        path: Workspaces/**/*.md\n      required_frontmatter:\n        - 123\n",
+        );
+
+        let message = match load_config(Some(&config_path)) {
+            Ok(_) => panic!("config should fail validation"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(message.contains("invalid config"));
+        assert!(message.contains("doctor.rules[0].required_frontmatter[0] must be a string"));
+    }
+
+    fn write_temp_config(contents: &str) -> Utf8PathBuf {
+        let mut path = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        path.push(format!("vault-cli-config-validation-{nanos}.yaml"));
+        fs::write(&path, contents).expect("temp config should be written");
+        Utf8PathBuf::from_path_buf(path).expect("temp path should be utf8")
+    }
 }
 
 fn trim_diagnostics(index: &mut GraphIndex, verbose: bool) {
