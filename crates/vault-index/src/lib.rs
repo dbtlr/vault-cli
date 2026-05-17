@@ -9,8 +9,8 @@ use regex::Regex;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use vault_core::{
-    Diagnostic, Document, GraphIndex, Heading, Link, LinkKind, LinkStatus, Severity, SourceSpan,
-    UnresolvedReason,
+    Diagnostic, Document, GraphIndex, Heading, Link, LinkKind, LinkSourceArea, LinkSourceContext,
+    LinkStatus, Severity, SourceSpan, UnresolvedReason,
 };
 use walkdir::WalkDir;
 
@@ -137,6 +137,9 @@ fn parse_document(root: &Utf8Path, absolute_path: &Utf8Path) -> Document {
     let (frontmatter, body, body_start) = extract_frontmatter(&content, &mut diagnostics);
     let (headings, mut links) = parse_commonmark(&path, &content, body, body_start);
     links.extend(parse_wikilinks(&path, &content, body, body_start));
+    if let Some(frontmatter) = &frontmatter {
+        links.extend(parse_frontmatter_wikilinks(&path, frontmatter));
+    }
     let block_ids = parse_block_ids(body);
 
     Document {
@@ -254,6 +257,10 @@ fn parse_commonmark(
                         anchor,
                         block_ref: None,
                         source_span: Some(source_span(content, body_start + range.start)),
+                        source_context: Some(LinkSourceContext {
+                            area: LinkSourceArea::Body,
+                            property: None,
+                        }),
                         resolved_path: None,
                         unresolved_reason: None,
                         candidates: Vec::new(),
@@ -274,20 +281,42 @@ fn parse_wikilinks(
     body: &str,
     body_start: usize,
 ) -> Vec<Link> {
-    let wikilink_re = Regex::new(r"(!?)\[\[([^\]]+)\]\]").expect("valid wikilink regex");
     let ignored_ranges = ignored_wikilink_ranges(body);
+    parse_wikilinks_in_text(
+        source_path,
+        body,
+        Some((content, body_start, ignored_ranges)),
+        Some(LinkSourceContext {
+            area: LinkSourceArea::Body,
+            property: None,
+        }),
+    )
+}
+
+fn parse_wikilinks_in_text(
+    source_path: &Utf8Path,
+    text: &str,
+    source: Option<(&str, usize, Vec<Range<usize>>)>,
+    source_context: Option<LinkSourceContext>,
+) -> Vec<Link> {
+    let wikilink_re = Regex::new(r"(!?)\[\[([^\]]+)\]\]").expect("valid wikilink regex");
     wikilink_re
-        .captures_iter(body)
+        .captures_iter(text)
         .filter_map(|captures| {
             let full_match = captures.get(0)?;
-            if ignored_ranges
-                .iter()
-                .any(|range| ranges_overlap(range, &(full_match.start()..full_match.end())))
-            {
+            if source.as_ref().is_some_and(|(_, _, ignored_ranges)| {
+                ignored_ranges
+                    .iter()
+                    .any(|range| ranges_overlap(range, &(full_match.start()..full_match.end())))
+            }) {
                 return None;
             }
 
-            let raw = captures.get(0)?.as_str().to_string();
+            let source_span = source.as_ref().map(|(content, base_offset, _)| {
+                source_span(content, base_offset + full_match.start())
+            });
+
+            let raw = full_match.as_str().to_string();
             let is_embed = captures.get(1).is_some_and(|m| m.as_str() == "!");
             let inner = captures.get(2)?.as_str();
             let (target_part, label) = inner
@@ -309,7 +338,8 @@ fn parse_wikilinks(
                 label,
                 anchor,
                 block_ref,
-                source_span: Some(source_span(content, body_start + full_match.start())),
+                source_span,
+                source_context: source_context.clone(),
                 resolved_path: None,
                 unresolved_reason: None,
                 candidates: Vec::new(),
@@ -317,6 +347,45 @@ fn parse_wikilinks(
             })
         })
         .collect()
+}
+
+fn parse_frontmatter_wikilinks(
+    source_path: &Utf8Path,
+    frontmatter: &serde_json::Value,
+) -> Vec<Link> {
+    let Some(object) = frontmatter.as_object() else {
+        return Vec::new();
+    };
+
+    object
+        .iter()
+        .flat_map(|(property, value)| {
+            frontmatter_property_strings(value)
+                .into_iter()
+                .map(move |text| (property, text))
+        })
+        .flat_map(|(property, text)| {
+            parse_wikilinks_in_text(
+                source_path,
+                text,
+                None,
+                Some(LinkSourceContext {
+                    area: LinkSourceArea::Frontmatter,
+                    property: Some(property.to_string()),
+                }),
+            )
+        })
+        .collect()
+}
+
+fn frontmatter_property_strings(value: &serde_json::Value) -> Vec<&str> {
+    match value {
+        serde_json::Value::String(text) => vec![text],
+        serde_json::Value::Array(values) => {
+            values.iter().filter_map(|value| value.as_str()).collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 fn ignored_wikilink_ranges(body: &str) -> Vec<Range<usize>> {
@@ -620,6 +689,14 @@ fn cache_file_path(cache: &Utf8Path) -> Utf8PathBuf {
 fn initialize_cache_schema(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(
         r#"
+        DROP TABLE IF EXISTS diagnostics;
+        DROP TABLE IF EXISTS metadata;
+        DROP TABLE IF EXISTS links;
+        DROP TABLE IF EXISTS block_ids;
+        DROP TABLE IF EXISTS headings;
+        DROP TABLE IF EXISTS documents;
+        DROP TABLE IF EXISTS files;
+
         CREATE TABLE IF NOT EXISTS files (
             path TEXT PRIMARY KEY NOT NULL,
             hash TEXT NOT NULL
@@ -663,7 +740,9 @@ fn initialize_cache_schema(connection: &Connection) -> rusqlite::Result<()> {
             candidates_json TEXT,
             line INTEGER,
             column INTEGER,
-            byte_offset INTEGER
+            byte_offset INTEGER,
+            source_area TEXT,
+            source_property TEXT
         );
 
         CREATE TABLE IF NOT EXISTS diagnostics (
@@ -747,9 +826,10 @@ fn insert_index(connection: &Connection, index: &GraphIndex) -> rusqlite::Result
             connection.execute(
                 "INSERT INTO links (
                     source_path, raw, kind, target, label, anchor, block_ref, status,
-                    resolved_path, unresolved_reason, candidates_json, line, column, byte_offset
+                    resolved_path, unresolved_reason, candidates_json, line, column, byte_offset,
+                    source_area, source_property
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 params![
                     link.source_path.as_str(),
                     link.raw,
@@ -765,6 +845,12 @@ fn insert_index(connection: &Connection, index: &GraphIndex) -> rusqlite::Result
                     link.source_span.as_ref().map(|span| span.line),
                     link.source_span.as_ref().map(|span| span.column),
                     link.source_span.as_ref().map(|span| span.byte_offset),
+                    link.source_context
+                        .as_ref()
+                        .map(|context| link_source_area_name(&context.area)),
+                    link.source_context
+                        .as_ref()
+                        .and_then(|context| context.property.as_deref()),
                 ],
             )?;
         }
@@ -803,6 +889,13 @@ fn link_status_name(status: &LinkStatus) -> &'static str {
     }
 }
 
+fn link_source_area_name(area: &LinkSourceArea) -> &'static str {
+    match area {
+        LinkSourceArea::Body => "body",
+        LinkSourceArea::Frontmatter => "frontmatter",
+    }
+}
+
 fn unresolved_reason_name(reason: &UnresolvedReason) -> &'static str {
     match reason {
         UnresolvedReason::TargetMissing => "target-missing",
@@ -825,7 +918,7 @@ mod tests {
     #[test]
     fn indexes_documents_and_resolves_links() {
         let index = build_index(Utf8Path::new("../../fixtures/basic")).unwrap();
-        assert_eq!(index.documents.len(), 7);
+        assert_eq!(index.documents.len(), 9);
 
         let alpha = index
             .documents

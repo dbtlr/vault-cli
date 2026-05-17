@@ -25,6 +25,20 @@ pub struct SourceSpan {
     pub byte_offset: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LinkSourceArea {
+    Body,
+    Frontmatter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LinkSourceContext {
+    pub area: LinkSourceArea,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub property: Option<String>,
+}
+
 impl Diagnostic {
     pub fn warning(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
@@ -97,6 +111,8 @@ pub struct Link {
     pub block_ref: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_span: Option<SourceSpan>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_context: Option<LinkSourceContext>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved_path: Option<Utf8PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
