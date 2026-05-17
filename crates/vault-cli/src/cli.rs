@@ -158,6 +158,11 @@ pub enum RepairSubcommand {
     )]
     Plan(RepairPlanArgs),
     #[command(
+        about = "Report link and path repair risks without writing files",
+        long_about = "Report link and path repair risks without writing files.\n\nThis surfaces unresolved links, ambiguous links, duplicate-stem risks, path-style Markdown links, affected files, and optional move/delete risk for a target."
+    )]
+    Links(RepairLinksArgs),
+    #[command(
         about = "Apply a frontmatter-only repair plan",
         long_about = "Apply a frontmatter-only repair plan.\n\nApply writes by default, checks plan schema and stale file preconditions, preserves Markdown body content, and rejects plans with unsupported or manual-decision findings."
     )]
@@ -188,6 +193,17 @@ pub struct RepairPlanArgs {
     pub target: Vec<String>,
     #[arg(long, help = "Filter link findings by unresolved reason")]
     pub reason: Vec<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct RepairLinksArgs {
+    #[arg(
+        long,
+        help = "Exact vault-relative path or unique document stem to analyze for move/delete risk"
+    )]
+    pub target: Option<String>,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Stdout format")]
+    pub format: OutputFormat,
 }
 
 #[derive(Debug, Parser)]

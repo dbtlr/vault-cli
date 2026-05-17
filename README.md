@@ -86,6 +86,7 @@ vault registry list --format table
 vault --vault atlas validate --summary --format json
 vault --vault atlas repair plan --code frontmatter-disallowed-value --field status --format json
 vault --vault atlas repair apply repair.json --verify --format json
+vault --vault atlas repair links --target "Workspaces/demo/note.md" --format json
 vault cache build --cache .vault/cache --format json
 vault links list --format jsonl
 vault files --format jsonl
@@ -360,6 +361,30 @@ vault --vault atlas repair apply repair.json --verify --format json
 Frontmatter apply preserves Markdown body content exactly. YAML frontmatter is
 rewritten through the YAML serializer, so comments and exact frontmatter styling
 are not guaranteed in the v1 apply boundary.
+
+## Link And Path Planning
+
+`vault repair links` is a read-only planning/reporting surface for link drift and
+path risk. It does not rewrite links or move/delete files.
+
+The report includes:
+
+- unresolved links, including target, anchor, and block-reference failures;
+- ambiguous links with candidate paths;
+- path-style Markdown links that should be reviewed before path moves;
+- duplicate-stem risks for stem-style wikilinks;
+- affected files;
+- optional move/delete risk for a target selected with `--target`.
+
+```bash
+vault --vault atlas repair links --format json
+vault --vault atlas repair links --target "Workspaces/demo/note.md" --format json
+vault --vault atlas repair links --target "note-stem" --format table
+```
+
+Link and path planning separates deterministic facts from manual decisions. It
+does not automatically resolve ambiguous links, guess missing semantic targets,
+or apply path rewrites.
 
 `vault docs list` supports small inventory filters: `--path <glob>` for
 vault-relative paths, repeatable `--filter field:value` for frontmatter scalar

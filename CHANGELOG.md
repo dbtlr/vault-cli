@@ -14,6 +14,7 @@ Human inspection and workflow documentation release.
 - Added `vault registry add/list/remove` and global `--vault <name>` targeting using an XDG-style registry file.
 - Added read-only `vault repair plan` with schema-versioned JSON plans, configured frontmatter repair rules, unsupported finding reporting, and manual-decision reporting.
 - Added `vault repair apply <plan>` for frontmatter-only repair plans with document hash preconditions, expected-old-value checks, dry-run support, changed-file manifests, and optional post-apply validation.
+- Added read-only `vault repair links` reports for unresolved links, ambiguous links, path-style Markdown links, duplicate-stem risks, affected files, and target move/delete risk.
 - Commands with human renderers now default to table output on terminals and JSON output when stdout is piped or captured.
 - Documented validation cleanup recipes for filtered summaries, JSONL queues, link failure modes, and raw `--target` matching.
 

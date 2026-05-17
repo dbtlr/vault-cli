@@ -174,6 +174,7 @@ fn grouped_help_lists_new_surfaces() {
     let output = vault(&["repair", "--help"]);
     assert!(output.contains("Plan and apply deterministic vault repairs"));
     assert!(output.contains("plan"));
+    assert!(output.contains("links"));
 
     let output = vault(&["search", "--help"]);
     assert!(output.contains("Deterministic document search"));
@@ -182,6 +183,77 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("--has"));
     assert!(output.contains("--missing"));
     assert!(output.contains("--text"));
+}
+
+#[test]
+fn repair_links_reports_link_drift_and_duplicate_stems() {
+    let root = fixture_root();
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "repair",
+        "links",
+        "--format",
+        "json",
+    ]);
+
+    let report = serde_json::from_str::<Value>(&output).expect("link report should be JSON");
+    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["summary"]["unresolved_links"], 5);
+    assert_eq!(report["summary"]["ambiguous_links"], 1);
+    assert_eq!(report["summary"]["duplicate_stem_risks"], 1);
+    assert_eq!(report["ambiguous_links"][0]["target"], "duplicate");
+    assert_eq!(
+        report["ambiguous_links"][0]["candidates"][0],
+        "duplicate.md"
+    );
+    assert_eq!(report["duplicate_stem_risks"][0]["stem"], "duplicate");
+    assert!(report["unresolved_links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|link| {
+            link["unresolved_reason"] == "anchor-missing"
+                && link["anchor"] == "Missing Same Heading"
+        }));
+    assert!(report["path_style_markdown_links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|link| link["target"] == "folder/delta.md"));
+}
+
+#[test]
+fn repair_links_reports_target_move_and_delete_risk() {
+    let root = fixture_root();
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "repair",
+        "links",
+        "--target",
+        "alpha",
+        "--format",
+        "json",
+    ]);
+
+    let report = serde_json::from_str::<Value>(&output).expect("link report should be JSON");
+    assert_eq!(report["target_risk"]["target_path"], "alpha.md");
+    assert_eq!(report["target_risk"]["incoming_link_count"], 6);
+    assert!(report["target_risk"]["incoming_links"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|link| link["source_path"] == "beta.md"));
+    assert!(report["target_risk"]["delete_risk"]
+        .as_str()
+        .unwrap()
+        .contains("break indexed incoming links"));
+    assert!(report["affected_files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|path| path == "beta.md"));
 }
 
 #[test]

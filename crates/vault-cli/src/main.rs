@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod filter;
+mod link_repair;
 mod output;
 mod registry;
 mod repair_apply;
@@ -23,6 +24,7 @@ use crate::config::{effective_cwd, load_config, resolve_path};
 use crate::filter::{
     filter_documents, index_frontmatter_keys, summarize_documents, DocumentFilterOptions,
 };
+use crate::link_repair::plan_link_repairs;
 use crate::output::{
     is_broken_pipe, resolve_format, write_document_summary, write_documents, write_files,
     write_findings, write_item_output, write_links, write_output, write_validate_summary,
@@ -193,6 +195,13 @@ fn run(cli: Cli) -> Result<i32> {
                     let findings = validate(&verify_index, &loaded_config.validate);
                     report = with_verification(report, &findings);
                 }
+                write_item_output(&report, args.format)?;
+                Ok(exit_code_for(&index))
+            }
+            RepairSubcommand::Links(args) => {
+                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                trim_diagnostics(&mut index, verbose);
+                let report = plan_link_repairs(&index, args.target.as_deref())?;
                 write_item_output(&report, args.format)?;
                 Ok(exit_code_for(&index))
             }
