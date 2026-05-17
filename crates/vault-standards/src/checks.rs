@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use serde_json::Value;
 use vault_core::Document;
 
 use crate::findings::Finding;
@@ -69,6 +70,33 @@ pub(crate) fn check_forbidden_frontmatter(
                 field.clone(),
                 actual.clone(),
             ))
+        })
+        .collect()
+}
+
+pub(crate) fn check_allowed_values(
+    document: &Document,
+    values: &HashMap<String, Vec<Value>>,
+    rule: Option<&str>,
+) -> Vec<Finding> {
+    values
+        .iter()
+        .filter_map(|(field, allowed_values)| {
+            let actual = crate::predicates::document_frontmatter_field(document, field)?;
+            if allowed_values
+                .iter()
+                .any(|av| crate::predicates::frontmatter_value_matches(actual, av))
+            {
+                None
+            } else {
+                Some(Finding::frontmatter_disallowed_value(
+                    document.path.clone(),
+                    rule.map(str::to_string),
+                    field.clone(),
+                    actual.clone(),
+                    allowed_values.clone(),
+                ))
+            }
         })
         .collect()
 }

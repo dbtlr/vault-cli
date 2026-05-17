@@ -56,22 +56,11 @@ pub fn validate(index: &GraphIndex, config: &ValidateConfig) -> Vec<Finding> {
                 ));
             }
 
-            for (field, allowed_values) in &rule.allowed_values {
-                if let Some(actual) = document_frontmatter_field(document, field) {
-                    if !allowed_values
-                        .iter()
-                        .any(|av| frontmatter_value_matches(actual, av))
-                    {
-                        findings.push(Finding::frontmatter_disallowed_value(
-                            document.path.clone(),
-                            rule.name.clone(),
-                            field.clone(),
-                            actual.clone(),
-                            allowed_values.clone(),
-                        ));
-                    }
-                }
-            }
+            findings.extend(crate::checks::check_allowed_values(
+                document,
+                &rule.allowed_values,
+                rule.name.as_deref(),
+            ));
         }
 
         for link in &document.links {
