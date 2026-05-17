@@ -1,10 +1,13 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 use serde_json::Value;
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn fixture_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -49,7 +52,9 @@ fn temp_cache_dir() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("vault-cli-cache-{unique}"))
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let process = std::process::id();
+    std::env::temp_dir().join(format!("vault-cli-cache-{process}-{unique}-{counter}"))
 }
 
 #[test]
