@@ -78,6 +78,32 @@ fn graph_build_help_documents_cache_semantics() {
     let output = vault(&["graph", "build", "--help"]);
     assert!(output.contains("SQLite cache file path or directory"));
     assert!(output.contains("--format only controls stdout"));
+    assert!(output.contains("inventoried files"));
+}
+
+#[test]
+fn graph_links_help_documents_obsidian_semantics() {
+    let output = vault(&["graph", "links", "--help"]);
+    assert!(output.contains("frontmatter/property wikilinks"));
+    assert!(output.contains("same-note heading/block references"));
+    assert!(output.contains("Markdown image links to local files"));
+    assert!(output.contains("source_context.area"));
+}
+
+#[test]
+fn graph_unresolved_help_documents_reasons() {
+    let output = vault(&["graph", "unresolved", "--help"]);
+    assert!(output.contains("target-missing"));
+    assert!(output.contains("anchor-missing"));
+    assert!(output.contains("block-ref-missing"));
+    assert!(output.contains("ambiguous"));
+}
+
+#[test]
+fn graph_backlinks_help_documents_file_targets() {
+    let output = vault(&["graph", "backlinks", "--help"]);
+    assert!(output.contains("non-Markdown files"));
+    assert!(output.contains("Stem matching only applies to Markdown documents"));
 }
 
 #[test]

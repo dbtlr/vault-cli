@@ -29,21 +29,36 @@ struct GraphCommand {
 
 #[derive(Debug, Subcommand)]
 enum GraphSubcommand {
-    #[command(about = "Write a SQLite graph cache and emit a build summary")]
+    #[command(
+        about = "Write a SQLite graph cache and emit a build summary",
+        long_about = "Write a SQLite graph cache and emit a build summary.\n\nThe cache includes inventoried files, parsed Markdown documents, headings, block IDs, graph link facts, and diagnostics. --format only controls stdout; the cache is always SQLite."
+    )]
     Build(BuildArgs),
     #[command(
         about = "Emit parsed Markdown documents with frontmatter, headings, links, and diagnostics"
     )]
     Documents(DocumentsArgs),
-    #[command(about = "Emit all parsed link facts")]
+    #[command(
+        about = "Emit all parsed link facts",
+        long_about = "Emit all parsed link facts.\n\nIncludes body wikilinks, embeds, frontmatter/property wikilinks, URL-decoded Markdown internal links, extensionless Markdown note links, same-note heading/block references, Markdown image links to local files, and links to existing attachments. Use source_context.area and source_context.property to distinguish body links from frontmatter links."
+    )]
     Links(GraphArgs),
-    #[command(about = "Emit inventoried vault files")]
+    #[command(
+        about = "Emit inventoried vault files",
+        long_about = "Emit inventoried vault files.\n\nFiles include Markdown documents and non-Markdown attachments. File records can be used with exact-path backlink queries for resolved attachment targets."
+    )]
     Files(GraphArgs),
-    #[command(about = "Emit unresolved and ambiguous link facts")]
+    #[command(
+        about = "Emit unresolved and ambiguous link facts",
+        long_about = "Emit unresolved and ambiguous link facts.\n\nRows include target-missing, anchor-missing, block-ref-missing, and ambiguous reasons. Ambiguous rows include candidate document paths."
+    )]
     Unresolved(GraphArgs),
     #[command(about = "Emit document parse diagnostics")]
     Diagnostics(GraphArgs),
-    #[command(about = "Emit incoming links for an exact path or unique stem")]
+    #[command(
+        about = "Emit incoming links for an exact path or unique stem",
+        long_about = "Emit incoming links for an exact vault-relative file path or unique document stem.\n\nExact paths may target Markdown documents or non-Markdown files. Stem matching only applies to Markdown documents and is case-insensitive."
+    )]
     Backlinks(TargetGraphArgs),
     #[command(about = "Emit one document plus incoming, outgoing, and unresolved outgoing links")]
     Inspect(TargetGraphArgs),

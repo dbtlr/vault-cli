@@ -57,9 +57,10 @@ Core graph commands:
 vault graph documents --root <path> --format jsonl
 vault graph documents --root <path> --filter status:draft --format jsonl
 vault graph links --root <path> --format jsonl
+vault graph files --root <path> --format jsonl
 vault graph unresolved --root <path> --format jsonl
 vault graph diagnostics --root <path> --format jsonl
-vault graph backlinks <path-or-stem> --root <path> --format jsonl
+vault graph backlinks <path-or-stem-or-file> --root <path> --format jsonl
 vault graph inspect <path-or-stem> --root <path> --format json
 vault graph build --root <path> --cache .vault/cache --format json
 ```
@@ -67,7 +68,9 @@ vault graph build --root <path> --cache .vault/cache --format json
 Lookup rules:
 
 - exact vault-relative paths are case-sensitive
+- exact file paths are accepted by `graph backlinks`, including non-Markdown attachments
 - unique stem lookup is case-insensitive
+- stem lookup only applies to Markdown documents
 - ambiguous stem lookup exits with an error listing candidates
 
 `--filter` is currently frontmatter-only. Do not silently reinterpret `path`, `stem`, or `dir` as graph-native filter fields until the query model is deliberately expanded.
@@ -85,7 +88,11 @@ In the no-schema baseline, parse what Obsidian treats as internal links:
 - extensionless Markdown note links
 - heading anchors
 - block references
+- same-note heading/block references such as `[[#Heading]]` and `[[#^block-id]]`
+- Markdown image links to local files
 - existing non-Markdown attachment targets
+
+Frontmatter link extraction is shallow in v0.x. It scans top-level scalar strings and top-level lists of strings, preserving the top-level property name in `source_context.property`. Do not assume nested YAML leaves are graph links until that boundary is deliberately expanded.
 
 Future standards packs should layer semantic meaning on top of the raw graph. For example, `workspace: "[[vault-cli]]"` and a prose body link are both raw links, but they are different semantic relationships.
 
@@ -106,8 +113,10 @@ It intentionally covers:
 - body wikilinks
 - embeds
 - frontmatter/property wikilinks
+- same-note heading/block links
 - duplicate stems / ambiguous links
 - path-qualified wikilinks with case differences
+- Markdown image links to local files
 - non-Markdown attachments
 - ignored wikilinks in inline code and fenced code
 
