@@ -2,6 +2,45 @@
 
 All notable changes to this project are documented here.
 
+## v0.15.0 - 2026-05-17
+
+Internal restructure release. **Breaking JSONL output schema for validate findings.**
+
+### Added
+
+- `vault-frontmatter` crate: YAML extraction and shallow property/offset utilities.
+- `vault-links` crate: CommonMark link parsing, wikilink parsing, block IDs, anchor helpers, and link resolution.
+- `vault-standards` crate: validate engine, `Finding` / `FindingBody` types, summary, predicates, YAML config-schema validator.
+- `Finding` sum type replacing the 12-field `ValidateFinding` god-struct. Variant-specific fields only appear on findings that carry them; no more `null` defaults.
+- `docs/rule-shape.md`: canonical conceptual model for validate rules (selectors + constraints).
+- `Summary.invalid_types` grouping for `frontmatter-invalid-type` findings by field and expected type.
+
+### Changed
+
+- Renamed `vault-index` crate to `vault-graph` (matches the original modular-architecture spec and the command surface name).
+- `vault-cli/src/main.rs` reduced from ~1376 lines to ~150 lines of dispatch; per-concern modules (`cli`, `config`, `output`, `filter`, `target`) carry the rest.
+- `validate` (formerly `validate_findings`) is now a ~55-line orchestrator in `vault-standards::engine` dispatching to seven per-check functions, each under 40 lines.
+
+### Renamed finding codes (breaking)
+
+| Old | New |
+|---|---|
+| `path-not-allowed` | `document-misrouted` |
+| `frontmatter-field-value-not-allowed` | `frontmatter-disallowed-value` |
+| `frontmatter-field-type-invalid` | `frontmatter-invalid-type` |
+| `frontmatter-field-forbidden` | `frontmatter-forbidden-field` |
+
+Any scripts or agent skills filtering on these codes need to update.
+
+### Output schema (breaking)
+
+`vault validate --format jsonl` rows are still flat JSON objects keyed by `code`, but variant-specific fields (`field`, `actual_value`, `allowed_values`, `expected_type`, `allowed_paths`, `link`, `diagnostic`) only appear on findings that carry them, rather than being emitted as `null` everywhere.
+
+### Unchanged
+
+- CLI command paths (`vault graph documents`, `vault graph backlinks`, `vault validate`, etc.) are identical to v0.14. The CLI surface regroup ships in v0.16.
+- Config YAML keys (`graph.ignore`, `validate.required_frontmatter`, etc.) are unchanged. The `graph.ignore` rename ships in v0.16.
+
 ## v0.14.0 - 2026-05-17
 
 - Added validation-only `validate.ignore` patterns so files can remain graph-visible while being skipped by standards checks.
