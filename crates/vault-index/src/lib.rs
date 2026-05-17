@@ -1,6 +1,5 @@
 mod cache;
 mod config;
-mod frontmatter;
 mod graph;
 mod links;
 mod pattern;

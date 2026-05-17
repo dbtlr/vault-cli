@@ -5,12 +5,12 @@ use camino::{Utf8Path, Utf8PathBuf};
 use vault_core::{Diagnostic, Document, GraphIndex, Severity, VaultFile};
 use walkdir::WalkDir;
 
-use crate::frontmatter::extract_frontmatter;
 use crate::links::{
     parse_block_ids, parse_commonmark, parse_frontmatter_wikilinks, parse_wikilinks, resolve_links,
 };
 use crate::pattern::pattern_matches_path;
 use crate::{IndexError, IndexOptions};
+use vault_frontmatter::extract_frontmatter;
 
 pub fn build_index(root: impl AsRef<Utf8Path>) -> Result<GraphIndex, IndexError> {
     build_index_with_options(root, &IndexOptions::default())

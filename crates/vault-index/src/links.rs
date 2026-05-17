@@ -10,7 +10,7 @@ use vault_core::{
     UnresolvedReason, VaultFile,
 };
 
-use crate::frontmatter::frontmatter_property_strings;
+use vault_frontmatter::frontmatter_property_strings;
 
 pub(crate) fn parse_commonmark(
     source_path: &Utf8Path,
