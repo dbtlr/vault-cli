@@ -79,6 +79,8 @@ vault docs list --format paths
 vault docs list --filter status:draft --format jsonl
 vault docs list --path "Workspaces/**/tasks/*.md" --has workspace --format jsonl
 vault docs summary --count-by status --format json
+vault search --filter status:draft --text "ambiguous link" --format json
+vault search --path "Workspaces/**/tasks/*.md" --has workspace --format paths
 vault cache build --cache .vault/cache --format json
 vault links list --format jsonl
 vault files --format jsonl
@@ -266,6 +268,17 @@ and `--has <field>` / `--missing <field>` for field presence. Repeated filters
 are ANDed; comma-separated values within one `--filter` are ORed. `vault docs
 summary --count-by <field>` emits grouped document counts for one frontmatter
 field.
+
+`vault search` reuses the same `--path`, `--filter`, `--has`, and `--missing`
+syntax as `docs list`, and adds repeatable `--text <literal>` filters over
+Markdown file contents. Text filters are exact literal substring matches, not
+regex, fuzzy, semantic, or embedding search. Repeated `--text` values are ANDed.
+
+```bash
+vault search --filter status:draft --format table
+vault search --text "workspace review" --format paths
+vault search --path "Workspaces/**/notes/*.md" --has workspace --text "drift" --format json
+```
 
 ## Glob Matching
 

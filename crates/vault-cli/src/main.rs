@@ -5,7 +5,7 @@ mod output;
 mod target;
 mod validate_filter;
 
-use std::process;
+use std::{fs, process};
 
 use anyhow::Result;
 use clap::Parser;
@@ -123,6 +123,20 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
         },
+        Command::Search(args) => {
+            let mut index = build_index_for(&cwd, config_path.as_ref())?;
+            trim_diagnostics(&mut index, verbose);
+            let options = DocumentFilterOptions {
+                filters: &args.filters,
+                paths: &args.paths,
+                has: &args.has,
+                missing: &args.missing,
+            };
+            let documents = filter_documents(&index, &options)?;
+            let documents = filter_documents_by_text(&cwd, documents, &args.text)?;
+            write_documents(&documents, resolve_format(args.format))?;
+            Ok(exit_code_for(&index))
+        }
         Command::Cache(cache) => match cache.command {
             CacheSubcommand::Build(args) => {
                 let mut index = build_index_for(&cwd, config_path.as_ref())?;
@@ -149,6 +163,30 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(exit_code_for(&index))
         }
     }
+}
+
+fn filter_documents_by_text<'a>(
+    cwd: &camino::Utf8PathBuf,
+    documents: Vec<&'a vault_core::Document>,
+    text_filters: &[String],
+) -> Result<Vec<&'a vault_core::Document>> {
+    if text_filters.is_empty() {
+        return Ok(documents);
+    }
+
+    documents
+        .into_iter()
+        .map(|document| {
+            let path = cwd.join(&document.path);
+            let contents = fs::read_to_string(&path)
+                .map_err(|error| anyhow::anyhow!("failed to read document {path}: {error}"))?;
+            Ok(text_filters
+                .iter()
+                .all(|needle| contents.contains(needle))
+                .then_some(document))
+        })
+        .filter_map(Result::transpose)
+        .collect()
 }
 
 fn build_index_for(

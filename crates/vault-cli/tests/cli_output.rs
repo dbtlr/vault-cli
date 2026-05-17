@@ -97,6 +97,7 @@ fn vault_help_documents_global_cwd() {
     assert!(output.contains("docs"));
     assert!(output.contains("files"));
     assert!(output.contains("links"));
+    assert!(output.contains("search"));
     assert!(output.contains("cache"));
 }
 
@@ -121,6 +122,14 @@ fn grouped_help_lists_new_surfaces() {
     let output = vault(&["cache", "--help"]);
     assert!(output.contains("Local SQLite projection of the graph"));
     assert!(output.contains("build"));
+
+    let output = vault(&["search", "--help"]);
+    assert!(output.contains("Deterministic document search"));
+    assert!(output.contains("--filter"));
+    assert!(output.contains("--path"));
+    assert!(output.contains("--has"));
+    assert!(output.contains("--missing"));
+    assert!(output.contains("--text"));
 }
 
 #[test]
@@ -186,6 +195,58 @@ fn docs_list_supports_table_and_paths_formats() {
     assert!(paths.lines().any(|line| line == "alpha.md"));
     assert!(paths.lines().any(|line| line == "folder/gamma.md"));
     assert!(!paths.contains('{'));
+}
+
+#[test]
+fn search_filters_metadata_and_literal_text() {
+    let root = fixture_root();
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "search",
+        "--filter",
+        "status:draft",
+        "--text",
+        "ambiguous link",
+        "--format",
+        "json",
+    ]);
+
+    let documents = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(documents.as_array().unwrap().len(), 1);
+    assert_eq!(documents[0]["path"], "alpha.md");
+}
+
+#[test]
+fn search_supports_path_presence_table_and_paths_formats() {
+    let root = fixture_root();
+    let paths = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "search",
+        "--path",
+        "folder/**",
+        "--text",
+        "Delta Heading",
+        "--format",
+        "paths",
+    ]);
+
+    assert_eq!(paths, "folder/delta.md\n");
+
+    let table = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "search",
+        "--has",
+        "status",
+        "--format",
+        "table",
+    ]);
+
+    assert!(table.contains("path"));
+    assert!(table.contains("alpha.md"));
+    assert!(table.contains("Alpha"));
 }
 
 #[test]

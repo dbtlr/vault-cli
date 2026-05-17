@@ -39,6 +39,11 @@ pub enum Command {
     Files(GraphArgs),
     #[command(about = "Link facts across the vault")]
     Links(LinksCommand),
+    #[command(
+        about = "Deterministic document search",
+        long_about = "Deterministic document search.\n\nSearch reuses document path and frontmatter filters, and adds literal text matching over Markdown file contents. It does not perform semantic, fuzzy, regex, or embedding search."
+    )]
+    Search(SearchArgs),
     #[command(about = "Local SQLite projection of the graph")]
     Cache(CacheCommand),
     #[command(
@@ -184,6 +189,31 @@ pub struct DocsSummaryArgs {
     pub has: Vec<String>,
     #[arg(long, help = "Require a missing or null frontmatter field")]
     pub missing: Vec<String>,
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
+}
+
+#[derive(Debug, Parser)]
+pub struct SearchArgs {
+    #[arg(
+        long = "filter",
+        help = "Frontmatter field:value filter. Comma-separated values match any listed value. Repeat to require multiple fields"
+    )]
+    pub filters: Vec<String>,
+    #[arg(
+        long = "path",
+        help = "Vault-relative path glob filter using config glob semantics"
+    )]
+    pub paths: Vec<String>,
+    #[arg(long, help = "Require a present, non-null frontmatter field")]
+    pub has: Vec<String>,
+    #[arg(long, help = "Require a missing or null frontmatter field")]
+    pub missing: Vec<String>,
+    #[arg(
+        long,
+        help = "Require an exact literal substring in the Markdown file contents. Repeat to require multiple substrings"
+    )]
+    pub text: Vec<String>,
     #[arg(long, value_enum, help = "Stdout format")]
     pub format: Option<OutputFormat>,
 }
