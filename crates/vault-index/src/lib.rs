@@ -427,11 +427,13 @@ fn parse_block_ids(body: &str) -> Vec<String> {
 
 fn resolve_links(documents: &mut [Document]) {
     let mut by_path: HashMap<String, Utf8PathBuf> = HashMap::new();
+    let mut by_path_lower: HashMap<String, Utf8PathBuf> = HashMap::new();
     let mut by_stem: HashMap<String, Vec<Utf8PathBuf>> = HashMap::new();
     let mut facts_by_path: HashMap<Utf8PathBuf, DocumentFacts> = HashMap::new();
 
     for document in documents.iter() {
         by_path.insert(document.path.as_str().to_string(), document.path.clone());
+        by_path_lower.insert(document.path.as_str().to_lowercase(), document.path.clone());
         by_stem
             .entry(document.stem.to_lowercase())
             .or_default()
@@ -452,9 +454,11 @@ fn resolve_links(documents: &mut [Document]) {
     for document in documents.iter_mut() {
         for link in &mut document.links {
             let candidates = match link.kind {
-                LinkKind::Markdown => resolve_markdown_link(&document.path, &link.target, &by_path),
+                LinkKind::Markdown => {
+                    resolve_markdown_link(&document.path, &link.target, &by_path, &by_path_lower)
+                }
                 LinkKind::Wikilink | LinkKind::Embed => {
-                    resolve_wikilink(&link.target, &by_path, &by_stem)
+                    resolve_wikilink(&link.target, &by_path, &by_path_lower, &by_stem)
                 }
             };
 
@@ -523,24 +527,23 @@ fn resolve_markdown_link(
     source_path: &Utf8Path,
     target: &str,
     by_path: &HashMap<String, Utf8PathBuf>,
+    by_path_lower: &HashMap<String, Utf8PathBuf>,
 ) -> Vec<Utf8PathBuf> {
     let base = source_path.parent().unwrap_or_else(|| Utf8Path::new(""));
-    resolve_path_like_target(base, target, by_path)
+    resolve_path_like_target(base, target, by_path, by_path_lower)
 }
 
 fn resolve_wikilink(
     target: &str,
     by_path: &HashMap<String, Utf8PathBuf>,
+    by_path_lower: &HashMap<String, Utf8PathBuf>,
     by_stem: &HashMap<String, Vec<Utf8PathBuf>>,
 ) -> Vec<Utf8PathBuf> {
     if target.contains('/') {
-        let direct = if target.ends_with(".md") {
-            target.to_string()
-        } else {
-            format!("{target}.md")
-        };
-        if let Some(path) = by_path.get(&direct) {
-            return vec![path.clone()];
+        let path_matches =
+            resolve_path_like_target(Utf8Path::new(""), target, by_path, by_path_lower);
+        if !path_matches.is_empty() {
+            return path_matches;
         }
     }
 
@@ -631,15 +634,22 @@ fn resolve_path_like_target(
     base: &Utf8Path,
     target: &str,
     by_path: &HashMap<String, Utf8PathBuf>,
+    by_path_lower: &HashMap<String, Utf8PathBuf>,
 ) -> Vec<Utf8PathBuf> {
     let candidate = normalize_relative(base, target);
     if let Some(path) = by_path.get(candidate.as_str()) {
+        return vec![path.clone()];
+    }
+    if let Some(path) = by_path_lower.get(&candidate.as_str().to_lowercase()) {
         return vec![path.clone()];
     }
 
     if candidate.extension().is_none() {
         let with_markdown_extension = candidate.with_extension("md");
         if let Some(path) = by_path.get(with_markdown_extension.as_str()) {
+            return vec![path.clone()];
+        }
+        if let Some(path) = by_path_lower.get(&with_markdown_extension.as_str().to_lowercase()) {
             return vec![path.clone()];
         }
     }
