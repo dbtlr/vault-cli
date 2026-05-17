@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## v0.8.0 - 2026-05-17
+
+- Tightened config path glob semantics so `*` matches within one path segment and `**` matches recursive path segments.
+- Added matcher tests for workspace root, recursive workspace, and nested notes patterns.
+- Added config validation errors for malformed doctor rule shapes.
+- Documented glob matching semantics for config path patterns.
+
 ## v0.7.0 - 2026-05-17
 
 - Added scoped `doctor.rules` with `match.path`.

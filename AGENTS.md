@@ -86,7 +86,7 @@ doctor:
         - workspace
 ```
 
-Ignore patterns are applied before file inventory and document parsing. Supported v0.x patterns are exact vault-relative paths, directory prefixes ending in `/**`, and simple `*` wildcards. Build summaries include `ignored_files` so count changes are visible.
+Ignore patterns and scoped doctor `match.path` values are applied to vault-relative paths. `*` matches within one path segment only, and `**` matches zero or more complete path segments. Build summaries include `ignored_files` so count changes are visible.
 
 Ignored targets remain outside the graph. If an indexed Markdown document links to an ignored file, that link is reported as unresolved rather than hidden.
 
@@ -177,6 +177,7 @@ Use semver-style tags for milestones:
 - `v0.5.0` — explicit graph ignore config and mutation-ready frontmatter spans
 - `v0.6.0` — read-only doctor reports
 - `v0.7.0` — scoped doctor rules
+- `v0.8.0` — path-segment glob semantics and config validation
 
 For a release bump:
 
