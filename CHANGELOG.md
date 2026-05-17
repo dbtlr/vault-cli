@@ -4,17 +4,40 @@ All notable changes to this project are documented here.
 
 ## v0.22.0 - 2026-05-17
 
-Drift-healing roadmap release.
+Safe apply and link/path planning release.
+
+### Added
+
+- Added `vault repair apply <plan>` for frontmatter-only repair plans with document hash preconditions, expected-old-value checks, dry-run support, changed-file manifests, and optional post-apply validation.
+- Added read-only `vault repair links` reports for unresolved links, ambiguous links, path-style Markdown links, duplicate-stem risks, affected files, and target move/delete risk.
+
+## v0.21.0 - 2026-05-17
+
+Repair planning MVP release.
+
+### Added
+
+- Added read-only `vault repair plan` with schema-versioned JSON plans, configured frontmatter repair rules, unsupported finding reporting, and manual-decision reporting.
+- Added `repair.rules` config for deterministic frontmatter repairs using `set_frontmatter` and `remove_frontmatter` actions.
+- Added documented detect -> plan agent workflows for frontmatter drift healing.
+
+## v0.20.0 - 2026-05-17
+
+Native retrieval and vault targeting release.
+
+### Added
+
+- Added top-level `vault search` with document path filters, frontmatter filters, field presence filters, literal text filters, and JSON/JSONL/table/paths output.
+- Added `vault registry add/list/remove` and global `--vault <name>` targeting using an XDG-style registry file.
+
+## v0.19.0 - 2026-05-17
+
+Direction, human output, and workflow recipe release.
 
 ### Added
 
 - Added `table` and `paths` output formats for document inventory inspection.
 - Added `table` output for validation summaries.
-- Added top-level `vault search` with document path filters, frontmatter filters, field presence filters, literal text filters, and JSON/JSONL/table/paths output.
-- Added `vault registry add/list/remove` and global `--vault <name>` targeting using an XDG-style registry file.
-- Added read-only `vault repair plan` with schema-versioned JSON plans, configured frontmatter repair rules, unsupported finding reporting, and manual-decision reporting.
-- Added `vault repair apply <plan>` for frontmatter-only repair plans with document hash preconditions, expected-old-value checks, dry-run support, changed-file manifests, and optional post-apply validation.
-- Added read-only `vault repair links` reports for unresolved links, ambiguous links, path-style Markdown links, duplicate-stem risks, affected files, and target move/delete risk.
 - Commands with human renderers now default to table output on terminals and JSON output when stdout is piped or captured.
 - Documented validation cleanup recipes for filtered summaries, JSONL queues, link failure modes, and raw `--target` matching.
 
