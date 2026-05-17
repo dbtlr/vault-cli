@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 use vault_core::Document;
+use vault_graph::pattern_matches_path;
 
 use crate::findings::Finding;
 
@@ -99,4 +100,25 @@ pub(crate) fn check_allowed_values(
             }
         })
         .collect()
+}
+
+pub(crate) fn check_allowed_paths(
+    document: &Document,
+    paths: &[String],
+    rule: Option<&str>,
+) -> Option<Finding> {
+    if paths.is_empty() {
+        return None;
+    }
+    if paths
+        .iter()
+        .any(|pattern| pattern_matches_path(pattern, &document.path))
+    {
+        return None;
+    }
+    Some(Finding::document_misrouted(
+        document.path.clone(),
+        rule.map(str::to_string),
+        paths.to_vec(),
+    ))
 }

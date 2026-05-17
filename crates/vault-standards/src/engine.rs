@@ -43,17 +43,12 @@ pub fn validate(index: &GraphIndex, config: &ValidateConfig) -> Vec<Finding> {
                 rule.name.as_deref(),
             ));
 
-            if !rule.allowed_paths.is_empty()
-                && !rule
-                    .allowed_paths
-                    .iter()
-                    .any(|pattern| pattern_matches_path(pattern, &document.path))
-            {
-                findings.push(Finding::document_misrouted(
-                    document.path.clone(),
-                    rule.name.clone(),
-                    rule.allowed_paths.clone(),
-                ));
+            if let Some(finding) = crate::checks::check_allowed_paths(
+                document,
+                &rule.allowed_paths,
+                rule.name.as_deref(),
+            ) {
+                findings.push(finding);
             }
 
             findings.extend(crate::checks::check_allowed_values(
