@@ -1,5 +1,4 @@
 mod cache;
-mod config;
 mod graph;
 mod pattern;
 
@@ -39,9 +38,5 @@ pub struct IndexOptions {
 }
 
 pub use cache::write_sqlite_cache;
-pub use config::{
-    GraphConfig, ValidateConfig, ValidateRuleConfig, ValidateRuleExcludeConfig,
-    ValidateRuleMatchConfig, VaultConfig,
-};
 pub use graph::{build_index, build_index_with_options, concise_diagnostics, has_errors};
 pub use pattern::pattern_matches_path;

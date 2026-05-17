@@ -1,0 +1,183 @@
+use camino::Utf8PathBuf;
+use serde::Serialize;
+use serde_json::Value;
+use vault_core::{Diagnostic, Link, Severity};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Finding {
+    pub code: String,
+    pub severity: Severity,
+    pub path: Utf8PathBuf,
+    pub message: String,
+    #[serde(flatten)]
+    pub body: FindingBody,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum FindingBody {
+    GraphDiagnostic {
+        diagnostic: Diagnostic,
+    },
+    LinkIssue {
+        link: Link,
+    },
+    RequiredFrontmatterMissing {
+        rule: Option<String>,
+        field: String,
+    },
+    DisallowedValue {
+        rule: Option<String>,
+        field: String,
+        actual_value: Value,
+        allowed_values: Vec<Value>,
+    },
+    InvalidFieldType {
+        rule: Option<String>,
+        field: String,
+        actual_value: Value,
+        expected_type: String,
+    },
+    ForbiddenField {
+        rule: Option<String>,
+        field: String,
+        actual_value: Value,
+    },
+    DocumentMisrouted {
+        rule: Option<String>,
+        allowed_paths: Vec<String>,
+    },
+}
+
+impl Finding {
+    pub fn from_graph_diagnostic(path: Utf8PathBuf, diagnostic: Diagnostic) -> Self {
+        Self {
+            code: diagnostic.code.clone(),
+            severity: diagnostic.severity.clone(),
+            message: diagnostic.message.clone(),
+            path,
+            body: FindingBody::GraphDiagnostic { diagnostic },
+        }
+    }
+
+    pub fn link_unresolved(path: Utf8PathBuf, link: Link) -> Self {
+        let message = format!("unresolved link target: {}", link.target);
+        Self {
+            code: "link-unresolved".to_string(),
+            severity: Severity::Warning,
+            path,
+            message,
+            body: FindingBody::LinkIssue { link },
+        }
+    }
+
+    pub fn link_ambiguous(path: Utf8PathBuf, link: Link) -> Self {
+        let message = format!("ambiguous link target: {}", link.target);
+        Self {
+            code: "link-ambiguous".to_string(),
+            severity: Severity::Warning,
+            path,
+            message,
+            body: FindingBody::LinkIssue { link },
+        }
+    }
+
+    pub fn frontmatter_required_missing(
+        path: Utf8PathBuf,
+        rule: Option<String>,
+        field: String,
+    ) -> Self {
+        let message = format!("required frontmatter field is missing: {field}");
+        Self {
+            code: "frontmatter-required-field-missing".to_string(),
+            severity: Severity::Warning,
+            path,
+            message,
+            body: FindingBody::RequiredFrontmatterMissing { rule, field },
+        }
+    }
+
+    pub fn frontmatter_disallowed_value(
+        path: Utf8PathBuf,
+        rule: Option<String>,
+        field: String,
+        actual_value: Value,
+        allowed_values: Vec<Value>,
+    ) -> Self {
+        let message = format!("frontmatter field has a disallowed value: {field}");
+        Self {
+            // Code stays at the v0.14 name in E1; renamed in Phase F task F4.
+            code: "frontmatter-field-value-not-allowed".to_string(),
+            severity: Severity::Warning,
+            path,
+            message,
+            body: FindingBody::DisallowedValue {
+                rule,
+                field,
+                actual_value,
+                allowed_values,
+            },
+        }
+    }
+
+    pub fn frontmatter_invalid_type(
+        path: Utf8PathBuf,
+        rule: Option<String>,
+        field: String,
+        actual_value: Value,
+        expected_type: String,
+    ) -> Self {
+        let message =
+            format!("frontmatter field has invalid type: {field}; expected {expected_type}");
+        Self {
+            code: "frontmatter-field-type-invalid".to_string(),
+            severity: Severity::Warning,
+            path,
+            message,
+            body: FindingBody::InvalidFieldType {
+                rule,
+                field,
+                actual_value,
+                expected_type,
+            },
+        }
+    }
+
+    pub fn frontmatter_forbidden_field(
+        path: Utf8PathBuf,
+        rule: Option<String>,
+        field: String,
+        actual_value: Value,
+    ) -> Self {
+        let message = format!("frontmatter field is forbidden: {field}");
+        Self {
+            code: "frontmatter-field-forbidden".to_string(),
+            severity: Severity::Warning,
+            path,
+            message,
+            body: FindingBody::ForbiddenField {
+                rule,
+                field,
+                actual_value,
+            },
+        }
+    }
+
+    pub fn document_misrouted(
+        path: Utf8PathBuf,
+        rule: Option<String>,
+        allowed_paths: Vec<String>,
+    ) -> Self {
+        Self {
+            // Code stays at the v0.14 name in E1; renamed to document-misrouted in F4.
+            code: "path-not-allowed".to_string(),
+            severity: Severity::Warning,
+            path,
+            message: "document path is outside allowed rule locations".to_string(),
+            body: FindingBody::DocumentMisrouted {
+                rule,
+                allowed_paths,
+            },
+        }
+    }
+}

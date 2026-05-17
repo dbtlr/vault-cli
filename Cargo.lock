@@ -566,6 +566,7 @@ dependencies = [
  "serde_yaml",
  "vault-core",
  "vault-graph",
+ "vault-standards",
 ]
 
 [[package]]
@@ -598,7 +599,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "serde_yaml",
  "thiserror",
  "vault-core",
  "vault-frontmatter",
@@ -616,6 +616,20 @@ dependencies = [
  "serde_json",
  "vault-core",
  "vault-frontmatter",
+]
+
+[[package]]
+name = "vault-standards"
+version = "0.14.0"
+dependencies = [
+ "anyhow",
+ "camino",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror",
+ "vault-core",
+ "vault-graph",
 ]
 
 [[package]]

@@ -2,7 +2,8 @@ use std::fs;
 
 use anyhow::Result;
 use camino::Utf8PathBuf;
-use vault_graph::{IndexOptions, ValidateConfig, VaultConfig};
+use vault_graph::IndexOptions;
+use vault_standards::{ValidateConfig, VaultConfig};
 
 use crate::validate::validate_config_value;
 
@@ -57,7 +58,7 @@ pub fn load_config(cwd: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Resu
 
     Ok(LoadedConfig {
         index_options: IndexOptions {
-            ignore: config.graph.ignore,
+            ignore: config.files.ignore,
         },
         validate: config.validate,
     })

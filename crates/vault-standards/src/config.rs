@@ -4,14 +4,14 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct VaultConfig {
-    #[serde(default)]
-    pub graph: GraphConfig,
+    #[serde(default, rename = "graph")]
+    pub files: FilesConfig,
     #[serde(default)]
     pub validate: ValidateConfig,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct GraphConfig {
+pub struct FilesConfig {
     #[serde(default)]
     pub ignore: Vec<String>,
 }
@@ -23,14 +23,14 @@ pub struct ValidateConfig {
     #[serde(default)]
     pub required_frontmatter: Vec<String>,
     #[serde(default)]
-    pub rules: Vec<ValidateRuleConfig>,
+    pub rules: Vec<ValidateRule>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct ValidateRuleConfig {
+pub struct ValidateRule {
     pub name: Option<String>,
     #[serde(default)]
-    pub r#match: ValidateRuleMatchConfig,
+    pub r#match: RuleSelector,
     #[serde(default)]
     pub required_frontmatter: Vec<String>,
     #[serde(default)]
@@ -42,11 +42,11 @@ pub struct ValidateRuleConfig {
     #[serde(default)]
     pub allowed_paths: Vec<String>,
     #[serde(default)]
-    pub exclude: ValidateRuleExcludeConfig,
+    pub exclude: RuleExclude,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct ValidateRuleMatchConfig {
+pub struct RuleSelector {
     pub path: Option<String>,
     pub path_not: Option<String>,
     #[serde(default)]
@@ -54,6 +54,6 @@ pub struct ValidateRuleMatchConfig {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct ValidateRuleExcludeConfig {
+pub struct RuleExclude {
     pub path: Option<String>,
 }

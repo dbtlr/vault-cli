@@ -4,6 +4,7 @@ members = [
     "crates/vault-frontmatter",
     "crates/vault-links",
     "crates/vault-graph",
+    "crates/vault-standards",
     "crates/vault-cli",
 ]
 resolver = "2"

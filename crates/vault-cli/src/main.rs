@@ -11,6 +11,7 @@ use anyhow::Result;
 use clap::Parser;
 use vault_core::{GraphIndex, LinkStatus};
 use vault_graph::{build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache};
+use vault_standards::{summarize, validate};
 
 use crate::cli::{Cli, Command, GraphSubcommand};
 use crate::config::{effective_cwd, load_config, resolve_path};
@@ -19,7 +20,6 @@ use crate::output::{is_broken_pipe, write_item_output, write_output};
 use crate::target::{
     backlinks, inspect_document, resolve_backlink_target_path, resolve_target_path,
 };
-use crate::validate::{validate_findings, validate_summary};
 
 fn main() {
     let cli = Cli::parse();
@@ -122,9 +122,9 @@ fn run(cli: Cli) -> Result<i32> {
             let loaded_config = load_config(&cwd, args.config.as_ref())?;
             let mut index = build_index_with_options(&cwd, &loaded_config.index_options)?;
             trim_diagnostics(&mut index, args.verbose);
-            let findings = validate_findings(&index, &loaded_config.validate);
+            let findings = validate(&index, &loaded_config.validate);
             if args.summary {
-                let summary = validate_summary(&findings);
+                let summary = summarize(&findings);
                 write_item_output(&summary, args.format)?;
             } else {
                 write_output(&findings, args.format)?;
