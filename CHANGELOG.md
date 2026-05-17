@@ -2,9 +2,9 @@
 
 All notable changes to this project are documented here.
 
-## v0.19.0 - Unreleased
+## v0.22.0 - 2026-05-17
 
-Human inspection and workflow documentation release.
+Drift-healing roadmap release.
 
 ### Added
 
