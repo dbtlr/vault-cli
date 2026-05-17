@@ -191,7 +191,7 @@ fn graph_build_writes_sqlite_cache() {
     assert_eq!(file_count, 11);
     assert_eq!(link_count, 18);
     assert_eq!(missing_reason, "target-missing");
-    assert_eq!(schema_version, "1");
+    assert_eq!(schema_version, "2");
 
     std::fs::remove_dir_all(cache_dir).ok();
 }

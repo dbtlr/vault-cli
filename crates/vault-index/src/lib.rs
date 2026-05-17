@@ -14,7 +14,7 @@ use vault_core::{
 };
 use walkdir::WalkDir;
 
-const CACHE_SCHEMA_VERSION: &str = "1";
+const CACHE_SCHEMA_VERSION: &str = "2";
 
 #[derive(Debug, thiserror::Error)]
 pub enum IndexError {
