@@ -561,7 +561,7 @@ fn validate_reports_allowed_value_findings() {
 
     let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
     assert_eq!(findings.as_array().unwrap().len(), 1);
-    assert_eq!(findings[0]["code"], "frontmatter-field-value-not-allowed");
+    assert_eq!(findings[0]["code"], "frontmatter-disallowed-value");
     assert_eq!(findings[0]["path"], "task.md");
     assert_eq!(findings[0]["field"], "status");
     assert_eq!(findings[0]["rule"], "task-status-values");
@@ -599,7 +599,7 @@ fn validate_allowed_values_do_not_coerce_types() {
 
     let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
     assert_eq!(findings.as_array().unwrap().len(), 1);
-    assert_eq!(findings[0]["code"], "frontmatter-field-value-not-allowed");
+    assert_eq!(findings[0]["code"], "frontmatter-disallowed-value");
     assert_eq!(findings[0]["actual_value"], 1);
     assert_eq!(findings[0]["allowed_values"], serde_json::json!(["1"]));
 
@@ -949,12 +949,12 @@ fn validate_reports_forbidden_frontmatter_and_path_violations() {
     assert_eq!(findings.as_array().unwrap().len(), 2);
     assert!(findings.as_array().unwrap().iter().any(|finding| {
         finding["path"] == "artifact.md"
-            && finding["code"] == "frontmatter-field-forbidden"
+            && finding["code"] == "frontmatter-forbidden-field"
             && finding["field"] == "kind"
     }));
     assert!(findings.as_array().unwrap().iter().any(|finding| {
         finding["path"] == "artifact.md"
-            && finding["code"] == "path-not-allowed"
+            && finding["code"] == "document-misrouted"
             && finding["allowed_paths"] == serde_json::json!(["Workspaces/**/agent-artifacts/*.md"])
     }));
 

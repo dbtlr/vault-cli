@@ -106,8 +106,7 @@ impl Finding {
     ) -> Self {
         let message = format!("frontmatter field has a disallowed value: {field}");
         Self {
-            // Code stays at the v0.14 name in E1; renamed in Phase F task F4.
-            code: "frontmatter-field-value-not-allowed".to_string(),
+            code: "frontmatter-disallowed-value".to_string(),
             severity: Severity::Warning,
             path,
             message,
@@ -130,7 +129,7 @@ impl Finding {
         let message =
             format!("frontmatter field has invalid type: {field}; expected {expected_type}");
         Self {
-            code: "frontmatter-field-type-invalid".to_string(),
+            code: "frontmatter-invalid-type".to_string(),
             severity: Severity::Warning,
             path,
             message,
@@ -151,7 +150,7 @@ impl Finding {
     ) -> Self {
         let message = format!("frontmatter field is forbidden: {field}");
         Self {
-            code: "frontmatter-field-forbidden".to_string(),
+            code: "frontmatter-forbidden-field".to_string(),
             severity: Severity::Warning,
             path,
             message,
@@ -169,8 +168,7 @@ impl Finding {
         allowed_paths: Vec<String>,
     ) -> Self {
         Self {
-            // Code stays at the v0.14 name in E1; renamed to document-misrouted in F4.
-            code: "path-not-allowed".to_string(),
+            code: "document-misrouted".to_string(),
             severity: Severity::Warning,
             path,
             message: "document path is outside allowed rule locations".to_string(),
