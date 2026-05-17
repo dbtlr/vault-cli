@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## v0.10.0 - 2026-05-17
+
+- Renamed the read-only standards checking command from `vault doctor` to `vault validate`.
+- Renamed config rules from `doctor:` to `validate:`.
+- Added `vault validate --summary` for grouped finding counts by code, severity, rule, and top-level path prefix.
+- Kept raw validation finding JSON/JSONL output unchanged unless `--summary` is requested.
+
 ## v0.9.0 - 2026-05-17
 
 - Added `doctor.rules[].match.frontmatter` predicates for top-level frontmatter equality matching.

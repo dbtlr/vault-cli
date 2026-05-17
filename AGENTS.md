@@ -187,6 +187,7 @@ Use semver-style tags for milestones:
 - `v0.7.0` — scoped validate rules
 - `v0.8.0` — path-segment glob semantics and config validation
 - `v0.9.0` — frontmatter-aware validate rule matching
+- `v0.10.0` — validate command rename and summary output
 
 For a release bump:
 
