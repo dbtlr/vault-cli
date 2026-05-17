@@ -205,6 +205,7 @@ Use semver-style tags for milestones:
 - `v0.9.0` — frontmatter-aware validate rule matching
 - `v0.10.0` — validate command rename and summary output
 - `v0.11.0` — allowed frontmatter value validation
+- `v0.12.0` — global cwd and default config discovery
 
 For a release bump:
 

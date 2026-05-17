@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## v0.12.0 - 2026-05-17
+
+- Added global `-C, --cwd <dir>` and made commands default to the process current directory.
+- Removed command-local `--root` arguments from graph and validate commands.
+- Added default config discovery from `<cwd>/.vault/config.yaml` when `--config` is omitted.
+- Resolved explicit relative config paths and relative cache paths against the effective cwd.
+- Updated Justfile recipes and docs for the cwd-based command surface.
+
 ## v0.11.0 - 2026-05-17
 
 - Added `validate.rules[].allowed_values` for type-sensitive scalar frontmatter value validation.
