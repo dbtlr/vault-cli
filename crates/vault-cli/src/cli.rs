@@ -12,10 +12,15 @@ pub struct Cli {
         short = 'C',
         long,
         global = true,
-        default_value = ".",
         help = "Run as if vault started in this directory"
     )]
-    pub cwd: Utf8PathBuf,
+    pub cwd: Option<Utf8PathBuf>,
+    #[arg(
+        long,
+        global = true,
+        help = "Run against a named vault from the user registry"
+    )]
+    pub vault: Option<String>,
     #[arg(
         long,
         global = true,
@@ -44,6 +49,8 @@ pub enum Command {
         long_about = "Deterministic document search.\n\nSearch reuses document path and frontmatter filters, and adds literal text matching over Markdown file contents. It does not perform semantic, fuzzy, regex, or embedding search."
     )]
     Search(SearchArgs),
+    #[command(about = "Manage named vault roots")]
+    Registry(RegistryCommand),
     #[command(about = "Local SQLite projection of the graph")]
     Cache(CacheCommand),
     #[command(
@@ -100,6 +107,39 @@ pub enum LinksSubcommand {
 pub struct CacheCommand {
     #[command(subcommand)]
     pub command: CacheSubcommand,
+}
+
+#[derive(Debug, Parser)]
+pub struct RegistryCommand {
+    #[command(subcommand)]
+    pub command: RegistrySubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RegistrySubcommand {
+    #[command(about = "Register a named vault root")]
+    Add(RegistryAddArgs),
+    #[command(about = "List registered vault roots")]
+    List(RegistryListArgs),
+    #[command(about = "Remove a registered vault root")]
+    Remove(RegistryRemoveArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct RegistryAddArgs {
+    pub name: String,
+    pub path: Utf8PathBuf,
+}
+
+#[derive(Debug, Parser)]
+pub struct RegistryListArgs {
+    #[arg(long, value_enum, help = "Stdout format")]
+    pub format: Option<OutputFormat>,
+}
+
+#[derive(Debug, Parser)]
+pub struct RegistryRemoveArgs {
+    pub name: String,
 }
 
 #[derive(Debug, Subcommand)]

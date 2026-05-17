@@ -10,7 +10,23 @@ pub struct LoadedConfig {
     pub validate: ValidateConfig,
 }
 
-pub fn effective_cwd(cwd: &Utf8PathBuf) -> Result<Utf8PathBuf> {
+pub fn effective_cwd(cwd: Option<&Utf8PathBuf>, vault: Option<&str>) -> Result<Utf8PathBuf> {
+    if cwd.is_some() && vault.is_some() {
+        anyhow::bail!("--vault and -C/--cwd cannot be used together");
+    }
+
+    if let Some(vault) = vault {
+        return crate::registry::resolve_vault(vault);
+    }
+
+    let Some(cwd) = cwd else {
+        let current_dir = std::env::current_dir()
+            .map_err(|error| anyhow::anyhow!("failed to read current directory: {error}"))?;
+        return Utf8PathBuf::from_path_buf(current_dir).map_err(|path| {
+            anyhow::anyhow!("current directory is not valid UTF-8: {}", path.display())
+        });
+    };
+
     if cwd.is_absolute() {
         return Ok(cwd.clone());
     }

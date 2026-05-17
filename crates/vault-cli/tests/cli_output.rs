@@ -39,11 +39,50 @@ fn vault_success(args: &[&str]) -> (String, String) {
     )
 }
 
+fn vault_success_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    command.args(args);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().expect("vault command should run");
+
+    assert!(
+        output.status.success(),
+        "vault command failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    (
+        String::from_utf8(output.stdout).expect("stdout should be UTF-8"),
+        String::from_utf8(output.stderr).expect("stderr should be UTF-8"),
+    )
+}
+
 fn vault_error(args: &[&str]) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_vault"))
         .args(args)
         .output()
         .expect("vault command should run");
+
+    assert!(
+        !output.status.success(),
+        "vault command succeeded unexpectedly\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8(output.stderr).expect("stderr should be UTF-8")
+}
+
+fn vault_error_env(args: &[&str], envs: &[(&str, &str)]) -> String {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    command.args(args);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    let output = command.output().expect("vault command should run");
 
     assert!(
         !output.status.success(),
@@ -92,12 +131,14 @@ fn vault_version_reports_package_version() {
 fn vault_help_documents_global_cwd() {
     let output = vault(&["--help"]);
     assert!(output.contains("-C, --cwd"));
+    assert!(output.contains("--vault"));
     assert!(output.contains("--config"));
     assert!(output.contains("--verbose"));
     assert!(output.contains("docs"));
     assert!(output.contains("files"));
     assert!(output.contains("links"));
     assert!(output.contains("search"));
+    assert!(output.contains("registry"));
     assert!(output.contains("cache"));
 }
 
@@ -123,6 +164,12 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("Local SQLite projection of the graph"));
     assert!(output.contains("build"));
 
+    let output = vault(&["registry", "--help"]);
+    assert!(output.contains("Manage named vault roots"));
+    assert!(output.contains("add"));
+    assert!(output.contains("list"));
+    assert!(output.contains("remove"));
+
     let output = vault(&["search", "--help"]);
     assert!(output.contains("Deterministic document search"));
     assert!(output.contains("--filter"));
@@ -130,6 +177,69 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("--has"));
     assert!(output.contains("--missing"));
     assert!(output.contains("--text"));
+}
+
+#[test]
+fn registry_add_list_target_and_remove_are_isolated_by_xdg_config_home() {
+    let config_home = temp_cache_dir();
+    let config_home_string = config_home.to_string_lossy().to_string();
+    let fixture = fixture_root();
+    let fixture_string = fixture.to_string_lossy().to_string();
+    let envs = [("XDG_CONFIG_HOME", config_home_string.as_str())];
+
+    vault_success_env(
+        &["registry", "add", "basic", fixture_string.as_str()],
+        &envs,
+    );
+
+    let list = vault_success_env(&["registry", "list", "--format", "json"], &envs).0;
+    let entries = serde_json::from_str::<Value>(&list).expect("registry list should be JSON");
+    assert_eq!(entries.as_array().unwrap().len(), 1);
+    assert_eq!(entries[0]["name"], "basic");
+    assert_eq!(entries[0]["path"], fixture_string);
+
+    let docs = vault_success_env(
+        &["--vault", "basic", "docs", "list", "--format", "paths"],
+        &envs,
+    )
+    .0;
+    assert!(docs.lines().any(|line| line == "alpha.md"));
+
+    vault_success_env(&["registry", "remove", "basic"], &envs);
+    let list = vault_success_env(&["registry", "list", "--format", "json"], &envs).0;
+    let entries = serde_json::from_str::<Value>(&list).expect("registry list should be JSON");
+    assert!(entries.as_array().unwrap().is_empty());
+
+    fs::remove_dir_all(config_home).ok();
+}
+
+#[test]
+fn vault_targeting_rejects_vault_and_cwd_together() {
+    let config_home = temp_cache_dir();
+    let config_home_string = config_home.to_string_lossy().to_string();
+    let fixture = fixture_root();
+    let fixture_string = fixture.to_string_lossy().to_string();
+    let envs = [("XDG_CONFIG_HOME", config_home_string.as_str())];
+
+    vault_success_env(
+        &["registry", "add", "basic", fixture_string.as_str()],
+        &envs,
+    );
+    let error = vault_error_env(
+        &[
+            "--vault",
+            "basic",
+            "-C",
+            fixture_string.as_str(),
+            "docs",
+            "list",
+        ],
+        &envs,
+    );
+
+    assert!(error.contains("--vault and -C/--cwd cannot be used together"));
+
+    fs::remove_dir_all(config_home).ok();
 }
 
 #[test]

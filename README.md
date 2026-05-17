@@ -81,6 +81,9 @@ vault docs list --path "Workspaces/**/tasks/*.md" --has workspace --format jsonl
 vault docs summary --count-by status --format json
 vault search --filter status:draft --text "ambiguous link" --format json
 vault search --path "Workspaces/**/tasks/*.md" --has workspace --format paths
+vault registry add atlas /path/to/atlas
+vault registry list --format table
+vault --vault atlas validate --summary --format json
 vault cache build --cache .vault/cache --format json
 vault links list --format jsonl
 vault files --format jsonl
@@ -96,10 +99,14 @@ vault -C <path> validate --summary --format json
 ```
 
 Commands run against the current directory by default. Use global `-C, --cwd
-<dir>` to run against another vault directory. When `--config` is omitted,
-`vault` discovers `<cwd>/.vault/config.yaml` if it exists; missing discovered
-config is fine and uses defaults. Explicit relative `--config` paths and
-relative `--cache` paths resolve against the effective cwd.
+<dir>` to run against another vault directory, or register a named vault with
+`vault registry add <name> <path>` and target it with global `--vault <name>`.
+Registry state is stored under the XDG config home at
+`$XDG_CONFIG_HOME/vault/registry.yaml`, or `~/.config/vault/registry.yaml` when
+`XDG_CONFIG_HOME` is not set. `--vault` and `-C/--cwd` are mutually exclusive.
+When `--config` is omitted, `vault` discovers `<cwd>/.vault/config.yaml` if it
+exists; missing discovered config is fine and uses defaults. Explicit relative
+`--config` paths and relative `--cache` paths resolve against the effective cwd.
 
 All commands accept global `--config <path>` for explicit YAML configuration.
 The current config shape is:

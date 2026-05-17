@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod filter;
 mod output;
+mod registry;
 mod target;
 mod validate_filter;
 
@@ -13,14 +14,16 @@ use vault_core::{GraphIndex, LinkStatus};
 use vault_graph::{build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache};
 use vault_standards::{summarize, validate};
 
-use crate::cli::{CacheSubcommand, Cli, Command, DocsSubcommand, LinksSubcommand};
+use crate::cli::{
+    CacheSubcommand, Cli, Command, DocsSubcommand, LinksSubcommand, RegistrySubcommand,
+};
 use crate::config::{effective_cwd, load_config, resolve_path};
 use crate::filter::{
     filter_documents, index_frontmatter_keys, summarize_documents, DocumentFilterOptions,
 };
 use crate::output::{
     is_broken_pipe, resolve_format, write_document_summary, write_documents, write_files,
-    write_findings, write_item_output, write_links, write_validate_summary,
+    write_findings, write_item_output, write_links, write_output, write_validate_summary,
 };
 use crate::target::{
     backlinks, inspect_document, resolve_backlink_target_path, resolve_target_path,
@@ -40,11 +43,23 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<i32> {
-    let cwd = effective_cwd(&cli.cwd)?;
-    let config_path = cli.config;
-    let verbose = cli.verbose;
+    let Cli {
+        cwd,
+        vault,
+        config,
+        verbose,
+        command,
+    } = cli;
 
-    match cli.command {
+    let command = match command {
+        Command::Registry(registry_command) => return run_registry(registry_command.command),
+        command => command,
+    };
+
+    let cwd = effective_cwd(cwd.as_ref(), vault.as_deref())?;
+    let config_path = config;
+
+    match command {
         Command::Docs(docs) => match docs.command {
             DocsSubcommand::List(args) => {
                 let mut index = build_index_for(&cwd, config_path.as_ref())?;
@@ -161,6 +176,27 @@ fn run(cli: Cli) -> Result<i32> {
                 write_findings(&findings, resolve_format(args.format))?;
             }
             Ok(exit_code_for(&index))
+        }
+        Command::Registry(_) => {
+            unreachable!("registry commands are handled before vault targeting")
+        }
+    }
+}
+
+fn run_registry(command: RegistrySubcommand) -> Result<i32> {
+    match command {
+        RegistrySubcommand::Add(args) => {
+            registry::add_vault(&args.name, &args.path)?;
+            Ok(0)
+        }
+        RegistrySubcommand::List(args) => {
+            let entries = registry::list_vaults()?;
+            write_output(&entries, resolve_format(args.format))?;
+            Ok(0)
+        }
+        RegistrySubcommand::Remove(args) => {
+            registry::remove_vault(&args.name)?;
+            Ok(0)
         }
     }
 }
