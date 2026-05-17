@@ -950,6 +950,11 @@ fn validate_reports_frontmatter_field_type_findings() {
         "---\ncreated: 2026-05-17T10:01\ndate: 2026-05-17\naliases:\n  - Alias\nworkspace: \"[[vault-cli]]\"\ntechnologies:\n  - \"[[Rust]]\"\n---\n# Valid\n",
     )
     .expect("valid note should write");
+    fs::write(
+        root.join("valid-exported.md"),
+        "---\ncreated: 2026-02-13T00:00:00.000Z\ndate: \"2026-03-20 00:00:00+00:00\"\naliases:\n  - Exported\nworkspace: \"[[vault-cli]]\"\ntechnologies: \"[[Rust]]\"\n---\n# Valid Exported\n",
+    )
+    .expect("valid exported note should write");
     fs::write(root.join("vault-cli.md"), "# vault-cli\n").expect("target note should write");
     fs::write(root.join("Rust.md"), "# Rust\n").expect("target note should write");
 
@@ -976,6 +981,11 @@ fn validate_reports_frontmatter_field_type_findings() {
     assert!(findings.as_array().unwrap().iter().any(|finding| {
         finding["field"] == "workspace" && finding["expected_type"] == "wikilink"
     }));
+    assert!(!findings
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|finding| finding["path"] == "valid-exported.md"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();

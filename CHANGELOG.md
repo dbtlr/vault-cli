@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here.
 
+## v0.17.1 - 2026-05-17
+
+Date/datetime validation polish release.
+
+### Changed
+
+- `datetime` field types now accept common ISO/YAML forms including fractional seconds, `Z`, numeric timezone offsets, and space-separated YAML datetime strings.
+- `date` field types now accept plain dates plus YAML-normalized midnight datetime strings such as `2026-03-20 00:00:00+00:00`.
+- Date validation now checks real month/day bounds, including leap years.
+
 ## v0.17.0 - 2026-05-17
 
 Document query ergonomics release.

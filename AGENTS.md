@@ -233,6 +233,10 @@ Use semver-style tags for milestones:
 - `v0.12.0` — global cwd and default config discovery
 - `v0.13.0` — broken-pipe handling and richer validate summaries
 - `v0.14.0` — standards-pack dogfood expressiveness
+- `v0.15.0` — internal crate split and validate finding sum type
+- `v0.16.0` — top-level docs/files/links/cache command surface
+- `v0.17.0` — focused docs query ergonomics
+- `v0.17.1` — date/datetime field-type polish
 
 For a release bump:
 

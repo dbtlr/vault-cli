@@ -225,4 +225,7 @@ validate:
 
 Supported `field_types` are `datetime`, `date`, `list_of_strings`, `wikilink`,
 and `wikilink_or_list`. Field type checks only run when the field is present;
-use `required_frontmatter` when presence is also required.
+use `required_frontmatter` when presence is also required. `datetime` accepts
+common ISO/YAML forms with optional seconds, fractional seconds, `Z`, numeric
+timezone offsets, or a space separator. `date` accepts plain `YYYY-MM-DD`
+values and YAML-normalized midnight datetime strings.
