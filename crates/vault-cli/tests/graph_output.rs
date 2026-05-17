@@ -782,6 +782,187 @@ fn validate_rejects_non_scalar_frontmatter_predicates() {
 }
 
 #[test]
+fn validate_ignore_skips_validation_without_graph_ignore() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  ignore:\n    - \"Templates/**\"\n  required_frontmatter:\n    - title\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Templates")).expect("templates dir should be created");
+    fs::write(root.join("Templates/template.md"), "# Template\n").expect("template should write");
+    fs::write(root.join("active.md"), "# Active\n").expect("active note should write");
+
+    let validate_output = vault(&[
+        "validate",
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+    let findings = serde_json::from_str::<Value>(&validate_output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 1);
+    assert_eq!(findings[0]["path"], "active.md");
+
+    let graph_output = vault(&[
+        "graph",
+        "documents",
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+    let documents = serde_json::from_str::<Value>(&graph_output).expect("output should be JSON");
+    assert!(documents
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|document| document["path"] == "Templates/template.md"));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn validate_rule_exclude_and_path_not_skip_matching_documents() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: active-title\n      match:\n        path: \"**/*.md\"\n        path_not: \"Archive/**\"\n      exclude:\n        path: \"Templates/**\"\n      required_frontmatter:\n        - title\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Archive")).expect("archive dir should be created");
+    fs::create_dir_all(root.join("Templates")).expect("templates dir should be created");
+    fs::write(root.join("active.md"), "# Active\n").expect("active note should write");
+    fs::write(root.join("Archive/old.md"), "# Old\n").expect("archive note should write");
+    fs::write(root.join("Templates/template.md"), "# Template\n").expect("template should write");
+
+    let output = vault(&[
+        "validate",
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 1);
+    assert_eq!(findings[0]["path"], "active.md");
+    assert_eq!(findings[0]["rule"], "active-title");
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn validate_reports_frontmatter_field_type_findings() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: note-types\n      match:\n        path: \"**/*.md\"\n      field_types:\n        created: datetime\n        date: date\n        aliases: list_of_strings\n        workspace: wikilink\n        technologies: wikilink_or_list\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(
+        root.join("note.md"),
+        "---\ncreated: not-a-date\ndate: 2026-99-99\naliases: alias\nworkspace: vault-cli\ntechnologies:\n  - \"[[Rust]]\"\n  - plain\n---\n# Note\n",
+    )
+    .expect("note should write");
+    fs::write(
+        root.join("valid.md"),
+        "---\ncreated: 2026-05-17T10:01\ndate: 2026-05-17\naliases:\n  - Alias\nworkspace: \"[[vault-cli]]\"\ntechnologies:\n  - \"[[Rust]]\"\n---\n# Valid\n",
+    )
+    .expect("valid note should write");
+    fs::write(root.join("vault-cli.md"), "# vault-cli\n").expect("target note should write");
+    fs::write(root.join("Rust.md"), "# Rust\n").expect("target note should write");
+
+    let output = vault(&[
+        "validate",
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 5);
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "note.md"
+            && finding["field"] == "created"
+            && finding["expected_type"] == "datetime"
+    }));
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["field"] == "aliases" && finding["expected_type"] == "list_of_strings"
+    }));
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["field"] == "workspace" && finding["expected_type"] == "wikilink"
+    }));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn validate_reports_forbidden_frontmatter_and_path_violations() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: agent-artifact-location\n      match:\n        path: \"**/*.md\"\n        frontmatter:\n          type: agent-artifact\n      forbidden_frontmatter:\n        - kind\n      allowed_paths:\n        - \"Workspaces/**/agent-artifacts/*.md\"\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Workspaces/demo/agent-artifacts"))
+        .expect("artifact dir should be created");
+    fs::write(
+        root.join("artifact.md"),
+        "---\ntype: agent-artifact\nkind: note\n---\n# Artifact\n",
+    )
+    .expect("artifact should write");
+    fs::write(
+        root.join("Workspaces/demo/agent-artifacts/valid.md"),
+        "---\ntype: agent-artifact\n---\n# Artifact\n",
+    )
+    .expect("valid artifact should write");
+
+    let output = vault(&[
+        "validate",
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "--format",
+        "json",
+    ]);
+
+    let findings = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(findings.as_array().unwrap().len(), 2);
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "artifact.md"
+            && finding["code"] == "frontmatter-field-forbidden"
+            && finding["field"] == "kind"
+    }));
+    assert!(findings.as_array().unwrap().iter().any(|finding| {
+        finding["path"] == "artifact.md"
+            && finding["code"] == "path-not-allowed"
+            && finding["allowed_paths"] == serde_json::json!(["Workspaces/**/agent-artifacts/*.md"])
+    }));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
 fn graph_documents_jsonl_contract() {
     let root = fixture_root();
     let output = vault(&[

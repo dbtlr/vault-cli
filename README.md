@@ -69,6 +69,9 @@ graph:
     - "**/__pycache__/**"
     - "**/*.pyc"
 validate:
+  ignore:
+    - "Archive/**"
+    - "System/Templates/**"
   required_frontmatter:
     - title
   rules:
@@ -86,6 +89,11 @@ validate:
           type: note
       required_frontmatter:
         - kind
+      field_types:
+        created: datetime
+        modified: datetime
+        aliases: list_of_strings
+        workspace: wikilink
     - name: task-status
       match:
         path: "**/*.md"
@@ -99,6 +107,17 @@ validate:
           - in_progress
           - completed
           - wont_do
+      allowed_paths:
+        - "Workspaces/**/tasks/*.md"
+    - name: agent-artifact
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: agent-artifact
+      forbidden_frontmatter:
+        - kind
+      allowed_paths:
+        - "Workspaces/**/agent-artifacts/*.md"
 ```
 
 Configured ignores are applied before file inventory and document parsing. With no config, the graph remains a raw filesystem view except for hidden files/directories.
@@ -113,7 +132,16 @@ Frontmatter link extraction is intentionally shallow in v0.x: it scans top-level
 
 Use `source_context.area` and `source_context.property` to distinguish body links from frontmatter/property links. Frontmatter links now include `source_span` for the shallow extraction cases. `vault graph files` emits the file inventory, and `vault graph backlinks <exact-file-path>` can query incoming links to non-Markdown attachment targets.
 
-`vault validate` is read-only. It reports unresolved links, ambiguous links, document diagnostics, configured missing frontmatter fields, and configured disallowed frontmatter values without mutating files. Global `validate.required_frontmatter` applies to every document. Scoped `validate.rules` apply additional requirements only to documents matched by `match.path` and `match.frontmatter`; findings include `rule` when a scoped rule produced them.
+`vault validate` is read-only. It reports unresolved links, ambiguous links,
+document diagnostics, configured missing frontmatter fields, invalid
+frontmatter field types, forbidden frontmatter fields, path-location
+violations, and configured disallowed frontmatter values without mutating
+files. Global `validate.required_frontmatter` applies to every document that is
+not skipped by `validate.ignore`. Scoped `validate.rules` apply additional
+requirements only to documents matched by `match.path`, `match.path_not`, and
+`match.frontmatter`; findings include `rule` when a scoped rule produced them.
+Rule-level `exclude.path` can remove a path subset from a specific rule without
+removing those files from the graph.
 
 Use `vault validate --summary` to emit grouped finding counts instead of raw
 findings. Summary output includes total findings plus counts by `code`,
@@ -137,10 +165,14 @@ semantics:
 ## Validate Rule Matching
 
 Scoped validate rules support path and frontmatter predicates. All predicates are
-ANDed. Missing frontmatter fields do not match. Frontmatter predicates use exact,
-type-sensitive equality for strings, booleans, and numbers.
+ANDed. `match.path_not` excludes matching paths from a rule. Missing frontmatter
+fields do not match. Frontmatter predicates use exact, type-sensitive equality
+for strings, booleans, and numbers.
 Rules can also constrain allowed scalar field values with `allowed_values`.
 Allowed-value checks are exact and type-sensitive.
+Rules can validate present field shapes with `field_types`, forbid fields with
+`forbidden_frontmatter`, and report folder-routing violations with
+`allowed_paths`.
 
 ```yaml
 validate:
@@ -166,4 +198,20 @@ validate:
           - in_progress
           - completed
           - wont_do
+      allowed_paths:
+        - "Workspaces/**/tasks/*.md"
+
+    - name: agent-artifact
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: agent-artifact
+      forbidden_frontmatter:
+        - kind
+      allowed_paths:
+        - "Workspaces/**/agent-artifacts/*.md"
 ```
+
+Supported `field_types` are `datetime`, `date`, `list_of_strings`, `wikilink`,
+and `wikilink_or_list`. Field type checks only run when the field is present;
+use `required_frontmatter` when presence is also required.

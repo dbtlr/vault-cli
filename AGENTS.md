@@ -78,6 +78,9 @@ graph:
     - "**/__pycache__/**"
     - "**/*.pyc"
 validate:
+  ignore:
+    - "Archive/**"
+    - "System/Templates/**"
   required_frontmatter:
     - title
   rules:
@@ -95,6 +98,11 @@ validate:
           type: note
       required_frontmatter:
         - kind
+      field_types:
+        created: datetime
+        modified: datetime
+        aliases: list_of_strings
+        workspace: wikilink
     - name: task-status
       match:
         path: "**/*.md"
@@ -108,13 +116,24 @@ validate:
           - in_progress
           - completed
           - wont_do
+      allowed_paths:
+        - "Workspaces/**/tasks/*.md"
+    - name: agent-artifact
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: agent-artifact
+      forbidden_frontmatter:
+        - kind
+      allowed_paths:
+        - "Workspaces/**/agent-artifacts/*.md"
 ```
 
-Ignore patterns and scoped validate `match.path` values are applied to vault-relative paths. `*` matches within one path segment only, and `**` matches zero or more complete path segments. Build summaries include `ignored_files` so count changes are visible.
+Ignore patterns, validate-only ignore patterns, scoped validate `match.path` / `match.path_not` values, `exclude.path`, and `allowed_paths` are applied to vault-relative paths. `*` matches within one path segment only, and `**` matches zero or more complete path segments. Build summaries include `ignored_files` so count changes are visible.
 
 Ignored targets remain outside the graph. If an indexed Markdown document links to an ignored file, that link is reported as unresolved rather than hidden.
 
-`vault validate` is read-only. It reports unresolved links, ambiguous links, document diagnostics, configured missing frontmatter fields, and configured disallowed frontmatter values. Global `validate.required_frontmatter` applies to every document. Scoped `validate.rules` apply additional requirements only to documents matched by `match.path` and `match.frontmatter`; findings include `rule` when a scoped rule produced them. Frontmatter predicates and `allowed_values` are top-level, exact, and type-sensitive; missing fields do not match allowed-value checks. Unknown `match.*` keys should remain config errors so typoed rules do not broaden silently. `vault validate --summary` emits grouped counts by code, severity, rule, frontmatter field, disallowed field value, and top-level path prefix instead of raw findings. Do not add mutation behavior to validate; use future plan/apply commands for edits.
+`vault validate` is read-only. It reports unresolved links, ambiguous links, document diagnostics, configured missing frontmatter fields, invalid frontmatter field types, forbidden frontmatter fields, path-location violations, and configured disallowed frontmatter values. Global `validate.required_frontmatter` applies to every document not skipped by `validate.ignore`. Scoped `validate.rules` apply additional requirements only to documents matched by `match.path`, `match.path_not`, and `match.frontmatter`; findings include `rule` when a scoped rule produced them. Frontmatter predicates and `allowed_values` are top-level, exact, and type-sensitive; missing fields do not match allowed-value checks. `field_types` checks only run when a field is present and supports `datetime`, `date`, `list_of_strings`, `wikilink`, and `wikilink_or_list`. `forbidden_frontmatter` reports present forbidden fields. `allowed_paths` reports matching documents outside permitted path patterns. Rule-level `exclude.path` skips a path subset for that rule without removing files from the graph. Unknown `match.*` keys should remain config errors so typoed rules do not broaden silently. `vault validate --summary` emits grouped counts by code, severity, rule, frontmatter field, disallowed field value, and top-level path prefix instead of raw findings. Do not add mutation behavior to validate; use future plan/apply commands for edits.
 
 Lookup rules:
 
@@ -207,6 +226,7 @@ Use semver-style tags for milestones:
 - `v0.11.0` — allowed frontmatter value validation
 - `v0.12.0` — global cwd and default config discovery
 - `v0.13.0` — broken-pipe handling and richer validate summaries
+- `v0.14.0` — standards-pack dogfood expressiveness
 
 For a release bump:
 

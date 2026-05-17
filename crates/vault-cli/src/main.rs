@@ -192,6 +192,10 @@ struct ValidateFinding {
     #[serde(skip_serializing_if = "Option::is_none")]
     allowed_values: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    expected_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allowed_paths: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     link: Option<Link>,
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostic: Option<Diagnostic>,
@@ -391,6 +395,10 @@ fn validate_config_value(config_path: &Utf8PathBuf, value: &serde_yaml::Value) -
             )?;
         }
 
+        if let Some(ignore) = mapping_get(validate, "ignore") {
+            validate_string_sequence(config_path, "validate.ignore", ignore)?;
+        }
+
         if let Some(rules) = mapping_get(validate, "rules") {
             let Some(rules) = rules.as_sequence() else {
                 anyhow::bail!("invalid config {config_path}: validate.rules must be a sequence");
@@ -430,13 +438,21 @@ fn validate_rule_value(
             config_path,
             &format!("{rule_path}.match"),
             rule_match,
-            &["path", "frontmatter"],
+            &["path", "path_not", "frontmatter"],
         )?;
 
         if let Some(path) = mapping_get(rule_match, "path") {
             if path.as_str().is_none() {
                 anyhow::bail!(
                     "invalid config {config_path}: {rule_path}.match.path must be a string"
+                );
+            }
+        }
+
+        if let Some(path_not) = mapping_get(rule_match, "path_not") {
+            if path_not.as_str().is_none() {
+                anyhow::bail!(
+                    "invalid config {config_path}: {rule_path}.match.path_not must be a string"
                 );
             }
         }
@@ -464,6 +480,49 @@ fn validate_rule_value(
             &format!("{rule_path}.allowed_values"),
             allowed_values,
         )?;
+    }
+
+    if let Some(field_types) = mapping_get(rule, "field_types") {
+        validate_field_types(
+            config_path,
+            &format!("{rule_path}.field_types"),
+            field_types,
+        )?;
+    }
+
+    if let Some(forbidden_frontmatter) = mapping_get(rule, "forbidden_frontmatter") {
+        validate_string_sequence(
+            config_path,
+            &format!("{rule_path}.forbidden_frontmatter"),
+            forbidden_frontmatter,
+        )?;
+    }
+
+    if let Some(allowed_paths) = mapping_get(rule, "allowed_paths") {
+        validate_string_sequence(
+            config_path,
+            &format!("{rule_path}.allowed_paths"),
+            allowed_paths,
+        )?;
+    }
+
+    if let Some(exclude) = mapping_get(rule, "exclude") {
+        let Some(exclude) = exclude.as_mapping() else {
+            anyhow::bail!("invalid config {config_path}: {rule_path}.exclude must be a mapping");
+        };
+        validate_known_mapping_keys(
+            config_path,
+            &format!("{rule_path}.exclude"),
+            exclude,
+            &["path"],
+        )?;
+        if let Some(path) = mapping_get(exclude, "path") {
+            if path.as_str().is_none() {
+                anyhow::bail!(
+                    "invalid config {config_path}: {rule_path}.exclude.path must be a string"
+                );
+            }
+        }
     }
 
     Ok(())
@@ -544,6 +603,39 @@ fn validate_allowed_values(
     }
 
     Ok(())
+}
+
+fn validate_field_types(
+    config_path: &Utf8PathBuf,
+    field_path: &str,
+    value: &serde_yaml::Value,
+) -> Result<()> {
+    let Some(fields) = value.as_mapping() else {
+        anyhow::bail!("invalid config {config_path}: {field_path} must be a mapping");
+    };
+
+    for (field, field_type) in fields {
+        let Some(field) = field.as_str() else {
+            anyhow::bail!("invalid config {config_path}: {field_path} keys must be strings");
+        };
+        let Some(field_type) = field_type.as_str() else {
+            anyhow::bail!("invalid config {config_path}: {field_path}.{field} must be a string");
+        };
+        if !is_known_field_type(field_type) {
+            anyhow::bail!(
+                "invalid config {config_path}: {field_path}.{field} has unknown field type: {field_type}"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn is_known_field_type(field_type: &str) -> bool {
+    matches!(
+        field_type,
+        "datetime" | "date" | "list_of_strings" | "wikilink" | "wikilink_or_list"
+    )
 }
 
 fn is_scalar_yaml_value(value: &serde_yaml::Value) -> bool {
@@ -680,6 +772,10 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
     let mut findings = Vec::new();
 
     for document in &index.documents {
+        if validate_ignored(document, config) {
+            continue;
+        }
+
         for diagnostic in &document.diagnostics {
             findings.push(ValidateFinding {
                 code: diagnostic.code.clone(),
@@ -690,6 +786,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                 rule: None,
                 actual_value: None,
                 allowed_values: None,
+                expected_type: None,
+                allowed_paths: None,
                 link: None,
                 diagnostic: Some(diagnostic.clone()),
             });
@@ -706,6 +804,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                     rule: None,
                     actual_value: None,
                     allowed_values: None,
+                    expected_type: None,
+                    allowed_paths: None,
                     link: None,
                     diagnostic: None,
                 });
@@ -725,10 +825,76 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                         rule: rule_name.clone(),
                         actual_value: None,
                         allowed_values: None,
+                        expected_type: None,
+                        allowed_paths: None,
                         link: None,
                         diagnostic: None,
                     });
                 }
+            }
+
+            for (field, expected_type) in &rule.field_types {
+                if let Some(actual_value) = document_frontmatter_field(document, field) {
+                    if !frontmatter_type_matches(actual_value, expected_type) {
+                        findings.push(ValidateFinding {
+                            code: "frontmatter-field-type-invalid".to_string(),
+                            severity: Severity::Warning,
+                            path: document.path.clone(),
+                            message: format!(
+                                "frontmatter field has invalid type: {field}; expected {expected_type}"
+                            ),
+                            field: Some(field.clone()),
+                            rule: rule_name.clone(),
+                            actual_value: Some(actual_value.clone()),
+                            allowed_values: None,
+                            expected_type: Some(expected_type.clone()),
+                            allowed_paths: None,
+                            link: None,
+                            diagnostic: None,
+                        });
+                    }
+                }
+            }
+
+            for field in &rule.forbidden_frontmatter {
+                if let Some(actual_value) = document_frontmatter_field(document, field) {
+                    findings.push(ValidateFinding {
+                        code: "frontmatter-field-forbidden".to_string(),
+                        severity: Severity::Warning,
+                        path: document.path.clone(),
+                        message: format!("frontmatter field is forbidden: {field}"),
+                        field: Some(field.clone()),
+                        rule: rule_name.clone(),
+                        actual_value: Some(actual_value.clone()),
+                        allowed_values: None,
+                        expected_type: None,
+                        allowed_paths: None,
+                        link: None,
+                        diagnostic: None,
+                    });
+                }
+            }
+
+            if !rule.allowed_paths.is_empty()
+                && !rule
+                    .allowed_paths
+                    .iter()
+                    .any(|pattern| pattern_matches_path(pattern, &document.path))
+            {
+                findings.push(ValidateFinding {
+                    code: "path-not-allowed".to_string(),
+                    severity: Severity::Warning,
+                    path: document.path.clone(),
+                    message: "document path is outside allowed rule locations".to_string(),
+                    field: None,
+                    rule: rule_name.clone(),
+                    actual_value: None,
+                    allowed_values: None,
+                    expected_type: None,
+                    allowed_paths: Some(rule.allowed_paths.clone()),
+                    link: None,
+                    diagnostic: None,
+                });
             }
 
             for (field, allowed_values) in &rule.allowed_values {
@@ -746,6 +912,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                             rule: rule_name.clone(),
                             actual_value: Some(actual_value.clone()),
                             allowed_values: Some(allowed_values.clone()),
+                            expected_type: None,
+                            allowed_paths: None,
                             link: None,
                             diagnostic: None,
                         });
@@ -767,6 +935,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                         rule: None,
                         actual_value: None,
                         allowed_values: None,
+                        expected_type: None,
+                        allowed_paths: None,
                         link: Some(link.clone()),
                         diagnostic: None,
                     });
@@ -781,6 +951,8 @@ fn validate_findings(index: &GraphIndex, config: &ValidateConfig) -> Vec<Validat
                         rule: None,
                         actual_value: None,
                         allowed_values: None,
+                        expected_type: None,
+                        allowed_paths: None,
                         link: Some(link.clone()),
                         diagnostic: None,
                     });
@@ -822,6 +994,13 @@ fn validate_summary(findings: &[ValidateFinding]) -> ValidateSummary {
     }
 
     summary
+}
+
+fn validate_ignored(document: &Document, config: &ValidateConfig) -> bool {
+    config
+        .ignore
+        .iter()
+        .any(|pattern| pattern_matches_path(pattern, &document.path))
 }
 
 fn increment(counts: &mut BTreeMap<String, usize>, key: impl AsRef<str>) {
@@ -872,6 +1051,18 @@ fn validate_rule_matches(document: &Document, rule: &ValidateRuleConfig) -> bool
         }
     }
 
+    if let Some(path_not_pattern) = &rule.r#match.path_not {
+        if pattern_matches_path(path_not_pattern, &document.path) {
+            return false;
+        }
+    }
+
+    if let Some(exclude_path_pattern) = &rule.exclude.path {
+        if pattern_matches_path(exclude_path_pattern, &document.path) {
+            return false;
+        }
+    }
+
     frontmatter_predicates_match(document, &rule.r#match.frontmatter)
 }
 
@@ -905,6 +1096,84 @@ fn frontmatter_value_matches(actual: &serde_json::Value, expected: &serde_json::
         }
         _ => false,
     }
+}
+
+fn frontmatter_type_matches(value: &serde_json::Value, expected_type: &str) -> bool {
+    match expected_type {
+        "datetime" => value
+            .as_str()
+            .is_some_and(|value| is_datetime_string(value)),
+        "date" => value.as_str().is_some_and(is_date_string),
+        "list_of_strings" => value
+            .as_array()
+            .is_some_and(|values| values.iter().all(|value| value.as_str().is_some())),
+        "wikilink" => value.as_str().is_some_and(is_wikilink_string),
+        "wikilink_or_list" => {
+            value.as_str().is_some_and(is_wikilink_string)
+                || value.as_array().is_some_and(|values| {
+                    values
+                        .iter()
+                        .all(|value| value.as_str().is_some_and(is_wikilink_string))
+                })
+        }
+        _ => false,
+    }
+}
+
+fn is_datetime_string(value: &str) -> bool {
+    if value.len() < 16 {
+        return false;
+    }
+
+    let Some((date, time)) = value.split_once('T').or_else(|| value.split_once(' ')) else {
+        return false;
+    };
+
+    is_date_string(date) && is_time_string(time)
+}
+
+fn is_date_string(value: &str) -> bool {
+    let mut parts = value.split('-');
+    let (Some(year), Some(month), Some(day), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+
+    year.len() == 4
+        && month.len() == 2
+        && day.len() == 2
+        && year.chars().all(|char| char.is_ascii_digit())
+        && month
+            .parse::<u8>()
+            .is_ok_and(|month| (1..=12).contains(&month))
+        && day.parse::<u8>().is_ok_and(|day| (1..=31).contains(&day))
+}
+
+fn is_time_string(value: &str) -> bool {
+    let time = value
+        .strip_suffix('Z')
+        .unwrap_or(value)
+        .split_once(['+', '-'])
+        .map_or(value, |(time, _)| time);
+    let mut parts = time.split(':');
+    let (Some(hour), Some(minute), maybe_second, None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+
+    hour.len() == 2
+        && minute.len() == 2
+        && hour.parse::<u8>().is_ok_and(|hour| hour <= 23)
+        && minute.parse::<u8>().is_ok_and(|minute| minute <= 59)
+        && maybe_second.is_none_or(|second| {
+            second.len() == 2 && second.parse::<u8>().is_ok_and(|second| second <= 59)
+        })
+}
+
+fn is_wikilink_string(value: &str) -> bool {
+    value.starts_with("[[") && value.ends_with("]]") && value.len() > 4
 }
 
 fn document_has_frontmatter_field(document: &Document, field: &str) -> bool {

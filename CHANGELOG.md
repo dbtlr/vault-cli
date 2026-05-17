@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here.
 
+## v0.14.0 - 2026-05-17
+
+- Added validation-only `validate.ignore` patterns so files can remain graph-visible while being skipped by standards checks.
+- Added scoped rule path exclusions with `match.path_not` and `exclude.path`.
+- Added `validate.rules[].field_types` checks for `datetime`, `date`, `list_of_strings`, `wikilink`, and `wikilink_or_list`.
+- Added `validate.rules[].forbidden_frontmatter` for absent-field constraints.
+- Added `validate.rules[].allowed_paths` for read-only folder-routing validation.
+- Added finding context for expected field types and allowed path patterns.
+
 ## v0.13.0 - 2026-05-17
 
 - Handled closed stdout pipes gracefully so JSON/JSONL output can be piped into early-exit consumers such as `head` without panic text.
