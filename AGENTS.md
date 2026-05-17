@@ -131,6 +131,8 @@ validate:
         - "Workspaces/**/agent-artifacts/*.md"
 ```
 
+For the conceptual model of validate rules, see [docs/rule-shape.md](docs/rule-shape.md).
+
 Ignore patterns, validate-only ignore patterns, scoped validate `match.path` / `match.path_not` values, `exclude.path`, and `allowed_paths` are applied to vault-relative paths. `*` matches within one path segment only, and `**` matches zero or more complete path segments. Build summaries include `ignored_files` so count changes are visible.
 
 Ignored targets remain outside the graph. If an indexed Markdown document links to an ignored file, that link is reported as unresolved rather than hidden.

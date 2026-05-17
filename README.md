@@ -120,6 +120,8 @@ validate:
         - "Workspaces/**/agent-artifacts/*.md"
 ```
 
+For the conceptual model of validate rules, see [docs/rule-shape.md](docs/rule-shape.md).
+
 Configured ignores are applied before file inventory and document parsing. With no config, the graph remains a raw filesystem view except for hidden files/directories.
 
 Ignored targets remain outside the graph. If an indexed Markdown document links to an ignored file, that link is reported as unresolved rather than hidden.
