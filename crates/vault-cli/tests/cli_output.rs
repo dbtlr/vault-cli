@@ -126,7 +126,22 @@ fn grouped_help_lists_new_surfaces() {
 #[test]
 fn graph_documents_help_documents_frontmatter_filter() {
     let output = vault(&["docs", "list", "--help"]);
-    assert!(output.contains("Frontmatter-only field:value filter"));
+    assert!(output.contains("Frontmatter field:value filter"));
+    assert!(output.contains("--path"));
+    assert!(output.contains("--has"));
+    assert!(output.contains("--missing"));
+}
+
+#[test]
+fn docs_summary_help_documents_count_by() {
+    let output = vault(&["docs", "summary", "--help"]);
+    assert!(output.contains("--count-by"));
+}
+
+#[test]
+fn docs_inspect_defaults_to_json() {
+    let output = vault(&["docs", "inspect", "--help"]);
+    assert!(output.contains("[default: json]"));
 }
 
 #[test]
@@ -1362,6 +1377,99 @@ fn graph_documents_filters_frontmatter_lists() {
 }
 
 #[test]
+fn graph_documents_filters_frontmatter_value_sets() {
+    let root = fixture_root();
+    let output = vault(&[
+        "docs",
+        "list",
+        "-C",
+        root.to_str().unwrap(),
+        "--filter",
+        "title:Alpha,Frontmatter Source",
+        "--format",
+        "jsonl",
+    ]);
+
+    let documents = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    let paths = documents
+        .iter()
+        .map(|document| document["path"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(paths, vec!["alpha.md", "frontmatter-source.md"]);
+}
+
+#[test]
+fn graph_documents_filters_by_path_glob() {
+    let root = fixture_root();
+    let output = vault(&[
+        "docs",
+        "list",
+        "-C",
+        root.to_str().unwrap(),
+        "--path",
+        "other/*.md",
+        "--format",
+        "jsonl",
+    ]);
+
+    let documents = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0]["path"], "other/duplicate.md");
+}
+
+#[test]
+fn graph_documents_filters_by_frontmatter_existence() {
+    let root = fixture_root();
+    let output = vault(&[
+        "docs",
+        "list",
+        "-C",
+        root.to_str().unwrap(),
+        "--has",
+        "aliases",
+        "--format",
+        "jsonl",
+    ]);
+
+    let documents = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0]["path"], "alpha.md");
+
+    let output = vault(&[
+        "docs",
+        "list",
+        "-C",
+        root.to_str().unwrap(),
+        "--missing",
+        "aliases",
+        "--format",
+        "jsonl",
+    ]);
+
+    let documents = output
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(documents.len(), 9);
+    assert!(!documents
+        .iter()
+        .any(|document| document["path"] == "alpha.md"));
+}
+
+#[test]
 fn graph_documents_warns_when_filter_field_is_absent_everywhere() {
     let root = fixture_root();
     let (stdout, stderr) = vault_success(&[
@@ -1380,6 +1488,48 @@ fn graph_documents_warns_when_filter_field_is_absent_everywhere() {
     assert!(stderr.contains(
         "warning: filter field 'path' is not a frontmatter key in any document; returning empty result"
     ));
+}
+
+#[test]
+fn graph_documents_warns_when_missing_field_is_absent_everywhere() {
+    let root = fixture_root();
+    let (stdout, stderr) = vault_success(&[
+        "docs",
+        "list",
+        "-C",
+        root.to_str().unwrap(),
+        "--missing",
+        "nosuch",
+        "--format",
+        "json",
+    ]);
+
+    let documents = serde_json::from_str::<Value>(&stdout).expect("output should be JSON");
+    assert_eq!(documents.as_array().unwrap().len(), 0);
+    assert!(stderr.contains(
+        "warning: filter field 'nosuch' is not a frontmatter key in any document; returning empty result"
+    ));
+}
+
+#[test]
+fn docs_summary_counts_frontmatter_values() {
+    let root = fixture_root();
+    let output = vault(&[
+        "docs",
+        "summary",
+        "-C",
+        root.to_str().unwrap(),
+        "--count-by",
+        "title",
+        "--format",
+        "json",
+    ]);
+
+    let summary = serde_json::from_str::<Value>(&output).expect("output should be JSON");
+    assert_eq!(summary["count_by"], "title");
+    assert_eq!(summary["total"], 10);
+    assert_eq!(summary["counts"]["Alpha"], 1);
+    assert_eq!(summary["counts"]["Frontmatter Source"], 1);
 }
 
 #[test]

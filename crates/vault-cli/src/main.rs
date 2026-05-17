@@ -14,7 +14,9 @@ use vault_standards::{summarize, validate};
 
 use crate::cli::{CacheSubcommand, Cli, Command, DocsSubcommand, LinksSubcommand};
 use crate::config::{effective_cwd, load_config, resolve_path};
-use crate::filter::filter_documents;
+use crate::filter::{
+    filter_documents, index_frontmatter_keys, summarize_documents, DocumentFilterOptions,
+};
 use crate::output::{is_broken_pipe, write_item_output, write_output};
 use crate::target::{
     backlinks, inspect_document, resolve_backlink_target_path, resolve_target_path,
@@ -42,8 +44,29 @@ fn run(cli: Cli) -> Result<i32> {
             DocsSubcommand::List(args) => {
                 let mut index = build_index_for(&cwd, config_path.as_ref())?;
                 trim_diagnostics(&mut index, verbose);
-                let documents = filter_documents(&index, &args.filters)?;
+                let options = DocumentFilterOptions {
+                    filters: &args.filters,
+                    paths: &args.paths,
+                    has: &args.has,
+                    missing: &args.missing,
+                };
+                let documents = filter_documents(&index, &options)?;
                 write_output(&documents, args.format)?;
+                Ok(exit_code_for(&index))
+            }
+            DocsSubcommand::Summary(args) => {
+                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                trim_diagnostics(&mut index, verbose);
+                let options = DocumentFilterOptions {
+                    filters: &args.filters,
+                    paths: &args.paths,
+                    has: &args.has,
+                    missing: &args.missing,
+                };
+                let known_fields = index_frontmatter_keys(&index);
+                let documents = filter_documents(&index, &options)?;
+                let summary = summarize_documents(&documents, &args.count_by, &known_fields);
+                write_item_output(&summary, args.format)?;
                 Ok(exit_code_for(&index))
             }
             DocsSubcommand::Inspect(args) => {

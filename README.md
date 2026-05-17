@@ -42,6 +42,8 @@ just run -C fixtures/basic docs list --format jsonl
 ```bash
 vault docs list --format jsonl
 vault docs list --filter status:draft --format jsonl
+vault docs list --path "Workspaces/**/tasks/*.md" --has workspace --format jsonl
+vault docs summary --count-by status --format json
 vault cache build --cache .vault/cache --format json
 vault links list --format jsonl
 vault files --format jsonl
@@ -149,10 +151,18 @@ findings. Summary output includes total findings plus counts by `code`,
 `severity`, `rule`, frontmatter `field`, disallowed field value, and top-level
 path prefix.
 
+`vault docs list` supports small inventory filters: `--path <glob>` for
+vault-relative paths, repeatable `--filter field:value` for frontmatter scalar
+or list values, comma-separated value sets such as `status:backlog,completed`,
+and `--has <field>` / `--missing <field>` for field presence. Repeated filters
+are ANDed; comma-separated values within one `--filter` are ORed. `vault docs
+summary --count-by <field>` emits grouped document counts for one frontmatter
+field.
+
 ## Glob Matching
 
-Config path patterns are matched against vault-relative paths using path-segment
-semantics:
+Config path patterns and `docs list --path` patterns are matched against
+vault-relative paths using path-segment semantics:
 
 - `*` matches within one path segment only.
 - `**` matches zero or more complete path segments.

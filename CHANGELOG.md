@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## v0.17.0 - 2026-05-17
+
+Document query ergonomics release.
+
+### Added
+
+- Added `vault docs list --path <glob>` using the same path-segment glob semantics as config paths.
+- Added `vault docs list --has <field>` and `--missing <field>` for frontmatter field presence filters.
+- Added comma-separated value sets for `vault docs list --filter`, such as `status:backlog,completed`.
+- Added `vault docs summary --count-by <field>` for grouped document inventory counts.
+- Added warnings for unknown `--has`, `--missing`, and `--count-by` fields.
+
+### Changed
+
+- `vault docs inspect` now defaults to `--format json` because it emits one logical object.
+
 ## v0.16.0 - 2026-05-17
 
 CLI surface regroup release. **Breaking command paths and config key rename.**

@@ -60,8 +60,10 @@ pub enum DocsSubcommand {
         about = "Emit parsed Markdown documents with frontmatter, headings, links, and diagnostics"
     )]
     List(DocumentsArgs),
+    #[command(about = "Emit grouped document counts")]
+    Summary(DocsSummaryArgs),
     #[command(about = "Emit one document plus incoming, outgoing, and unresolved outgoing links")]
-    Inspect(TargetGraphArgs),
+    Inspect(InspectArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -119,9 +121,18 @@ pub struct BuildArgs {
 pub struct DocumentsArgs {
     #[arg(
         long = "filter",
-        help = "Frontmatter-only field:value filter. Repeat to require multiple fields"
+        help = "Frontmatter field:value filter. Comma-separated values match any listed value. Repeat to require multiple fields"
     )]
     pub filters: Vec<String>,
+    #[arg(
+        long = "path",
+        help = "Vault-relative path glob filter using config glob semantics"
+    )]
+    pub paths: Vec<String>,
+    #[arg(long, help = "Require a present, non-null frontmatter field")]
+    pub has: Vec<String>,
+    #[arg(long, help = "Require a missing or null frontmatter field")]
+    pub missing: Vec<String>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
     pub format: OutputFormat,
 }
@@ -139,6 +150,41 @@ pub struct TargetGraphArgs {
     )]
     pub target: String,
     #[arg(long, value_enum, default_value_t = OutputFormat::Jsonl, help = "Stdout format")]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Parser)]
+pub struct InspectArgs {
+    #[arg(
+        help = "Exact vault-relative path or unique document stem. Stem matching is case-insensitive"
+    )]
+    pub target: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Stdout format")]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Parser)]
+pub struct DocsSummaryArgs {
+    #[arg(
+        long = "count-by",
+        help = "Frontmatter field to group document counts by"
+    )]
+    pub count_by: String,
+    #[arg(
+        long = "filter",
+        help = "Frontmatter field:value filter. Comma-separated values match any listed value. Repeat to require multiple fields"
+    )]
+    pub filters: Vec<String>,
+    #[arg(
+        long = "path",
+        help = "Vault-relative path glob filter using config glob semantics"
+    )]
+    pub paths: Vec<String>,
+    #[arg(long, help = "Require a present, non-null frontmatter field")]
+    pub has: Vec<String>,
+    #[arg(long, help = "Require a missing or null frontmatter field")]
+    pub missing: Vec<String>,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Stdout format")]
     pub format: OutputFormat,
 }
 

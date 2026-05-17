@@ -59,6 +59,8 @@ Core commands:
 ```bash
 vault docs list --format jsonl
 vault docs list --filter status:draft --format jsonl
+vault docs list --path "Workspaces/**/tasks/*.md" --has workspace --format jsonl
+vault docs summary --count-by status --format json
 vault links list --format jsonl
 vault files --format jsonl
 vault links unresolved --format jsonl
@@ -133,7 +135,7 @@ validate:
 
 For the conceptual model of validate rules, see [docs/rule-shape.md](docs/rule-shape.md).
 
-Ignore patterns, validate-only ignore patterns, scoped validate `match.path` / `match.path_not` values, `exclude.path`, and `allowed_paths` are applied to vault-relative paths. `*` matches within one path segment only, and `**` matches zero or more complete path segments. Build summaries include `ignored_files` so count changes are visible.
+Ignore patterns, docs `--path` filters, validate-only ignore patterns, scoped validate `match.path` / `match.path_not` values, `exclude.path`, and `allowed_paths` are applied to vault-relative paths. `*` matches within one path segment only, and `**` matches zero or more complete path segments. Build summaries include `ignored_files` so count changes are visible.
 
 Ignored targets remain outside the graph. If an indexed Markdown document links to an ignored file, that link is reported as unresolved rather than hidden.
 
@@ -147,7 +149,7 @@ Lookup rules:
 - stem lookup only applies to Markdown documents
 - ambiguous stem lookup exits with an error listing candidates
 
-`--filter` is currently frontmatter-only. Do not silently reinterpret `path`, `stem`, or `dir` as graph-native filter fields until the query model is deliberately expanded.
+`docs list --filter` is frontmatter-only. Use `docs list --path` for vault-relative path globs, `--has` / `--missing` for frontmatter field presence, and `docs summary --count-by <field>` for grouped document inventory counts. Do not add a full expression language, regex filters, or Atlas-specific aliases without a deliberate query-model expansion.
 
 ## Product Principles
 
