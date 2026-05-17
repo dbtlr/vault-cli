@@ -62,6 +62,14 @@ graph:
 doctor:
   required_frontmatter:
     - title
+  rules:
+    - name: workspace-notes
+      match:
+        path: "Workspaces/**/notes/*.md"
+      required_frontmatter:
+        - type
+        - kind
+        - workspace
 ```
 
 Configured ignores are applied before file inventory and document parsing. With no config, the graph remains a raw filesystem view except for hidden files/directories.
@@ -76,4 +84,4 @@ Frontmatter link extraction is intentionally shallow in v0.x: it scans top-level
 
 Use `source_context.area` and `source_context.property` to distinguish body links from frontmatter/property links. Frontmatter links now include `source_span` for the shallow extraction cases. `vault graph files` emits the file inventory, and `vault graph backlinks <exact-file-path>` can query incoming links to non-Markdown attachment targets.
 
-`vault doctor` is read-only. It reports unresolved links, ambiguous links, document diagnostics, and configured missing frontmatter fields without mutating files.
+`vault doctor` is read-only. It reports unresolved links, ambiguous links, document diagnostics, and configured missing frontmatter fields without mutating files. Global `doctor.required_frontmatter` applies to every document. Scoped `doctor.rules` apply additional requirements only to documents matched by `match.path`; findings include `rule` when a scoped rule produced them.
