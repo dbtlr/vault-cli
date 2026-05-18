@@ -3524,3 +3524,159 @@ repair:
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
 }
+
+#[test]
+fn repair_apply_moves_document_and_rewrites_links() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        r#"validate:
+  rules:
+    - name: task-routing
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      allowed_paths:
+        - "Workspaces/**/tasks/*.md"
+repair:
+  rules:
+    - name: route-tasks
+      match:
+        code: document-misrouted
+        rule: task-routing
+      move_document:
+        to_path: "Workspaces/{frontmatter.workspace}/tasks/{stem}.md"
+"#,
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Inbox")).expect("temp dir should be created");
+    fs::write(
+        root.join("Inbox/task.md"),
+        "---\ntype: task\nworkspace: demo\nstatus: backlog\n---\n# Body\n",
+    )
+    .expect("task should write");
+    fs::write(
+        root.join("Inbox/index.md"),
+        "---\ntitle: Index\n---\n- [[Inbox/task]]\n- [task](task.md)\n",
+    )
+    .expect("index should write");
+
+    let plan_path = root.join("repair.json");
+    vault_success(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--out",
+        plan_path.to_str().unwrap(),
+    ]);
+    vault_success(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "apply",
+        plan_path.to_str().unwrap(),
+    ]);
+
+    assert!(
+        !root.join("Inbox/task.md").exists(),
+        "source path should be gone after apply"
+    );
+    assert!(
+        root.join("Workspaces/demo/tasks/task.md").exists(),
+        "destination path should exist after apply"
+    );
+
+    let index_content =
+        fs::read_to_string(root.join("Inbox/index.md")).expect("index should read");
+    assert!(
+        index_content.contains("[[Workspaces/demo/tasks/task]]"),
+        "wikilink should be rewritten to new path; got: {index_content}"
+    );
+    assert!(
+        !index_content.contains("[[Inbox/task]]"),
+        "old wikilink should be gone; got: {index_content}"
+    );
+
+    fs::remove_dir_all(&root).ok();
+    fs::remove_file(&config_path).ok();
+}
+
+#[test]
+fn repair_apply_refuses_move_when_destination_exists() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        r#"validate:
+  rules:
+    - name: r
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      allowed_paths:
+        - "Workspaces/**/tasks/*.md"
+repair:
+  rules:
+    - name: route
+      match:
+        code: document-misrouted
+        rule: r
+      move_document:
+        to_path: "Workspaces/demo/tasks/task.md"
+"#,
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Inbox")).expect("inbox dir should be created");
+    fs::create_dir_all(root.join("Workspaces/demo/tasks"))
+        .expect("destination dir should be created");
+    fs::write(
+        root.join("Inbox/task.md"),
+        "---\ntype: task\n---\n# source\n",
+    )
+    .expect("source task should write");
+    fs::write(
+        root.join("Workspaces/demo/tasks/task.md"),
+        "---\ntype: task\n---\n# pre-existing\n",
+    )
+    .expect("pre-existing dest should write");
+
+    let plan_path = root.join("repair.json");
+    vault_success(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--out",
+        plan_path.to_str().unwrap(),
+    ]);
+    let stderr = vault_error(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "apply",
+        plan_path.to_str().unwrap(),
+    ]);
+    assert!(
+        stderr.contains("destination already exists") || stderr.contains("MoveDestinationExists"),
+        "expected destination-exists error in stderr; got: {stderr}"
+    );
+    assert!(
+        root.join("Inbox/task.md").exists(),
+        "source should remain when move refuses"
+    );
+
+    fs::remove_dir_all(&root).ok();
+    fs::remove_file(&config_path).ok();
+}

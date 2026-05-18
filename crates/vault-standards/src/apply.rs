@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::ops::Range;
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -11,6 +12,7 @@ use vault_frontmatter::{
 };
 
 use crate::findings::Finding;
+use crate::repair::warnings::PlanWarning;
 use crate::repair::{PlannedChange, RepairPlan, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION};
 use crate::summarize;
 use crate::summary::Summary;
@@ -66,6 +68,35 @@ pub enum ApplyError {
         "field '{field}' already present in {path}; add_frontmatter refuses to overwrite (use set_frontmatter)"
     )]
     FieldAlreadyPresent { path: Utf8PathBuf, field: String },
+
+    #[error("move source missing in filesystem: {path}")]
+    MoveSourceMissing { path: Utf8PathBuf },
+
+    #[error("move source is a symlink, not a regular file: {path}")]
+    MoveSourceIsSymlink { path: Utf8PathBuf },
+
+    #[error("move destination already exists: {destination}")]
+    MoveDestinationExists { destination: Utf8PathBuf },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MoveResult {
+    pub from: Utf8PathBuf,
+    pub to: Utf8PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkRewriteResult {
+    pub file: Utf8PathBuf,
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RepairApplyWarning {
+    pub path: Utf8PathBuf,
+    #[serde(flatten)]
+    pub warning: PlanWarning,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,6 +105,12 @@ pub struct RepairApplyReport {
     pub dry_run: bool,
     pub changed_files: Vec<Utf8PathBuf>,
     pub applied_changes: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub moved_files: Vec<MoveResult>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub rewritten_links: Vec<LinkRewriteResult>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub warnings: Vec<RepairApplyWarning>,
     pub plan_context: RepairApplyPlanContext,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verification: Option<RepairApplyVerification>,
@@ -97,6 +134,9 @@ impl RepairApplyReport {
             dry_run,
             changed_files: Vec::new(),
             applied_changes: plan.changes.len(),
+            moved_files: Vec::new(),
+            rewritten_links: Vec::new(),
+            warnings: Vec::new(),
             plan_context: RepairApplyPlanContext {
                 skipped: plan.summary.skipped.clone(),
             },
@@ -137,6 +177,12 @@ pub fn changes_by_path(
     let mut seen_fields = BTreeSet::new();
 
     for change in &plan.changes {
+        // move_document is handled by the orchestrator via apply_move /
+        // apply_link_rewrites — it is not a per-file frontmatter edit, so
+        // it's skipped here rather than rejected.
+        if change.operation == "move_document" {
+            continue;
+        }
         if !matches!(
             change.operation.as_str(),
             "set_frontmatter" | "remove_frontmatter" | "add_frontmatter"
@@ -376,6 +422,121 @@ fn check_expected_old_value(
             actual: format!("{actual}"),
         }),
     }
+}
+
+/// Performs the filesystem move for a `move_document` PlannedChange.
+/// Refuses with precondition errors if source is missing/symlink or
+/// destination exists. Falls back to copy+remove if rename fails
+/// (typically cross-device).
+pub fn apply_move(cwd: &Utf8Path, change: &PlannedChange) -> Result<MoveResult, ApplyError> {
+    let source_rel = &change.path;
+    let dest_rel =
+        change
+            .destination
+            .as_ref()
+            .ok_or_else(|| ApplyError::UnsupportedOperation {
+                path: source_rel.clone(),
+                operation: "move_document missing destination".to_string(),
+            })?;
+
+    let source_abs = cwd.join(source_rel);
+    let dest_abs = cwd.join(dest_rel);
+
+    if !source_abs.as_std_path().exists() {
+        return Err(ApplyError::MoveSourceMissing {
+            path: source_rel.clone(),
+        });
+    }
+    let metadata = fs::symlink_metadata(source_abs.as_std_path()).map_err(|_| {
+        ApplyError::MoveSourceMissing {
+            path: source_rel.clone(),
+        }
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(ApplyError::MoveSourceIsSymlink {
+            path: source_rel.clone(),
+        });
+    }
+    if dest_abs.as_std_path().exists() {
+        return Err(ApplyError::MoveDestinationExists {
+            destination: dest_rel.clone(),
+        });
+    }
+    if let Some(parent) = dest_abs.parent() {
+        fs::create_dir_all(parent.as_std_path()).map_err(|e| ApplyError::CannotMinimalEdit {
+            path: dest_rel.clone(),
+            reason: format!("create parent dir failed: {e}"),
+        })?;
+    }
+
+    match fs::rename(source_abs.as_std_path(), dest_abs.as_std_path()) {
+        Ok(()) => Ok(MoveResult {
+            from: source_rel.clone(),
+            to: dest_rel.clone(),
+        }),
+        Err(_) => {
+            // Cross-device fallback
+            fs::copy(source_abs.as_std_path(), dest_abs.as_std_path()).map_err(|e| {
+                ApplyError::CannotMinimalEdit {
+                    path: dest_rel.clone(),
+                    reason: format!("copy failed: {e}"),
+                }
+            })?;
+            fs::remove_file(source_abs.as_std_path()).map_err(|e| {
+                ApplyError::CannotMinimalEdit {
+                    path: source_rel.clone(),
+                    reason: format!("remove source after copy failed: {e}"),
+                }
+            })?;
+            Ok(MoveResult {
+                from: source_rel.clone(),
+                to: dest_rel.clone(),
+            })
+        }
+    }
+}
+
+/// Reads every file containing an AffectedLink and replaces the raw link
+/// text with the precomputed rewritten replacement. Silent skip if the raw
+/// doesn't match (file drift between plan and apply); --verify catches any
+/// unresolved links.
+pub fn apply_link_rewrites(
+    cwd: &Utf8Path,
+    change: &PlannedChange,
+) -> Result<Vec<LinkRewriteResult>, ApplyError> {
+    let mut results = Vec::new();
+    let risk = match &change.link_risk {
+        Some(r) => r,
+        None => return Ok(results),
+    };
+    let all = risk
+        .stem_links
+        .iter()
+        .chain(risk.path_qualified_wikilinks.iter())
+        .chain(risk.markdown_links.iter());
+    for affected in all {
+        let abs = cwd.join(&affected.source_path);
+        let original = fs::read_to_string(abs.as_std_path()).map_err(|e| {
+            ApplyError::CannotMinimalEdit {
+                path: affected.source_path.clone(),
+                reason: format!("read backlinker failed: {e}"),
+            }
+        })?;
+        let updated = original.replacen(&affected.raw, &affected.rewritten, 1);
+        if updated == original {
+            continue;
+        }
+        fs::write(abs.as_std_path(), &updated).map_err(|e| ApplyError::CannotMinimalEdit {
+            path: affected.source_path.clone(),
+            reason: format!("write backlinker failed: {e}"),
+        })?;
+        results.push(LinkRewriteResult {
+            file: affected.source_path.clone(),
+            from: affected.raw.clone(),
+            to: affected.rewritten.clone(),
+        });
+    }
+    Ok(results)
 }
 
 #[cfg(test)]
