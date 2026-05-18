@@ -3141,6 +3141,34 @@ fn completions_install_force_replaces_marker_block() {
 }
 
 #[test]
+fn completions_install_fish_overwrites_script() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // Pre-create a stale completion file
+    let fish_completions = dir.path().join(".config/fish/completions");
+    fs::create_dir_all(&fish_completions).unwrap();
+    let target = fish_completions.join("vault.fish");
+    fs::write(&target, "# old stale content").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "fish"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(&target).unwrap();
+    assert!(!content.contains("# old stale content"));
+    // The fish completion script clap_complete produces references the
+    // command name and at least one subcommand.
+    assert!(content.contains("vault"));
+}
+
+#[test]
 fn completions_install_powershell_writes_marker_block() {
     let (dir, output) = install_in_tempdir("powershell", &[]);
     assert!(
