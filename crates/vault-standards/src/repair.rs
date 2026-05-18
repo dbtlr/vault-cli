@@ -420,10 +420,9 @@ mod tests {
                 Some(crate::config::SetFrontmatterAction { field, value }),
                 None,
             ),
-            RepairAction::RemoveFrontmatter { field } => (
-                None,
-                Some(crate::config::RemoveFrontmatterAction { field }),
-            ),
+            RepairAction::RemoveFrontmatter { field } => {
+                (None, Some(crate::config::RemoveFrontmatterAction { field }))
+            }
         };
         RepairRule {
             name: Some(name.into()),

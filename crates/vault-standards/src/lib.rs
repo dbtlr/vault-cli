@@ -1,3 +1,4 @@
+pub mod apply;
 mod checks;
 mod config;
 mod engine;
@@ -6,6 +7,10 @@ mod predicates;
 mod repair;
 mod summary;
 
+pub use apply::{
+    apply_file_changes, changes_by_path, validate_plan_for_apply, ApplyError,
+    RepairApplyPlanContext, RepairApplyReport, RepairApplyVerification,
+};
 pub use config::{
     parse_config, ConfigError, FilesConfig, RemoveFrontmatterAction, RepairAction, RepairConfig,
     RepairRule, RepairRuleMatch, RuleExclude, RuleSelector, SetFrontmatterAction, ValidateConfig,
