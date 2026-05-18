@@ -10,7 +10,6 @@ homepage = "https://github.com/dbtlr/vault-cli"
 readme = "../../README.md"
 categories = ["command-line-utilities"]
 keywords = ["markdown", "obsidian", "vault", "cli", "validation"]
-rust-version = "1.95"
 build = "build.rs"
 
 [[bin]]
