@@ -3141,6 +3141,53 @@ fn completions_install_force_replaces_marker_block() {
 }
 
 #[test]
+fn completions_install_nushell_writes_both_files() {
+    let (dir, output) = install_in_tempdir("nushell", &[]);
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let script = dir.path().join(".config/nushell/completions/vault.nu");
+    let config = dir.path().join(".config/nushell/config.nu");
+
+    assert!(script.exists(), "completion script should be written");
+    assert!(config.exists(), "config.nu should be written or appended");
+
+    let script_content = fs::read_to_string(&script).unwrap();
+    assert!(
+        script_content.contains("vault"),
+        "script should reference vault"
+    );
+
+    let config_content = fs::read_to_string(&config).unwrap();
+    assert!(config_content.contains("# >>> vault completions"));
+    assert!(config_content.contains("source"));
+    assert!(config_content.contains("vault.nu"));
+}
+
+#[test]
+fn completions_install_nushell_idempotent() {
+    let (dir, output1) = install_in_tempdir("nushell", &[]);
+    assert!(output1.status.success());
+    let config_path = dir.path().join(".config/nushell/config.nu");
+    let config_first = fs::read_to_string(&config_path).unwrap();
+
+    let output2 = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "nushell"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(stdout2.contains("Already installed"));
+    let config_second = fs::read_to_string(&config_path).unwrap();
+    assert_eq!(config_first, config_second);
+}
+
+#[test]
 fn completions_install_fish_overwrites_script() {
     let dir = tempfile::TempDir::new().unwrap();
     // Pre-create a stale completion file
