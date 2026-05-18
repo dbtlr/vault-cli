@@ -1,0 +1,80 @@
+# Typed-notes vault-cli config.
+#
+# Demonstrates the full shape of validate.rules and repair.rules using a
+# generic "typed note" vocabulary:
+#
+#   - Documents with `type: note` must have a `kind`.
+#   - Documents with `type: task` must have a `status` from a fixed
+#     vocabulary and must live under tasks/.
+#   - A legacy `status: someday` value is automatically repaired to
+#     `status: backlog`.
+#
+# This is a starter — copy it and adapt the field names, status vocabulary,
+# and path globs to match your vault's doctrine.
+#
+# Run a dry-run validate against this config:
+#
+#   vault --config examples/config-typed-notes.yaml validate --summary
+#
+# See https://github.com/dbtlr/vault-cli/blob/main/docs/configuration.md
+# for the full schema, and docs/rule-shape.md for the selector + constraint
+# conceptual model.
+
+files:
+  ignore:
+    - "node_modules/**"
+    - "target/**"
+    - ".obsidian/**"
+    - ".git/**"
+
+validate:
+  # Every non-ignored document must have a title.
+  required_frontmatter:
+    - title
+
+  rules:
+    # Typed notes: documents with `type: note` must have a `kind`, and a few
+    # common fields must have the expected shape when present.
+    - name: typed-note
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: note
+      required_frontmatter:
+        - kind
+      field_types:
+        created: datetime
+        modified: datetime
+        tags: list_of_strings
+        related: wikilink_or_list
+
+    # Tasks: status must be in a fixed vocabulary and tasks must live under
+    # tasks/.
+    - name: task-status
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      required_frontmatter:
+        - status
+      allowed_values:
+        status:
+          - backlog
+          - in_progress
+          - completed
+          - wont_do
+      allowed_paths:
+        - "tasks/**/*.md"
+
+repair:
+  rules:
+    # Heal a legacy status value.
+    - name: legacy-task-status-someday
+      match:
+        code: frontmatter-disallowed-value
+        rule: task-status
+        field: status
+        actual_value: someday
+      set_frontmatter:
+        field: status
+        value: backlog

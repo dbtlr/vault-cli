@@ -1,0 +1,20 @@
+# Minimal vault-cli config.
+#
+# Drop this at <vault-root>/.vault/config.yaml to declare what `vault` should
+# ignore. With no rules, validate runs only on link resolution and frontmatter
+# parse health — useful as a starting point before you decide which standards
+# to enforce.
+#
+# See https://github.com/dbtlr/vault-cli/blob/main/docs/configuration.md for
+# the full schema.
+
+files:
+  ignore:
+    # Common attachment-bundle and build outputs you don't want indexed.
+    - "node_modules/**"
+    - "target/**"
+    - ".obsidian/**"
+    - ".git/**"
+    # Editor temp files.
+    - "**/*.tmp"
+    - "**/*.swp"
