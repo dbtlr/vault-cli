@@ -2974,3 +2974,27 @@ fn completions_init_supports_all_six_shells() {
         );
     }
 }
+
+#[test]
+fn completions_install_unsupported_shell_errors_cleanly() {
+    let stderr = vault_error(&["completions", "install", "tcsh"]);
+    assert!(
+        stderr.contains("invalid value") || stderr.contains("not a supported"),
+        "expected clear error for unsupported shell; got:\n{stderr}"
+    );
+}
+
+#[test]
+fn completions_install_no_arg_and_no_shell_env_errors() {
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install"])
+        .env_remove("SHELL")
+        .output()
+        .expect("vault command should run");
+    assert!(!output.status.success(), "expected failure with no SHELL set");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("could not auto-detect") || stderr.contains("SHELL"),
+        "expected error about $SHELL detection; got:\n{stderr}"
+    );
+}
