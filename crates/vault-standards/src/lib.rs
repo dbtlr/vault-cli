@@ -8,10 +8,10 @@ mod repair;
 mod summary;
 
 pub use config::{
-    FilesConfig, RepairAction, RepairConfig, RepairRule, RepairRuleMatch, RuleExclude,
-    RuleSelector, ValidateConfig, ValidateRule, VaultConfig,
+    parse_config, ConfigError, FilesConfig, RemoveFrontmatterAction, RepairAction, RepairConfig,
+    RepairRule, RepairRuleMatch, RuleExclude, RuleSelector, SetFrontmatterAction, ValidateConfig,
+    ValidateRule, VaultConfig,
 };
-pub use config_schema::validate_config_yaml;
 pub use engine::validate;
 pub use findings::{Finding, FindingBody};
 pub use repair::{plan_repairs, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary};

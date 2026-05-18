@@ -680,7 +680,7 @@ fn repair_config_rejects_ambiguous_actions() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("repair.rules[0] must declare exactly one repair action"));
+    assert!(error.contains("repair rule bad declares both"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -1082,7 +1082,7 @@ fn validate_invalid_discovered_config_fails() {
     fs::create_dir_all(root.join(".vault")).expect("config dir should be created");
     fs::write(
         root.join(".vault/config.yaml"),
-        "validate:\n  rules:\n    - name: bad\n      match:\n        path: 123\n",
+        "validate:\n  rules:\n    - name: bad\n      match:\n        path:\n          - 1\n          - 2\n",
     )
     .expect("config should write");
     fs::write(root.join("note.md"), "# Note\n").expect("note should write");
@@ -1091,7 +1091,7 @@ fn validate_invalid_discovered_config_fails() {
 
     assert!(error.contains("invalid config"));
     assert!(error.contains(".vault/config.yaml"));
-    assert!(error.contains("validate.rules[0].match.path must be a string"));
+    assert!(error.contains("validate.rules[0].match.path"));
 
     fs::remove_dir_all(root).ok();
 }
@@ -1570,7 +1570,8 @@ fn validate_rejects_malformed_allowed_values() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("validate.rules[0].allowed_values.status must be a sequence"));
+    assert!(error.contains("validate.rules[0].allowed_values.status"));
+    assert!(error.contains("expected a sequence"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -1685,7 +1686,8 @@ fn validate_rejects_unknown_match_keys() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("unknown key validate.rules[0].match.fronmatter"));
+    assert!(error.contains("validate.rules[0].match"));
+    assert!(error.contains("unknown field `fronmatter`"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -1712,8 +1714,8 @@ fn validate_rejects_non_scalar_frontmatter_predicates() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("validate.rules[0].match.frontmatter.type"));
-    assert!(error.contains("must be a string, boolean, or number"));
+    assert!(error.contains("rule list"));
+    assert!(error.contains("match.frontmatter.type must be a string, boolean, or number"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
