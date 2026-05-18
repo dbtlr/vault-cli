@@ -659,6 +659,59 @@ fn repair_apply_rejects_stale_plan() {
 }
 
 #[test]
+fn repair_apply_preserves_double_quoted_workspace_field() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: task-status\n      match:\n        frontmatter:\n          type: task\n      allowed_values:\n        status:\n          - backlog\n          - in_progress\n          - completed\n          - wont_do\nrepair:\n  rules:\n    - name: legacy-task-status-someday\n      match:\n        code: frontmatter-disallowed-value\n        rule: task-status\n        field: status\n        actual_value: someday\n      set_frontmatter:\n        field: status\n        value: backlog\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    let task_path = root.join("task.md");
+    fs::write(
+        &task_path,
+        "---\ntype: task\ntitle: Test task\nstatus: someday\nworkspace: \"[[vault-cli]]\"\n---\n# body\n",
+    )
+    .expect("task should write");
+
+    let plan = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+    ]);
+    let plan_path = root.join("repair.json");
+    fs::write(&plan_path, plan).expect("plan should write");
+
+    vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "apply",
+        plan_path.to_str().unwrap(),
+    ]);
+
+    let after = fs::read_to_string(&task_path).expect("task should read");
+    assert!(
+        after.contains("status: backlog"),
+        "status should be repaired, got:\n{after}"
+    );
+    assert!(
+        after.contains("workspace: \"[[vault-cli]]\""),
+        "workspace double-quoted style should be preserved, got:\n{after}"
+    );
+    assert!(after.ends_with("---\n# body\n"));
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
 fn repair_config_rejects_ambiguous_actions() {
     let root = temp_cache_dir();
     let config_path = root.with_extension("yaml");
