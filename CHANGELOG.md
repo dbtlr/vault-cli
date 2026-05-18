@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased (v0.26 Slice 4)
+
+Config schema rewrite, cache deletion, and CLI argument flatten.
+
+### Breaking changes
+
+- `vault cache build` command removed. The SQLite cache was write-only with no consumer; future warm-state needs (LSP/MCP/daemon) will be designed against memory-resident indexes instead.
+- `VaultFile.hash` is now `Option<String>`. Non-Markdown attachment files no longer carry BLAKE3 hashes — only Markdown documents (which need them for repair preconditions). Path identity remains stable; backlink queries by exact attachment path are unaffected.
+
+### Changed
+
+- `crates/vault-standards/src/config.rs` rewritten with `#[serde(deny_unknown_fields)]` typed structs plus a focused ~80-line `post_validate`. The 519-line hand-rolled `config_schema.rs` is deleted. Behavior preserved: every previously-rejected malformed config is still rejected; error messages should be at least as informative.
+- `parse_config(yaml, source_path) -> Result<VaultConfig, ConfigError>` is now the single entry point. The CLI's `load_config` delegates to it; the previous split between `serde_yaml::from_str` (CLI) and `validate_config_yaml` (engine) is gone.
+- `RepairRule.action()` method replaces the field-flattened `RepairAction` on the struct, computed from the present-exactly-one of `set_frontmatter` / `remove_frontmatter` enforced by `post_validate`.
+- `cli.rs` argument-struct duplication removed via `#[command(flatten)]`. `FrontmatterFilterArgs` is shared by `docs list`, `docs summary`, and `search`. `ValidateTriageArgs` is shared by `validate` and `repair plan`.
+- Help text now groups filter options under "Filter options" and "Triage filters" via clap's `help_heading`.
+
+### Removed
+
+- `crates/vault-graph/src/cache.rs` (283 lines).
+- `crates/vault-standards/src/config_schema.rs` (519 lines).
+- `rusqlite` dependency from `vault-graph` and `vault-cli` dev-deps.
+- BLAKE3 hashing of non-Markdown files — `(stat::size, stat::mtime)` identity is sufficient for path-based backlink queries against attachments.
+
 ## v0.25.1 - 2026-05-18
 
 Repair workflow documentation polish.
