@@ -3374,3 +3374,153 @@ fn completions_install_print_does_not_write() {
     // No file should have been created.
     assert!(!dir.path().join(".bashrc").exists());
 }
+
+#[test]
+fn repair_plan_emits_move_document_with_link_risk() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        r#"validate:
+  rules:
+    - name: task-routing
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      allowed_paths:
+        - "Workspaces/**/tasks/*.md"
+repair:
+  rules:
+    - name: route-tasks-to-workspace
+      match:
+        code: document-misrouted
+        rule: task-routing
+      move_document:
+        to_path: "Workspaces/{frontmatter.workspace}/tasks/{stem}.md"
+"#,
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Inbox")).expect("temp dir should be created");
+    fs::write(
+        root.join("Inbox/task.md"),
+        "---\ntype: task\ntitle: My task\nworkspace: demo\nstatus: backlog\n---\n# Body\n",
+    )
+    .expect("task should write");
+    fs::write(
+        root.join("Inbox/index.md"),
+        "---\ntitle: Index\n---\n# Index\n\n- [task](task.md)\n- [[Inbox/task]]\n",
+    )
+    .expect("index should write");
+
+    let plan_path = root.join("repair.json");
+    vault_success(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--out",
+        plan_path.to_str().unwrap(),
+    ]);
+
+    let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
+    let plan_json: Value = serde_json::from_str(&plan_text).expect("repair plan should be JSON");
+
+    assert_eq!(plan_json["schema_version"], 4);
+    assert_eq!(plan_json["summary"]["planned_changes"], 1);
+    let change = &plan_json["changes"][0];
+    assert_eq!(change["operation"], "move_document");
+    assert_eq!(change["destination"], "Workspaces/demo/tasks/task.md");
+
+    let risk = &change["link_risk"];
+    assert_eq!(risk["directory_changed"], true);
+    assert_eq!(risk["stem_changed"], false);
+    assert!(
+        risk["path_qualified_wikilinks"]
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false),
+        "expected path_qualified_wikilinks to be populated; risk={risk}"
+    );
+    assert!(
+        risk["markdown_links"]
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false),
+        "expected markdown_links to be populated; risk={risk}"
+    );
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn repair_plan_skips_move_when_substitution_fails() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        r#"validate:
+  rules:
+    - name: task-routing
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      allowed_paths:
+        - "Workspaces/**/tasks/*.md"
+repair:
+  rules:
+    - name: route-tasks
+      match:
+        code: document-misrouted
+        rule: task-routing
+      move_document:
+        to_path: "Workspaces/{frontmatter.workspace}/tasks/{stem}.md"
+"#,
+    )
+    .expect("config should write");
+    fs::create_dir_all(root.join("Inbox")).expect("temp dir should be created");
+    // type: task but NO workspace frontmatter — substitution will fail
+    fs::write(
+        root.join("Inbox/orphan-task.md"),
+        "---\ntype: task\ntitle: Orphan\nstatus: backlog\n---\n# Body\n",
+    )
+    .expect("task should write");
+
+    let plan_path = root.join("repair.json");
+    vault_success(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--out",
+        plan_path.to_str().unwrap(),
+    ]);
+
+    let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
+    let plan_json: Value = serde_json::from_str(&plan_text).expect("repair plan should be JSON");
+
+    assert_eq!(plan_json["summary"]["planned_changes"], 0);
+    let skipped = plan_json["skipped_findings"].as_array().expect("skipped");
+    let move_skip = skipped
+        .iter()
+        .find(|f| f["code"] == "document-misrouted")
+        .expect("expected a skipped document-misrouted finding");
+    assert_eq!(move_skip["skip_reason"], "precondition_failed");
+    assert!(
+        move_skip["reason"]
+            .as_str()
+            .unwrap_or("")
+            .contains("substitution"),
+        "reason should mention substitution; got: {}",
+        move_skip["reason"]
+    );
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}

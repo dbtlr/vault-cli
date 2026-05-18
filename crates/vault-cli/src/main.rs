@@ -9,7 +9,7 @@ mod repair_apply;
 mod target;
 mod validate_filter;
 
-use std::{collections::BTreeMap, fs, process};
+use std::{fs, process};
 
 use anyhow::{bail, Result};
 use clap::Parser;
@@ -174,7 +174,7 @@ fn run(cli: Cli) -> Result<i32> {
                     repair_plan_filters(&args),
                     findings,
                     &loaded_config.repair,
-                    &document_hashes(&index),
+                    &index,
                 );
                 if let Some(out) = &args.out {
                     if args.format != RepairOutputFormat::Json {
@@ -305,14 +305,6 @@ fn normalized_filter_values(values: &[String]) -> Vec<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .collect()
-}
-
-fn document_hashes(index: &GraphIndex) -> BTreeMap<camino::Utf8PathBuf, String> {
-    index
-        .documents
-        .iter()
-        .map(|document| (document.path.clone(), document.hash.clone()))
         .collect()
 }
 
