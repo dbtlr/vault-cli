@@ -1,3 +1,8 @@
+---
+title: Validate rule shape
+description: How vault-cli validate rules combine selectors and constraints to match documents and emit findings.
+---
+
 # Validate Rule Shape
 
 A validate rule has two parts: a **selector** that picks documents, and one
