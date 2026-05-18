@@ -2991,7 +2991,10 @@ fn completions_install_no_arg_and_no_shell_env_errors() {
         .env_remove("SHELL")
         .output()
         .expect("vault command should run");
-    assert!(!output.status.success(), "expected failure with no SHELL set");
+    assert!(
+        !output.status.success(),
+        "expected failure with no SHELL set"
+    );
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
         stderr.contains("could not auto-detect") || stderr.contains("SHELL"),
@@ -3054,10 +3057,7 @@ fn completions_install_zsh_writes_marker_block_to_zshrc() {
 #[test]
 fn completions_install_zsh_honors_zdotdir() {
     let zdir = tempfile::TempDir::new().unwrap();
-    let (_home, output) = install_in_tempdir(
-        "zsh",
-        &[("ZDOTDIR", zdir.path().to_str().unwrap())],
-    );
+    let (_home, output) = install_in_tempdir("zsh", &[("ZDOTDIR", zdir.path().to_str().unwrap())]);
     assert!(output.status.success());
     let zshrc = fs::read_to_string(zdir.path().join(".zshrc")).unwrap();
     assert!(zshrc.contains("# >>> vault completions"));
@@ -3247,6 +3247,49 @@ fn completions_install_powershell_honors_profile_env() {
     assert!(output.status.success());
     let content = fs::read_to_string(&custom_profile).unwrap();
     assert!(content.contains("# >>> vault completions"));
+}
+
+#[test]
+fn completions_install_auto_detects_from_shell_env() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env("SHELL", "/bin/zsh")
+        .env_remove("ZDOTDIR")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let zshrc = fs::read_to_string(dir.path().join(".zshrc")).unwrap();
+    assert!(zshrc.contains("# >>> vault completions"));
+    assert!(zshrc.contains("eval \"$(vault completions init zsh)\""));
+}
+
+#[test]
+fn completions_install_print_for_nushell_shows_both_targets() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "nushell", "--print"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Both targets named
+    assert!(stdout.contains("vault.nu"));
+    assert!(stdout.contains("config.nu"));
+    // No files written
+    assert!(!dir
+        .path()
+        .join(".config/nushell/completions/vault.nu")
+        .exists());
+    assert!(!dir.path().join(".config/nushell/config.nu").exists());
 }
 
 #[test]

@@ -132,9 +132,7 @@ fn resolve_shell(explicit: Option<SupportedShell>) -> Result<SupportedShell> {
     let env_shell = std::env::var("SHELL").context(
         "could not auto-detect shell: $SHELL is not set. Pass a shell explicitly, e.g. `vault completions install zsh`."
     )?;
-    let name = Utf8Path::new(env_shell.as_str())
-        .file_name()
-        .unwrap_or("");
+    let name = Utf8Path::new(env_shell.as_str()).file_name().unwrap_or("");
     match name {
         "bash" => Ok(SupportedShell::Bash),
         "zsh" => Ok(SupportedShell::Zsh),
@@ -357,7 +355,8 @@ fn replace_marker_block(original: &str, range: (usize, usize), block: &str) -> S
 }
 
 pub(crate) fn home_dir() -> Result<Utf8PathBuf> {
-    let home = std::env::var("HOME").context("$HOME is not set; required to resolve shell config paths")?;
+    let home = std::env::var("HOME")
+        .context("$HOME is not set; required to resolve shell config paths")?;
     Utf8PathBuf::try_from(PathBuf::from(home)).context("$HOME is not valid UTF-8")
 }
 

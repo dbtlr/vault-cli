@@ -375,7 +375,10 @@ pub struct CompletionsInitArgs {
 
 #[derive(Debug, Parser)]
 pub struct CompletionsInstallArgs {
-    #[arg(value_enum, help = "Target shell. Auto-detected from $SHELL if omitted")]
+    #[arg(
+        value_enum,
+        help = "Target shell. Auto-detected from $SHELL if omitted"
+    )]
     pub shell: Option<SupportedShell>,
     #[arg(long, help = "Preview what would be written; do not modify any files")]
     pub print: bool,
