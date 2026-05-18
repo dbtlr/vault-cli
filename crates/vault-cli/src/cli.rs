@@ -12,22 +12,30 @@ pub struct Cli {
         short = 'C',
         long,
         global = true,
+        help_heading = "Global options",
         help = "Run as if vault started in this directory"
     )]
     pub cwd: Option<Utf8PathBuf>,
     #[arg(
         long,
         global = true,
+        help_heading = "Global options",
         help = "Run against a named vault from the user registry"
     )]
     pub vault: Option<String>,
     #[arg(
         long,
         global = true,
+        help_heading = "Global options",
         help = "YAML config file. Defaults to <cwd>/.vault/config.yaml when present"
     )]
     pub config: Option<Utf8PathBuf>,
-    #[arg(long, global = true, help = "Include full diagnostic detail in output")]
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        help = "Include full diagnostic detail in output"
+    )]
     pub verbose: bool,
     #[command(subcommand)]
     pub command: Command,
@@ -129,7 +137,9 @@ pub enum RegistrySubcommand {
 
 #[derive(Debug, Parser)]
 pub struct RegistryAddArgs {
+    #[arg(help = "Vault name. Must not be empty, contain whitespace, or contain '/' or '\\\\'")]
     pub name: String,
+    #[arg(help = "Absolute or relative path to the vault root directory")]
     pub path: Utf8PathBuf,
 }
 
@@ -141,6 +151,7 @@ pub struct RegistryListArgs {
 
 #[derive(Debug, Parser)]
 pub struct RegistryRemoveArgs {
+    #[arg(help = "Vault name registered via `vault registry add`")]
     pub name: String,
 }
 
@@ -213,6 +224,7 @@ pub struct RepairLinksArgs {
 
 #[derive(Debug, Parser)]
 pub struct RepairApplyArgs {
+    #[arg(help = "Path to a JSON repair plan artifact produced by `vault repair plan --out`")]
     pub plan: Utf8PathBuf,
     #[arg(long, help = "Preview changes without writing files")]
     pub dry_run: bool,
