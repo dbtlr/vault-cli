@@ -5,7 +5,6 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::Connection;
 use serde_json::Value;
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -140,7 +139,7 @@ fn vault_help_documents_global_cwd() {
     assert!(output.contains("search"));
     assert!(output.contains("registry"));
     assert!(output.contains("repair"));
-    assert!(output.contains("cache"));
+    assert!(!output.contains("cache"));
 }
 
 #[test]
@@ -161,9 +160,8 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("unresolved"));
     assert!(output.contains("backlinks"));
 
-    let output = vault(&["cache", "--help"]);
-    assert!(output.contains("Local SQLite projection of the graph"));
-    assert!(output.contains("build"));
+    let error = vault_error(&["cache", "--help"]);
+    assert!(error.contains("unrecognized subcommand 'cache'"));
 
     let output = vault(&["registry", "--help"]);
     assert!(output.contains("Manage named vault roots"));
@@ -680,7 +678,7 @@ fn repair_config_rejects_ambiguous_actions() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("repair.rules[0] must declare exactly one repair action"));
+    assert!(error.contains("repair rule bad declares both"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -864,14 +862,6 @@ fn search_supports_path_presence_table_and_paths_formats() {
     assert!(table.contains("path"));
     assert!(table.contains("alpha.md"));
     assert!(table.contains("Alpha"));
-}
-
-#[test]
-fn graph_build_help_documents_cache_semantics() {
-    let output = vault(&["cache", "build", "--help"]);
-    assert!(output.contains("SQLite cache file path or directory"));
-    assert!(output.contains("--format only controls stdout"));
-    assert!(output.contains("inventoried files"));
 }
 
 #[test]
@@ -1112,7 +1102,7 @@ fn validate_invalid_discovered_config_fails() {
     fs::create_dir_all(root.join(".vault")).expect("config dir should be created");
     fs::write(
         root.join(".vault/config.yaml"),
-        "validate:\n  rules:\n    - name: bad\n      match:\n        path: 123\n",
+        "validate:\n  rules:\n    - name: bad\n      match:\n        path:\n          - 1\n          - 2\n",
     )
     .expect("config should write");
     fs::write(root.join("note.md"), "# Note\n").expect("note should write");
@@ -1121,7 +1111,7 @@ fn validate_invalid_discovered_config_fails() {
 
     assert!(error.contains("invalid config"));
     assert!(error.contains(".vault/config.yaml"));
-    assert!(error.contains("validate.rules[0].match.path must be a string"));
+    assert!(error.contains("validate.rules[0].match.path"));
 
     fs::remove_dir_all(root).ok();
 }
@@ -1600,7 +1590,8 @@ fn validate_rejects_malformed_allowed_values() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("validate.rules[0].allowed_values.status must be a sequence"));
+    assert!(error.contains("validate.rules[0].allowed_values.status"));
+    assert!(error.contains("expected a sequence"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -1715,7 +1706,8 @@ fn validate_rejects_unknown_match_keys() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("unknown key validate.rules[0].match.fronmatter"));
+    assert!(error.contains("validate.rules[0].match"));
+    assert!(error.contains("unknown field `fronmatter`"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -1742,8 +1734,8 @@ fn validate_rejects_non_scalar_frontmatter_predicates() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("validate.rules[0].match.frontmatter.type"));
-    assert!(error.contains("must be a string, boolean, or number"));
+    assert!(error.contains("rule list"));
+    assert!(error.contains("match.frontmatter.type must be a string, boolean, or number"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -2029,96 +2021,6 @@ fn graph_documents_jsonl_contract() {
 }
 
 #[test]
-fn graph_build_writes_sqlite_cache() {
-    let root = fixture_root();
-    let cache_dir = temp_cache_dir();
-    let output = vault(&[
-        "cache",
-        "build",
-        "-C",
-        root.to_str().unwrap(),
-        "--cache",
-        cache_dir.to_str().unwrap(),
-        "--format",
-        "json",
-    ]);
-
-    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    let cache_path = cache_dir.join("graph.sqlite");
-    assert_eq!(value["cache_path"], cache_path.to_str().unwrap());
-    assert_eq!(value["documents"], 10);
-    assert_eq!(value["files"], 12);
-    assert_eq!(value["ignored_files"], 0);
-    assert_eq!(value["links"], 23);
-    assert!(cache_path.exists());
-
-    let connection = Connection::open(&cache_path).expect("cache should open");
-    let document_count: i64 = connection
-        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
-        .unwrap();
-    let file_count: i64 = connection
-        .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
-        .unwrap();
-    let link_count: i64 = connection
-        .query_row("SELECT COUNT(*) FROM links", [], |row| row.get(0))
-        .unwrap();
-    let missing_reason: String = connection
-        .query_row(
-            "SELECT unresolved_reason FROM links WHERE raw = '[[missing]]'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    let frontmatter_line: i64 = connection
-        .query_row(
-            "SELECT line FROM links WHERE raw = '[[Front Target]]'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    let schema_version: String = connection
-        .query_row(
-            "SELECT value FROM metadata WHERE key = 'schema_version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(document_count, 10);
-    assert_eq!(file_count, 12);
-    assert_eq!(link_count, 23);
-    assert_eq!(missing_reason, "target-missing");
-    assert_eq!(frontmatter_line, 3);
-    assert_eq!(schema_version, "2");
-
-    std::fs::remove_dir_all(cache_dir).ok();
-}
-
-#[test]
-fn graph_build_resolves_relative_cache_against_cwd() {
-    let root = temp_cache_dir();
-    fs::create_dir_all(&root).expect("temp dir should be created");
-    fs::write(root.join("note.md"), "# Note\n").expect("note should write");
-
-    let output = vault(&[
-        "-C",
-        root.to_str().unwrap(),
-        "cache",
-        "build",
-        "--cache",
-        ".vault/cache",
-        "--format",
-        "json",
-    ]);
-
-    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    let cache_path = root.join(".vault/cache/graph.sqlite");
-    assert_eq!(value["cache_path"], cache_path.to_str().unwrap());
-    assert!(cache_path.exists());
-
-    fs::remove_dir_all(root).ok();
-}
-
-#[test]
 fn graph_config_ignores_files_before_indexing() {
     let root = temp_cache_dir();
     fs::create_dir_all(root.join("__pycache__")).expect("temp dirs should be created");
@@ -2167,23 +2069,6 @@ fn graph_config_ignores_files_before_indexing() {
         .iter()
         .any(|file| file["path"] == "vault.yaml"));
 
-    let build = vault(&[
-        "cache",
-        "build",
-        "-C",
-        root.to_str().unwrap(),
-        "--config",
-        root.join("vault.yaml").to_str().unwrap(),
-        "--cache",
-        root.join("cache.sqlite").to_str().unwrap(),
-        "--format",
-        "json",
-    ]);
-    let build = serde_json::from_str::<Value>(&build).expect("output should be JSON");
-    assert_eq!(build["files"], 2);
-    assert_eq!(build["ignored_files"], 2);
-    assert_eq!(build["documents"], 1);
-
     fs::remove_dir_all(root).ok();
 }
 
@@ -2210,34 +2095,6 @@ fn graph_ignore_config_key_reports_v0_16_rename() {
     assert!(error.contains("'graph.ignore' was renamed to 'files.ignore' in v0.16"));
 
     fs::remove_dir_all(root).ok();
-}
-
-#[test]
-fn graph_build_accepts_sqlite_file_path() {
-    let root = fixture_root();
-    let cache_path = temp_cache_dir().with_extension("sqlite");
-    let output = vault(&[
-        "cache",
-        "build",
-        "-C",
-        root.to_str().unwrap(),
-        "--cache",
-        cache_path.to_str().unwrap(),
-        "--format",
-        "json",
-    ]);
-
-    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    assert_eq!(value["cache_path"], cache_path.to_str().unwrap());
-    assert!(cache_path.exists());
-
-    let connection = Connection::open(&cache_path).expect("cache should open");
-    let document_count: i64 = connection
-        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
-        .unwrap();
-    assert_eq!(document_count, 10);
-
-    std::fs::remove_file(cache_path).ok();
 }
 
 #[test]

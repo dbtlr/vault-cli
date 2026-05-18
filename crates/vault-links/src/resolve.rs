@@ -231,7 +231,7 @@ mod tests {
             path: path.into(),
             stem: Utf8Path::new(path).file_stem().unwrap().to_string(),
             extension: Utf8Path::new(path).extension().map(str::to_string),
-            hash: String::new(),
+            hash: None,
         }
     }
 

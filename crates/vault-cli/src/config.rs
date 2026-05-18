@@ -3,7 +3,7 @@ use std::fs;
 use anyhow::Result;
 use camino::Utf8PathBuf;
 use vault_graph::IndexOptions;
-use vault_standards::{validate_config_yaml, RepairConfig, ValidateConfig, VaultConfig};
+use vault_standards::{parse_config, RepairConfig, ValidateConfig};
 
 pub struct LoadedConfig {
     pub index_options: IndexOptions,
@@ -56,20 +56,17 @@ pub fn load_config(cwd: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Resu
             discovered.exists().then_some(discovered)
         });
 
-    let config = match resolved_config_path {
-        Some(config_path) => {
-            let config_text = fs::read_to_string(&config_path)
-                .map_err(|error| anyhow::anyhow!("failed to read config {config_path}: {error}"))?;
-            let config_value =
-                serde_yaml::from_str::<serde_yaml::Value>(&config_text).map_err(|error| {
-                    anyhow::anyhow!("failed to parse config {config_path}: {error}")
-                })?;
-            validate_config_yaml(&config_path, &config_value)?;
-            serde_yaml::from_value::<VaultConfig>(config_value)
-                .map_err(|error| anyhow::anyhow!("failed to parse config {config_path}: {error}"))?
-        }
-        None => VaultConfig::default(),
+    let Some(config_path) = resolved_config_path else {
+        return Ok(LoadedConfig {
+            index_options: IndexOptions::default(),
+            validate: ValidateConfig::default(),
+            repair: RepairConfig::default(),
+        });
     };
+
+    let config_text = fs::read_to_string(&config_path)
+        .map_err(|error| anyhow::anyhow!("failed to read config {config_path}: {error}"))?;
+    let config = parse_config(&config_text, &config_path)?;
 
     Ok(LoadedConfig {
         index_options: IndexOptions {

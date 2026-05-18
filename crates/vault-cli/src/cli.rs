@@ -61,8 +61,6 @@ pub enum Command {
     Registry(RegistryCommand),
     #[command(about = "Plan and apply deterministic vault repairs")]
     Repair(RepairCommand),
-    #[command(about = "Local SQLite projection of the graph")]
-    Cache(CacheCommand),
     #[command(
         about = "Validate vault graph facts and configured frontmatter rules",
         long_about = "Validate vault graph facts and configured frontmatter rules.\n\nValidation reuses graph/index facts to surface unresolved links, ambiguous links, document diagnostics, and configured frontmatter requirements. Validate does not mutate files."
@@ -111,12 +109,6 @@ pub enum LinksSubcommand {
         long_about = "Emit incoming links for an exact vault-relative file path or unique document stem.\n\nExact paths may target Markdown documents or non-Markdown files. Stem matching only applies to Markdown documents and is case-insensitive.\n\n--format paths emits unique source paths."
     )]
     Backlinks(TargetGraphArgs),
-}
-
-#[derive(Debug, Parser)]
-pub struct CacheCommand {
-    #[command(subcommand)]
-    pub command: CacheSubcommand,
 }
 
 #[derive(Debug, Parser)]
@@ -180,6 +172,80 @@ pub enum RepairSubcommand {
     Apply(RepairApplyArgs),
 }
 
+#[derive(Debug, Clone, clap::Args)]
+pub struct FrontmatterFilterArgs {
+    #[arg(
+        long = "filter",
+        help_heading = "Filter options",
+        help = "Frontmatter field:value filter. Comma-separated values match any listed value. Repeat to require multiple fields"
+    )]
+    pub filters: Vec<String>,
+    #[arg(
+        long = "path",
+        help_heading = "Filter options",
+        help = "Vault-relative path glob filter using config glob semantics"
+    )]
+    pub paths: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Filter options",
+        help = "Require a present, non-null frontmatter field"
+    )]
+    pub has: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Filter options",
+        help = "Require a missing or null frontmatter field"
+    )]
+    pub missing: Vec<String>,
+}
+
+#[derive(Debug, Clone, clap::Args)]
+pub struct ValidateTriageArgs {
+    #[arg(
+        long,
+        help_heading = "Triage filters",
+        help = "Filter findings by code. Comma-separated values match any listed code"
+    )]
+    pub code: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Triage filters",
+        help = "Filter findings by severity"
+    )]
+    pub severity: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Triage filters",
+        help = "Filter findings by frontmatter field"
+    )]
+    pub field: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Triage filters",
+        help = "Filter findings by validate rule name"
+    )]
+    pub rule: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Triage filters",
+        help = "Filter findings by vault-relative path glob using config glob semantics"
+    )]
+    pub path: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Triage filters",
+        help = "Filter link findings by link target"
+    )]
+    pub target: Vec<String>,
+    #[arg(
+        long,
+        help_heading = "Triage filters",
+        help = "Filter link findings by unresolved reason"
+    )]
+    pub reason: Vec<String>,
+}
+
 #[derive(Debug, Parser)]
 pub struct RepairPlanArgs {
     #[arg(long, value_enum, default_value_t = RepairOutputFormat::Json, help = "Stdout format")]
@@ -189,26 +255,8 @@ pub struct RepairPlanArgs {
         help = "Write the JSON repair plan artifact to this path instead of stdout"
     )]
     pub out: Option<Utf8PathBuf>,
-    #[arg(
-        long,
-        help = "Filter findings by code. Comma-separated values match any listed code"
-    )]
-    pub code: Vec<String>,
-    #[arg(long, help = "Filter findings by severity")]
-    pub severity: Vec<String>,
-    #[arg(long, help = "Filter findings by frontmatter field")]
-    pub field: Vec<String>,
-    #[arg(long, help = "Filter findings by validate rule name")]
-    pub rule: Vec<String>,
-    #[arg(
-        long,
-        help = "Filter findings by vault-relative path glob using config glob semantics"
-    )]
-    pub path: Vec<String>,
-    #[arg(long, help = "Filter link findings by link target")]
-    pub target: Vec<String>,
-    #[arg(long, help = "Filter link findings by unresolved reason")]
-    pub reason: Vec<String>,
+    #[command(flatten)]
+    pub triage: ValidateTriageArgs,
 }
 
 #[derive(Debug, Parser)]
@@ -237,42 +285,10 @@ pub struct RepairApplyArgs {
     pub format: RepairOutputFormat,
 }
 
-#[derive(Debug, Subcommand)]
-pub enum CacheSubcommand {
-    #[command(
-        about = "Write a SQLite graph cache and emit a build summary",
-        long_about = "Write a SQLite graph cache and emit a build summary.\n\nThe cache includes inventoried files, parsed Markdown documents, headings, block IDs, graph link facts, and diagnostics. --format only controls stdout; the cache is always SQLite."
-    )]
-    Build(BuildArgs),
-}
-
-#[derive(Debug, Parser)]
-pub struct BuildArgs {
-    #[arg(
-        long,
-        help = "SQLite cache file path or directory. Directories receive graph.sqlite; --format only controls stdout"
-    )]
-    pub cache: Utf8PathBuf,
-    #[arg(long, value_enum, help = "Stdout format")]
-    pub format: Option<OutputFormat>,
-}
-
 #[derive(Debug, Parser)]
 pub struct DocumentsArgs {
-    #[arg(
-        long = "filter",
-        help = "Frontmatter field:value filter. Comma-separated values match any listed value. Repeat to require multiple fields"
-    )]
-    pub filters: Vec<String>,
-    #[arg(
-        long = "path",
-        help = "Vault-relative path glob filter using config glob semantics"
-    )]
-    pub paths: Vec<String>,
-    #[arg(long, help = "Require a present, non-null frontmatter field")]
-    pub has: Vec<String>,
-    #[arg(long, help = "Require a missing or null frontmatter field")]
-    pub missing: Vec<String>,
+    #[command(flatten)]
+    pub filters: FrontmatterFilterArgs,
     #[arg(long, value_enum, help = "Stdout format")]
     pub format: Option<OutputFormat>,
 }
@@ -310,40 +326,16 @@ pub struct DocsSummaryArgs {
         help = "Frontmatter field to group document counts by"
     )]
     pub count_by: String,
-    #[arg(
-        long = "filter",
-        help = "Frontmatter field:value filter. Comma-separated values match any listed value. Repeat to require multiple fields"
-    )]
-    pub filters: Vec<String>,
-    #[arg(
-        long = "path",
-        help = "Vault-relative path glob filter using config glob semantics"
-    )]
-    pub paths: Vec<String>,
-    #[arg(long, help = "Require a present, non-null frontmatter field")]
-    pub has: Vec<String>,
-    #[arg(long, help = "Require a missing or null frontmatter field")]
-    pub missing: Vec<String>,
+    #[command(flatten)]
+    pub filters: FrontmatterFilterArgs,
     #[arg(long, value_enum, help = "Stdout format")]
     pub format: Option<OutputFormat>,
 }
 
 #[derive(Debug, Parser)]
 pub struct SearchArgs {
-    #[arg(
-        long = "filter",
-        help = "Frontmatter field:value filter. Comma-separated values match any listed value. Repeat to require multiple fields"
-    )]
-    pub filters: Vec<String>,
-    #[arg(
-        long = "path",
-        help = "Vault-relative path glob filter using config glob semantics"
-    )]
-    pub paths: Vec<String>,
-    #[arg(long, help = "Require a present, non-null frontmatter field")]
-    pub has: Vec<String>,
-    #[arg(long, help = "Require a missing or null frontmatter field")]
-    pub missing: Vec<String>,
+    #[command(flatten)]
+    pub filters: FrontmatterFilterArgs,
     #[arg(
         long,
         help = "Require an exact literal substring in the Markdown file contents. Repeat to require multiple substrings"
@@ -362,26 +354,8 @@ pub struct ValidateArgs {
         help = "Emit grouped validation finding counts instead of raw findings"
     )]
     pub summary: bool,
-    #[arg(
-        long,
-        help = "Filter findings by code. Comma-separated values match any listed code"
-    )]
-    pub code: Vec<String>,
-    #[arg(long, help = "Filter findings by severity")]
-    pub severity: Vec<String>,
-    #[arg(long, help = "Filter findings by frontmatter field")]
-    pub field: Vec<String>,
-    #[arg(long, help = "Filter findings by validate rule name")]
-    pub rule: Vec<String>,
-    #[arg(
-        long,
-        help = "Filter findings by vault-relative path glob using config glob semantics"
-    )]
-    pub path: Vec<String>,
-    #[arg(long, help = "Filter link findings by link target")]
-    pub target: Vec<String>,
-    #[arg(long, help = "Filter link findings by unresolved reason")]
-    pub reason: Vec<String>,
+    #[command(flatten)]
+    pub triage: ValidateTriageArgs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

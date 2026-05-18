@@ -89,7 +89,7 @@ pub fn plan_repairs(
 
     for finding in &findings {
         if let Some((rule, action)) = matching_repair_rule(finding, &config.rules) {
-            match planned_change(finding, rule, action, document_hashes) {
+            match planned_change(finding, rule, &action, document_hashes) {
                 Some(change) => changes.push(change),
                 None => skipped_findings.push(plan_finding(
                     finding,
@@ -133,11 +133,14 @@ pub fn plan_repairs(
 fn matching_repair_rule<'a>(
     finding: &Finding,
     rules: &'a [RepairRule],
-) -> Option<(&'a RepairRule, &'a RepairAction)> {
+) -> Option<(&'a RepairRule, RepairAction)> {
     rules
         .iter()
         .find(|rule| repair_match_applies(finding, &rule.r#match))
-        .map(|rule| (rule, &rule.action))
+        .map(|rule| {
+            let action = rule.action();
+            (rule, action)
+        })
 }
 
 fn repair_match_applies(finding: &Finding, rule_match: &RepairRuleMatch) -> bool {
@@ -412,6 +415,16 @@ mod tests {
         match_actual: Option<serde_json::Value>,
         action: RepairAction,
     ) -> RepairRule {
+        let (set_frontmatter, remove_frontmatter) = match action {
+            RepairAction::SetFrontmatter { field, value } => (
+                Some(crate::config::SetFrontmatterAction { field, value }),
+                None,
+            ),
+            RepairAction::RemoveFrontmatter { field } => (
+                None,
+                Some(crate::config::RemoveFrontmatterAction { field }),
+            ),
+        };
         RepairRule {
             name: Some(name.into()),
             r#match: RepairRuleMatch {
@@ -420,7 +433,8 @@ mod tests {
                 field: match_field.map(Into::into),
                 actual_value: match_actual,
             },
-            action,
+            set_frontmatter,
+            remove_frontmatter,
         }
     }
 

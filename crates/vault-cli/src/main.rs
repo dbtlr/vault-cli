@@ -13,12 +13,12 @@ use std::{collections::BTreeMap, fs, process};
 use anyhow::{bail, Result};
 use clap::Parser;
 use vault_core::{GraphIndex, LinkStatus};
-use vault_graph::{build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache};
+use vault_graph::{build_index_with_options, concise_diagnostics, has_errors};
 use vault_standards::{plan_repairs, summarize, validate, RepairPlanFilters};
 
 use crate::cli::{
-    CacheSubcommand, Cli, Command, DocsSubcommand, LinksSubcommand, RegistrySubcommand,
-    RepairOutputFormat, RepairSubcommand,
+    Cli, Command, DocsSubcommand, LinksSubcommand, RegistrySubcommand, RepairOutputFormat,
+    RepairSubcommand,
 };
 use crate::config::{effective_cwd, load_config, resolve_path};
 use crate::filter::{
@@ -71,10 +71,10 @@ fn run(cli: Cli) -> Result<i32> {
                 let mut index = build_index_for(&cwd, config_path.as_ref())?;
                 trim_diagnostics(&mut index, verbose);
                 let options = DocumentFilterOptions {
-                    filters: &args.filters,
-                    paths: &args.paths,
-                    has: &args.has,
-                    missing: &args.missing,
+                    filters: &args.filters.filters,
+                    paths: &args.filters.paths,
+                    has: &args.filters.has,
+                    missing: &args.filters.missing,
                 };
                 let documents = filter_documents(&index, &options)?;
                 write_documents(&documents, resolve_format(args.format))?;
@@ -84,10 +84,10 @@ fn run(cli: Cli) -> Result<i32> {
                 let mut index = build_index_for(&cwd, config_path.as_ref())?;
                 trim_diagnostics(&mut index, verbose);
                 let options = DocumentFilterOptions {
-                    filters: &args.filters,
-                    paths: &args.paths,
-                    has: &args.has,
-                    missing: &args.missing,
+                    filters: &args.filters.filters,
+                    paths: &args.filters.paths,
+                    has: &args.filters.has,
+                    missing: &args.filters.missing,
                 };
                 let known_fields = index_frontmatter_keys(&index);
                 let documents = filter_documents(&index, &options)?;
@@ -148,10 +148,10 @@ fn run(cli: Cli) -> Result<i32> {
             let mut index = build_index_for(&cwd, config_path.as_ref())?;
             trim_diagnostics(&mut index, verbose);
             let options = DocumentFilterOptions {
-                filters: &args.filters,
-                paths: &args.paths,
-                has: &args.has,
-                missing: &args.missing,
+                filters: &args.filters.filters,
+                paths: &args.filters.paths,
+                has: &args.filters.has,
+                missing: &args.filters.missing,
             };
             let documents = filter_documents(&index, &options)?;
             let documents = filter_documents_by_text(&cwd, documents, &args.text)?;
@@ -220,16 +220,6 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
         },
-        Command::Cache(cache) => match cache.command {
-            CacheSubcommand::Build(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
-                trim_diagnostics(&mut index, verbose);
-                let cache_path = resolve_path(&cwd, &args.cache);
-                let summary = write_sqlite_cache(&index, &cache_path)?;
-                write_item_output(&summary, resolve_format(args.format))?;
-                Ok(exit_code_for(&index))
-            }
-        },
         Command::Validate(args) => {
             let loaded_config = load_config(&cwd, config_path.as_ref())?;
             let mut index = build_index_with_options(&cwd, &loaded_config.index_options)?;
@@ -271,13 +261,13 @@ fn run_registry(command: RegistrySubcommand) -> Result<i32> {
 
 fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
     RepairPlanFilters {
-        code: normalized_filter_values(&args.code),
-        severity: normalized_filter_values(&args.severity),
-        field: normalized_filter_values(&args.field),
-        rule: normalized_filter_values(&args.rule),
-        path: normalized_filter_values(&args.path),
-        target: normalized_filter_values(&args.target),
-        reason: normalized_filter_values(&args.reason),
+        code: normalized_filter_values(&args.triage.code),
+        severity: normalized_filter_values(&args.triage.severity),
+        field: normalized_filter_values(&args.triage.field),
+        rule: normalized_filter_values(&args.triage.rule),
+        path: normalized_filter_values(&args.triage.path),
+        target: normalized_filter_values(&args.triage.target),
+        reason: normalized_filter_values(&args.triage.reason),
     }
 }
 
