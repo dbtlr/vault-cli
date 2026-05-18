@@ -4,3 +4,4 @@ agents.local.md
 .worktrees/
 CLAUDE.local.md
 .claude/settings.local.json
+.claude/worktrees/

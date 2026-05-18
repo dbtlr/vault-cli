@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"  # weekly cargo audit / cargo deny refresh
+
+jobs:
+  ci:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install shellcheck (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Install shellcheck (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install shellcheck
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo test --workspace --locked
+        run: cargo test --workspace --locked
+
+      - name: cargo build -p vault-cli --release --locked
+        run: cargo build -p vault-cli --release --locked
+
+      - name: cargo install --path crates/vault-cli --locked
+        run: cargo install --path crates/vault-cli --locked
+
+      - name: vault --help
+        run: vault --help
+
+      - name: fixture validate
+        run: vault -C fixtures/basic validate --summary --format json
+
+      - name: repo self-validate
+        run: vault -C . validate --summary --format json
+
+      - name: cargo audit
+        run: cargo install --locked cargo-audit && cargo audit
+
+      - name: cargo deny check
+        run: cargo install --locked cargo-deny && cargo deny check
+
+      - name: shellcheck
+        run: shellcheck examples/repair-recipe.sh

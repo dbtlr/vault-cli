@@ -1,0 +1,14 @@
+files:
+  ignore:
+    - "target/**"
+    - ".github/**"
+    - "fixtures/**"
+    - ".claude/**"
+validate:
+  rules:
+    - name: docs-page-base
+      match:
+        path: "docs/**/*.md"
+      required_frontmatter:
+        - title
+        - description

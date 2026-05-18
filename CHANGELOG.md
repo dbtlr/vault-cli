@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it ships v1.0. Pre-1.0 versions may include breaking changes in minor releases.
 
+## Unreleased
+
+GitHub-readiness work: standard repo files, public Cargo metadata, README/docs reorganization, generic agent skill template, CI workflow with quality gates and repo self-validation. No code behavior changes.
+
+### Added
+
+- `LICENSE` (MIT, 2026 Drew Butler).
+- `CONTRIBUTING.md`, `SECURITY.md` (security reports to `hi@dbtlr.com`).
+- `.github/dependabot.yml` (weekly Cargo + GitHub Actions updates), `.github/ISSUE_TEMPLATE/bug.md` and `feature.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`.
+- Public package metadata on `crates/vault-cli/Cargo.toml`: `authors`, `description`, `repository`, `homepage`, `readme`, `categories`, `keywords`, `rust-version = "1.95"` (latest stable policy).
+- Concise `README.md` landing page; dense reference material moved into focused `docs/` pages (`installation.md`, `quickstart.md`, `concepts.md`, `commands.md`, `configuration.md`, `validation.md`, `agent-workflows.md`, `development.md`, `releases.md`). `AGENTS.md` slimmed to a ~30-line agent contract pointing at `docs/agent-workflows.md`.
+- `integrations/agent-skill/SKILL.md` — single harness-independent agent skill. `integrations/agent-skill/README.md` documents the two install paths: `.claude/skills/` for Claude Code, `.agents/skills/` for every other coding agent (Codex, Open Code, OpenClaw, Hermes, PI).
+- `examples/config-minimal.yaml`, `examples/config-typed-notes.yaml`, `examples/repair-recipe.sh` (executable), `examples/README.md` — generic Markdown vault content.
+- `.github/workflows/ci.yml` — matrix CI on ubuntu-latest and macos-latest. Runs `cargo fmt --check`, `cargo test --workspace --locked`, `cargo build -p vault-cli --release --locked`, `cargo install --path crates/vault-cli --locked`, `vault --help`, fixture validation, repo self-validation, `cargo audit`, `cargo deny check`, and `shellcheck examples/repair-recipe.sh`. Triggers: push to main, pull_request, weekly cron.
+- `deny.toml` — conservative supply-chain policy. Permissive license allow list (MIT, Apache-2.0, BSD-2/3-Clause, ISC, Unicode-DFS-2016, Unicode-3.0, Zlib); denies yanked advisories, unknown registries, unknown git sources; warns on wildcards and unmaintained crates.
+- `.vault/config.yaml` — repo-root dogfood config requiring `title` + `description` frontmatter on `docs/**/*.md`. CI asserts zero findings.
+- `Justfile` recipes: `dist-plan`, `dist-build-local`, `release version` (existing `release` recipe renamed to `build-release`).
+- Keep a Changelog format header at the top of this file.
+
+### Changed
+
+- `Justfile` — removed the stale `fixture-build-cache` recipe (the `vault cache build` command was removed in v0.26.0).
+- `docs/rule-shape.md` — added `title` and `description` frontmatter so the repo self-validation passes against the pre-existing page.
+
 ## v0.26.0 - 2026-05-18
 
 Structural cleanup release: apply migration to vault-standards, minimal-edit YAML preservation, repair plan schema v3 with SkipReason taxonomy, config schema serde rewrite, SQLite cache deletion, foundation tests across pure-parsing crates, and bundled CLI polish. Four-slice cleanup, four merged branches, 193 tests passing.
