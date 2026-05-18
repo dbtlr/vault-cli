@@ -18,6 +18,7 @@ pub use config::{
 };
 pub use engine::validate;
 pub use findings::{Finding, FindingBody};
+pub use repair::link_risk::{classify as classify_link_risk, AffectedLink, LinkRisk};
 pub use repair::{
     plan_repairs, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary, SkipReason,
     SkippedFinding, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
