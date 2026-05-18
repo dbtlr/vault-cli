@@ -227,15 +227,14 @@ mod tests {
 
     #[test]
     fn array_value_returns_non_scalar_error() {
-        let err =
-            serialize_value_preserving_style(&json!([1, 2]), ValueStyle::Plain).unwrap_err();
+        let err = serialize_value_preserving_style(&json!([1, 2]), ValueStyle::Plain).unwrap_err();
         assert!(matches!(err, QuoteError::NonScalarValue));
     }
 
     #[test]
     fn object_value_returns_non_scalar_error() {
-        let err = serialize_value_preserving_style(&json!({"a": 1}), ValueStyle::Plain)
-            .unwrap_err();
+        let err =
+            serialize_value_preserving_style(&json!({"a": 1}), ValueStyle::Plain).unwrap_err();
         assert!(matches!(err, QuoteError::NonScalarValue));
     }
 

@@ -195,8 +195,7 @@ pub fn top_level_property_spans(
         };
 
         // Determine if we should consume continuation lines.
-        let needs_continuation =
-            !ends_on_key_line || matches!(style, ValueStyle::EmptyValue);
+        let needs_continuation = !ends_on_key_line || matches!(style, ValueStyle::EmptyValue);
 
         if needs_continuation {
             let mut consume_index = index + 1;
@@ -381,8 +380,7 @@ fn classify_value(
                     && (value_bytes[i - 1] == b' ' || value_bytes[i - 1] == b'\t')
                 {
                     end = i;
-                    while end > 0
-                        && (value_bytes[end - 1] == b' ' || value_bytes[end - 1] == b'\t')
+                    while end > 0 && (value_bytes[end - 1] == b' ' || value_bytes[end - 1] == b'\t')
                     {
                         end -= 1;
                     }

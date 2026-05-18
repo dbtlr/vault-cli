@@ -22,10 +22,7 @@ pub enum ApplyError {
     UnsupportedSchemaVersion { expected: u32, got: u32 },
 
     #[error("repair plan vault root does not match effective cwd: plan {plan}, cwd {cwd}")]
-    VaultRootMismatch {
-        plan: Utf8PathBuf,
-        cwd: Utf8PathBuf,
-    },
+    VaultRootMismatch { plan: Utf8PathBuf, cwd: Utf8PathBuf },
 
     #[error("repair plan targets a document not in the index: {path}")]
     UnknownPath { path: Utf8PathBuf },
@@ -61,10 +58,7 @@ pub enum ApplyError {
     CannotMinimalEdit { path: Utf8PathBuf, reason: String },
 
     #[error("frontmatter parse failed for {path}: {message}")]
-    FrontmatterParseFailed {
-        path: Utf8PathBuf,
-        message: String,
-    },
+    FrontmatterParseFailed { path: Utf8PathBuf, message: String },
 
     #[error("set_frontmatter change missing new_value for {path}")]
     MissingNewValue { path: Utf8PathBuf },
@@ -159,10 +153,7 @@ pub fn changes_by_path(
                 field: change.field.clone(),
             });
         }
-        grouped
-            .entry(change.path.clone())
-            .or_default()
-            .push(change);
+        grouped.entry(change.path.clone()).or_default().push(change);
     }
 
     for (path, changes) in &grouped {
@@ -175,10 +166,7 @@ pub fn changes_by_path(
     Ok(grouped)
 }
 
-pub fn apply_file_changes(
-    content: &str,
-    changes: &[&PlannedChange],
-) -> Result<String, ApplyError> {
+pub fn apply_file_changes(content: &str, changes: &[&PlannedChange]) -> Result<String, ApplyError> {
     let path = if let Some(change) = changes.first() {
         change.path.clone()
     } else {
@@ -222,7 +210,12 @@ pub fn apply_file_changes(
 
     for change in changes {
         let current_value = current_object.get(&change.field);
-        check_expected_old_value(&path, &change.field, &change.expected_old_value, current_value)?;
+        check_expected_old_value(
+            &path,
+            &change.field,
+            &change.expected_old_value,
+            current_value,
+        )?;
 
         let span = spans.iter().find(|s| s.name == change.field);
 
@@ -247,8 +240,8 @@ pub fn apply_file_changes(
                     .new_value
                     .as_ref()
                     .ok_or_else(|| ApplyError::MissingNewValue { path: path.clone() })?;
-                let replacement = serialize_value_preserving_style(new_value, span.style)
-                    .map_err(|e| match e {
+                let replacement = serialize_value_preserving_style(new_value, span.style).map_err(
+                    |e| match e {
                         QuoteError::StructuredOriginalStyle(_) | QuoteError::NonScalarValue => {
                             ApplyError::CannotMinimalEdit {
                                 path: path.clone(),
@@ -259,7 +252,8 @@ pub fn apply_file_changes(
                             path: path.clone(),
                             reason: e.to_string(),
                         },
-                    })?;
+                    },
+                )?;
                 edits.push((value_range, replacement));
             }
             "remove_frontmatter" => {
@@ -394,9 +388,21 @@ mod tests {
     fn changes_by_path_groups_by_path() {
         let mut plan = empty_plan(REPAIR_PLAN_SCHEMA_VERSION, "/vault");
         plan.changes = vec![
-            make_change("a.md", "status", "h1", "set_frontmatter", Some(json!("done"))),
+            make_change(
+                "a.md",
+                "status",
+                "h1",
+                "set_frontmatter",
+                Some(json!("done")),
+            ),
             make_change("a.md", "kind", "h1", "remove_frontmatter", None),
-            make_change("b.md", "status", "h2", "set_frontmatter", Some(json!("done"))),
+            make_change(
+                "b.md",
+                "status",
+                "h2",
+                "set_frontmatter",
+                Some(json!("done")),
+            ),
         ];
         let grouped = changes_by_path(&plan).unwrap();
         assert_eq!(grouped.len(), 2);
@@ -408,7 +414,13 @@ mod tests {
     fn changes_by_path_rejects_conflicting_field_changes() {
         let mut plan = empty_plan(REPAIR_PLAN_SCHEMA_VERSION, "/vault");
         plan.changes = vec![
-            make_change("a.md", "status", "h1", "set_frontmatter", Some(json!("done"))),
+            make_change(
+                "a.md",
+                "status",
+                "h1",
+                "set_frontmatter",
+                Some(json!("done")),
+            ),
             make_change(
                 "a.md",
                 "status",
@@ -425,7 +437,13 @@ mod tests {
     fn changes_by_path_rejects_conflicting_hashes_for_same_path() {
         let mut plan = empty_plan(REPAIR_PLAN_SCHEMA_VERSION, "/vault");
         plan.changes = vec![
-            make_change("a.md", "status", "h1", "set_frontmatter", Some(json!("done"))),
+            make_change(
+                "a.md",
+                "status",
+                "h1",
+                "set_frontmatter",
+                Some(json!("done")),
+            ),
             make_change("a.md", "kind", "h2", "remove_frontmatter", None),
         ];
         let err = changes_by_path(&plan).unwrap_err();

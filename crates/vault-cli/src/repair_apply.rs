@@ -47,8 +47,8 @@ pub fn apply_repair_plan(
         }
 
         let absolute_path = cwd.join(rel_path);
-        let original = fs::read_to_string(&absolute_path)
-            .with_context(|| format!("read {absolute_path}"))?;
+        let original =
+            fs::read_to_string(&absolute_path).with_context(|| format!("read {absolute_path}"))?;
         let updated = apply_file_changes(&original, changes)?;
 
         if updated != original {
@@ -63,9 +63,6 @@ pub fn apply_repair_plan(
     Ok(report)
 }
 
-pub fn with_verification(
-    report: RepairApplyReport,
-    findings: &[Finding],
-) -> RepairApplyReport {
+pub fn with_verification(report: RepairApplyReport, findings: &[Finding]) -> RepairApplyReport {
     report.with_verification(findings)
 }
