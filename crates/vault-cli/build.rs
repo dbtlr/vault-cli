@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 use clap::CommandFactory;
 use clap_complete::{generate_to, Shell};
+use clap_complete_nushell::Nushell;
 use clap_mangen::Man;
 
 #[path = "src/cli.rs"]
@@ -44,6 +45,7 @@ fn main() -> std::io::Result<()> {
     generate_to(Shell::Bash, &mut cmd, "vault", &completions_dir)?;
     generate_to(Shell::Zsh, &mut cmd, "vault", &completions_dir)?;
     generate_to(Shell::Fish, &mut cmd, "vault", &completions_dir)?;
+    generate_to(Nushell, &mut cmd, "vault", &completions_dir)?;
 
     let man = Man::new(cmd);
     let mut buffer = Vec::new();

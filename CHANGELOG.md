@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it ships v1.0. Pre-1.0 versions may include breaking changes in minor releases.
 
+## Unreleased (v0.27.0)
+
+Shell completion install UX.
+
+### Added
+
+- `vault completions install [shell]` writes the right shell-integration line (or script file, for fish and nushell) to the user's shell config. Auto-detects from `$SHELL` if no shell argument given. Idempotent via a marker comment block; `--force` replaces an existing install; `--print` previews without writing. Supported shells: bash, zsh, fish, powershell, elvish, nushell.
+- `vault completions init <shell>` emits the completion script to stdout (was `vault completions <shell>`).
+- `clap_complete_nushell` dependency for nushell completion script generation. `build.rs` now also emits `target/completions/vault.nu` alongside the bash/zsh/fish scripts.
+
+### Changed
+
+- The hidden `vault completions <shell>` subcommand has been replaced by the visible `vault completions init <shell>` subcommand. Scripts or agent skills that invoked the old form must update.
+- The `completions` command group is now visible in `vault --help` (was hidden in v0.26.x).
+- `manpage` remains hidden in `vault --help`. (A future `vault manpage install` task is tracked separately.)
+
+### Removed
+
+- The hidden `vault completions <SHELL>` subcommand syntax (use `vault completions init <SHELL>`).
+
 ## v0.26.2 - 2026-05-18
 
 Release-pipeline patch on top of v0.26.1. The v0.26.1 tag was pushed but the release workflow failed before publishing artifacts; this version supersedes it. No user-facing CLI behavior changes.

@@ -2764,7 +2764,7 @@ fn graph_inspect_accepts_unique_stem() {
 
 #[test]
 fn completions_bash_subcommand_emits_non_empty_script() {
-    let (stdout, _stderr) = vault_success(&["completions", "bash"]);
+    let (stdout, _stderr) = vault_success(&["completions", "init", "bash"]);
     assert!(
         !stdout.is_empty(),
         "expected non-empty bash completion script, got empty stdout"
@@ -2778,7 +2778,7 @@ fn completions_bash_subcommand_emits_non_empty_script() {
 
 #[test]
 fn completions_zsh_subcommand_emits_non_empty_script() {
-    let (stdout, _stderr) = vault_success(&["completions", "zsh"]);
+    let (stdout, _stderr) = vault_success(&["completions", "init", "zsh"]);
     assert!(
         !stdout.is_empty(),
         "expected non-empty zsh completion script"
@@ -2791,7 +2791,7 @@ fn completions_zsh_subcommand_emits_non_empty_script() {
 
 #[test]
 fn completions_fish_subcommand_emits_non_empty_script() {
-    let (stdout, _stderr) = vault_success(&["completions", "fish"]);
+    let (stdout, _stderr) = vault_success(&["completions", "init", "fish"]);
     assert!(
         !stdout.is_empty(),
         "expected non-empty fish completion script"
@@ -2819,46 +2819,35 @@ fn manpage_subcommand_emits_non_empty_roff() {
 }
 
 #[test]
-fn completions_and_manpage_are_hidden_from_top_level_help() {
+fn manpage_is_hidden_from_top_level_help() {
     let output = vault(&["--help"]);
-    // The user-facing top-level help should not advertise these subcommands.
-    // They exist for installers and packaging, not daily use.
     assert!(
-        !output.contains("completions"),
-        "expected `completions` to be hidden from top-level --help, got:\n{output}"
+        output.contains("completions"),
+        "completions should be visible in top-level help; got:\n{output}"
     );
     assert!(
         !output.contains("manpage"),
-        "expected `manpage` to be hidden from top-level --help, got:\n{output}"
+        "manpage should remain hidden from top-level help; got:\n{output}"
     );
 }
 
 #[test]
-fn completions_subcommand_help_documents_supported_shells() {
-    // `vault completions --help` is reachable even though the subcommand is
-    // hidden from the top-level listing. The shell argument's possible values
-    // must include at least bash, zsh, and fish.
-    let output = vault(&["completions", "--help"]);
-    assert!(
-        output.contains("bash"),
-        "expected bash in --help, got:\n{output}"
-    );
-    assert!(
-        output.contains("zsh"),
-        "expected zsh in --help, got:\n{output}"
-    );
-    assert!(
-        output.contains("fish"),
-        "expected fish in --help, got:\n{output}"
-    );
+fn completions_init_subcommand_help_documents_supported_shells() {
+    let output = vault(&["completions", "init", "--help"]);
+    for shell in ["bash", "zsh", "fish", "powershell", "elvish", "nushell"] {
+        assert!(
+            output.contains(shell),
+            "completions init --help should list {shell}; got:\n{output}"
+        );
+    }
 }
 
 #[test]
 fn completions_bash_writes_clean_stderr() {
-    let (_stdout, stderr) = vault_success(&["completions", "bash"]);
+    let (_stdout, stderr) = vault_success(&["completions", "init", "bash"]);
     assert!(
         stderr.is_empty(),
-        "expected `vault completions bash` to write nothing to stderr, got:\n{stderr}"
+        "expected `vault completions init bash` to write nothing to stderr, got:\n{stderr}"
     );
 }
 
@@ -2886,7 +2875,7 @@ fn completions_runs_without_a_vault_root() {
     fs::create_dir_all(&scratch).expect("create scratch dir");
     let output = Command::new(env!("CARGO_BIN_EXE_vault"))
         .current_dir(&scratch)
-        .args(["completions", "bash"])
+        .args(["completions", "init", "bash"])
         .output()
         .expect("vault command should run");
     let _ = fs::remove_dir_all(&scratch);
@@ -2927,7 +2916,7 @@ fn manpage_runs_without_a_vault_root() {
 
 #[test]
 fn completions_rejects_unknown_shell() {
-    let stderr = vault_error(&["completions", "tcsh"]);
+    let stderr = vault_error(&["completions", "init", "tcsh"]);
     // clap's standard "invalid value" message includes the offending value.
     assert!(
         stderr.contains("tcsh") || stderr.contains("invalid value"),
@@ -2973,4 +2962,349 @@ fn build_script_emits_release_artifacts() {
         "man page artifact {} must be non-empty",
         man_path.display()
     );
+}
+
+#[test]
+fn completions_init_supports_all_six_shells() {
+    for shell in &["bash", "zsh", "fish", "powershell", "elvish", "nushell"] {
+        let (stdout, _stderr) = vault_success(&["completions", "init", shell]);
+        assert!(
+            !stdout.trim().is_empty(),
+            "completions init {shell} should emit non-empty script; got empty stdout"
+        );
+    }
+}
+
+#[test]
+fn completions_install_unsupported_shell_errors_cleanly() {
+    let stderr = vault_error(&["completions", "install", "tcsh"]);
+    assert!(
+        stderr.contains("invalid value") || stderr.contains("not a supported"),
+        "expected clear error for unsupported shell; got:\n{stderr}"
+    );
+}
+
+#[test]
+fn completions_install_no_arg_and_no_shell_env_errors() {
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install"])
+        .env_remove("SHELL")
+        .output()
+        .expect("vault command should run");
+    assert!(
+        !output.status.success(),
+        "expected failure with no SHELL set"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("could not auto-detect") || stderr.contains("SHELL"),
+        "expected error about $SHELL detection; got:\n{stderr}"
+    );
+}
+
+fn install_in_tempdir(
+    shell: &str,
+    env_overrides: &[(&str, &str)],
+) -> (tempfile::TempDir, std::process::Output) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"));
+    cmd.args(["completions", "install", shell]);
+    cmd.env("HOME", dir.path());
+    cmd.env("XDG_CONFIG_HOME", dir.path().join(".config"));
+    for (k, v) in env_overrides {
+        cmd.env(k, v);
+    }
+    let output = cmd.output().unwrap();
+    (dir, output)
+}
+
+#[test]
+fn completions_install_bash_writes_marker_block_to_bashrc() {
+    let (dir, output) = install_in_tempdir("bash", &[]);
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let bashrc = fs::read_to_string(dir.path().join(".bashrc")).unwrap();
+    assert!(
+        bashrc.contains("# >>> vault completions"),
+        "missing marker: {bashrc}"
+    );
+    assert!(
+        bashrc.contains("eval \"$(vault completions init bash)\""),
+        "missing eval line: {bashrc}"
+    );
+    assert!(
+        bashrc.contains("# <<< vault completions <<<"),
+        "missing end marker: {bashrc}"
+    );
+}
+
+#[test]
+fn completions_install_zsh_writes_marker_block_to_zshrc() {
+    let (dir, output) = install_in_tempdir("zsh", &[]);
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let zshrc = fs::read_to_string(dir.path().join(".zshrc")).unwrap();
+    assert!(zshrc.contains("# >>> vault completions"));
+    assert!(zshrc.contains("eval \"$(vault completions init zsh)\""));
+}
+
+#[test]
+fn completions_install_zsh_honors_zdotdir() {
+    let zdir = tempfile::TempDir::new().unwrap();
+    let (_home, output) = install_in_tempdir("zsh", &[("ZDOTDIR", zdir.path().to_str().unwrap())]);
+    assert!(output.status.success());
+    let zshrc = fs::read_to_string(zdir.path().join(".zshrc")).unwrap();
+    assert!(zshrc.contains("# >>> vault completions"));
+}
+
+#[test]
+fn completions_install_elvish_writes_marker_block_to_rc_elv() {
+    let (dir, output) = install_in_tempdir("elvish", &[]);
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let rc = fs::read_to_string(dir.path().join(".config/elvish/rc.elv")).unwrap();
+    assert!(rc.contains("# >>> vault completions"));
+    assert!(rc.contains("vault completions init elvish"));
+}
+
+#[test]
+fn completions_install_is_idempotent() {
+    let (dir, output1) = install_in_tempdir("bash", &[]);
+    assert!(output1.status.success());
+    let bashrc_first = fs::read_to_string(dir.path().join(".bashrc")).unwrap();
+    let count_first = bashrc_first.matches("# >>> vault completions").count();
+    assert_eq!(count_first, 1);
+
+    // Re-run install
+    let output2 = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "bash"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(
+        stdout2.contains("Already installed"),
+        "expected idempotent skip: {stdout2}"
+    );
+    let bashrc_second = fs::read_to_string(dir.path().join(".bashrc")).unwrap();
+    assert_eq!(
+        bashrc_first, bashrc_second,
+        "second run should not modify the file"
+    );
+}
+
+#[test]
+fn completions_install_force_replaces_marker_block() {
+    let (dir, _output) = install_in_tempdir("bash", &[]);
+    // Tamper with the marker block contents to simulate drift
+    let bashrc_path = dir.path().join(".bashrc");
+    let original = fs::read_to_string(&bashrc_path).unwrap();
+    let tampered = original.replace("vault completions init bash", "OLD_COMMAND");
+    fs::write(&bashrc_path, &tampered).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "bash", "--force"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "force install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let final_bashrc = fs::read_to_string(&bashrc_path).unwrap();
+    assert!(
+        final_bashrc.contains("vault completions init bash"),
+        "force should restore current line: {final_bashrc}"
+    );
+    assert!(
+        !final_bashrc.contains("OLD_COMMAND"),
+        "force should remove old content"
+    );
+    let backup_path = format!("{}.bak", bashrc_path.display());
+    assert!(
+        PathBuf::from(&backup_path).exists(),
+        "expected backup at {backup_path}"
+    );
+}
+
+#[test]
+fn completions_install_nushell_writes_both_files() {
+    let (dir, output) = install_in_tempdir("nushell", &[]);
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let script = dir.path().join(".config/nushell/completions/vault.nu");
+    let config = dir.path().join(".config/nushell/config.nu");
+
+    assert!(script.exists(), "completion script should be written");
+    assert!(config.exists(), "config.nu should be written or appended");
+
+    let script_content = fs::read_to_string(&script).unwrap();
+    assert!(
+        script_content.contains("vault"),
+        "script should reference vault"
+    );
+
+    let config_content = fs::read_to_string(&config).unwrap();
+    assert!(config_content.contains("# >>> vault completions"));
+    assert!(config_content.contains("source"));
+    assert!(config_content.contains("vault.nu"));
+}
+
+#[test]
+fn completions_install_nushell_idempotent() {
+    let (dir, output1) = install_in_tempdir("nushell", &[]);
+    assert!(output1.status.success());
+    let config_path = dir.path().join(".config/nushell/config.nu");
+    let config_first = fs::read_to_string(&config_path).unwrap();
+
+    let output2 = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "nushell"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8(output2.stdout).unwrap();
+    assert!(stdout2.contains("Already installed"));
+    let config_second = fs::read_to_string(&config_path).unwrap();
+    assert_eq!(config_first, config_second);
+}
+
+#[test]
+fn completions_install_fish_overwrites_script() {
+    let dir = tempfile::TempDir::new().unwrap();
+    // Pre-create a stale completion file
+    let fish_completions = dir.path().join(".config/fish/completions");
+    fs::create_dir_all(&fish_completions).unwrap();
+    let target = fish_completions.join("vault.fish");
+    fs::write(&target, "# old stale content").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "fish"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let content = fs::read_to_string(&target).unwrap();
+    assert!(!content.contains("# old stale content"));
+    // The fish completion script clap_complete produces references the
+    // command name and at least one subcommand.
+    assert!(content.contains("vault"));
+}
+
+#[test]
+fn completions_install_powershell_writes_marker_block() {
+    let (dir, output) = install_in_tempdir("powershell", &[]);
+    assert!(
+        output.status.success(),
+        "install failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // Default fallback path: $HOME/.config/powershell/Microsoft.PowerShell_profile.ps1
+    let profile = dir
+        .path()
+        .join(".config/powershell/Microsoft.PowerShell_profile.ps1");
+    let content = fs::read_to_string(&profile).unwrap();
+    assert!(content.contains("# >>> vault completions"));
+    assert!(content.contains("vault completions init powershell"));
+    assert!(content.contains("Invoke-Expression"));
+}
+
+#[test]
+fn completions_install_powershell_honors_profile_env() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let custom_profile = dir.path().join("custom_profile.ps1");
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "powershell"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env("POWERSHELL_PROFILE", &custom_profile)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let content = fs::read_to_string(&custom_profile).unwrap();
+    assert!(content.contains("# >>> vault completions"));
+}
+
+#[test]
+fn completions_install_auto_detects_from_shell_env() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env("SHELL", "/bin/zsh")
+        .env_remove("ZDOTDIR")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let zshrc = fs::read_to_string(dir.path().join(".zshrc")).unwrap();
+    assert!(zshrc.contains("# >>> vault completions"));
+    assert!(zshrc.contains("eval \"$(vault completions init zsh)\""));
+}
+
+#[test]
+fn completions_install_print_for_nushell_shows_both_targets() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "nushell", "--print"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    // Both targets named
+    assert!(stdout.contains("vault.nu"));
+    assert!(stdout.contains("config.nu"));
+    // No files written
+    assert!(!dir
+        .path()
+        .join(".config/nushell/completions/vault.nu")
+        .exists());
+    assert!(!dir.path().join(".config/nushell/config.nu").exists());
+}
+
+#[test]
+fn completions_install_print_does_not_write() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+        .args(["completions", "install", "bash", "--print"])
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Would write to"));
+    assert!(stdout.contains("# >>> vault completions"));
+    // No file should have been created.
+    assert!(!dir.path().join(".bashrc").exists());
 }

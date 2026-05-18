@@ -66,6 +66,59 @@ Each release ships `vault-cli-<target>.tar.xz` containing the `vault` binary, sh
 
 Not yet shipped. Tracked as follow-up work.
 
+## Shell completions
+
+After install, enable completions for your shell with:
+
+```bash
+vault completions install
+```
+
+`vault completions install` auto-detects your shell from `$SHELL` and writes the right configuration. Supported shells: **bash**, **zsh**, **fish**, **powershell**, **elvish**, **nushell**.
+
+To preview what it would write without modifying anything:
+
+```bash
+vault completions install --print
+```
+
+To replace an existing install (after upgrading vault, or to reset a manual edit):
+
+```bash
+vault completions install --force
+```
+
+To install for a specific shell rather than the one detected:
+
+```bash
+vault completions install zsh
+```
+
+### After a vault upgrade
+
+The bash, zsh, powershell, and elvish installers write an `eval` line that re-evaluates the current `vault completions init <shell>` output every shell startup. New completions pick up automatically.
+
+The fish and nushell installers write a script file (because those shells load completions from files, not eval). After upgrading vault, re-run `vault completions install fish` or `vault completions install nushell` to refresh the script with the new vault's completions.
+
+### macOS bash target file
+
+On macOS, the bash installer prefers `~/.bash_profile` over `~/.bashrc` when the former exists, since macOS launches Terminal sessions as login shells. If you use a non-standard bash setup, override the target with `BASH_ENV=/path/to/file vault completions install bash`.
+
+### Manual install
+
+If you prefer to wire completions in by hand, `vault completions init <shell>` emits the script to stdout. Pipe it where your shell expects it:
+
+```bash
+# bash
+echo 'eval "$(vault completions init bash)"' >> ~/.bashrc
+
+# zsh
+echo 'eval "$(vault completions init zsh)"' >> ~/.zshrc
+
+# fish
+vault completions init fish > ~/.config/fish/completions/vault.fish
+```
+
 ## Verify the install
 
 Two commands confirm the binary is on `PATH`, executable, and that the
@@ -119,11 +172,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 ### Completions not loaded
 
-Shells load completions from specific directories. The installer
-places them in `$CARGO_HOME/share/{zsh,bash,fish}/...` and most shell
-configurations pick them up automatically. If they do not load,
-restart your shell. zsh users may need `compinit` in their config.
-See [development.md](development.md) for per-shell sourcing recipes.
+Run `vault completions install` (see the [Shell completions](#shell-completions) section above) to wire completions into your shell config in one command. Restart your shell afterward. zsh users may also need `compinit` in their config.
 
 ### macOS quarantine warning
 

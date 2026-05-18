@@ -148,6 +148,16 @@ vault --vault myvault repair apply repair.json --verify --format json
 - **Don't parse table output.** Tables are for humans. Always pass `--format json` or `--format jsonl` from an agent context.
 - **Run `--summary` first.** It's cheaper than a full finding stream and tells you whether a more expensive query is worth running.
 
+## Shell completions
+
+If you're driving vault on a user's machine and they want vault commands tab-completable, run:
+
+```bash
+vault completions install
+```
+
+This auto-detects the user's shell from `$SHELL` and wires completions into their shell config idempotently. Pass `--print` to preview without writing.
+
 ## Reference
 
 - CLI command surface: `vault --help`, `vault <subcommand> --help`.
