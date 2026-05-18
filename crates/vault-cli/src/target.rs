@@ -1,8 +1,15 @@
 use anyhow::{bail, Result};
 use camino::Utf8PathBuf;
-use vault_core::{GraphIndex, Link, LinkStatus};
+use serde::Serialize;
+use vault_core::{Document, GraphIndex, Link, LinkStatus};
 
-use crate::cli::InspectOutput;
+#[derive(Debug, Serialize)]
+pub struct InspectOutput {
+    pub document: Document,
+    pub incoming_links: Vec<Link>,
+    pub outgoing_links: Vec<Link>,
+    pub unresolved_outgoing_links: Vec<Link>,
+}
 
 pub fn backlinks<'a>(index: &'a GraphIndex, target_path: &Utf8PathBuf) -> Vec<&'a Link> {
     index

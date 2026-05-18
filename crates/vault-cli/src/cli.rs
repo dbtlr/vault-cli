@@ -1,7 +1,5 @@
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
-use serde::Serialize;
-use vault_core::{Document, Link};
 
 #[derive(Debug, Parser)]
 #[command(name = "vault")]
@@ -391,12 +389,4 @@ impl From<RepairOutputFormat> for OutputFormat {
             RepairOutputFormat::Table => OutputFormat::Table,
         }
     }
-}
-
-#[derive(Debug, Serialize)]
-pub struct InspectOutput {
-    pub document: Document,
-    pub incoming_links: Vec<Link>,
-    pub outgoing_links: Vec<Link>,
-    pub unresolved_outgoing_links: Vec<Link>,
 }
