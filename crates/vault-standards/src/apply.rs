@@ -361,8 +361,8 @@ mod tests {
         assert!(matches!(
             err,
             ApplyError::UnsupportedSchemaVersion {
-                expected: 3,
-                got: 99
+                expected: REPAIR_PLAN_SCHEMA_VERSION,
+                got: 99,
             }
         ));
     }

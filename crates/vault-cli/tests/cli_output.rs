@@ -328,7 +328,7 @@ fn repair_plan_generates_configured_frontmatter_change() {
     ]);
 
     let plan = serde_json::from_str::<Value>(&output).expect("repair plan should be JSON");
-    assert_eq!(plan["schema_version"], 3);
+    assert_eq!(plan["schema_version"], 4);
     assert_eq!(plan["summary"]["findings"], 1);
     assert_eq!(plan["summary"]["planned_changes"], 1);
     assert_eq!(plan["summary"]["skipped"]["total"], 0);
@@ -737,7 +737,7 @@ fn repair_config_rejects_ambiguous_actions() {
     ]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains("repair rule bad declares both"));
+    assert!(error.contains("repair rule bad declares multiple actions"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();

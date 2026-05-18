@@ -8,7 +8,7 @@ use vault_core::Severity;
 use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
 use crate::findings::{Finding, FindingBody};
 
-pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 3;
+pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct RepairPlanFilters {
@@ -231,6 +231,12 @@ fn planned_change(
             expected_old_value: finding_actual_value(finding).cloned(),
             new_value: None,
         },
+        // Planner wiring for AddFrontmatter and MoveDocument lands in
+        // subsequent commits (Tasks 5 and 8). Until then, rules that match a
+        // finding via these actions fall through to the skipped path.
+        RepairAction::AddFrontmatter { .. } | RepairAction::MoveDocument { .. } => {
+            return Err(SkipReason::PreconditionFailed);
+        }
     })
 }
 
@@ -444,13 +450,41 @@ mod tests {
         match_actual: Option<serde_json::Value>,
         action: RepairAction,
     ) -> RepairRule {
-        let (set_frontmatter, remove_frontmatter) = match action {
+        let (set_frontmatter, remove_frontmatter, add_frontmatter, move_document) = match action {
             RepairAction::SetFrontmatter { field, value } => (
                 Some(crate::config::SetFrontmatterAction { field, value }),
                 None,
+                None,
+                None,
             ),
-            RepairAction::RemoveFrontmatter { field } => {
-                (None, Some(crate::config::RemoveFrontmatterAction { field }))
+            RepairAction::RemoveFrontmatter { field } => (
+                None,
+                Some(crate::config::RemoveFrontmatterAction { field }),
+                None,
+                None,
+            ),
+            RepairAction::AddFrontmatter { field, value } => (
+                None,
+                None,
+                Some(crate::config::AddFrontmatterAction { field, value }),
+                None,
+            ),
+            RepairAction::MoveDocument { destination } => {
+                let (to_directory, to_path) = match destination {
+                    crate::config::DestinationSpec::Directory { to_directory } => {
+                        (Some(to_directory), None)
+                    }
+                    crate::config::DestinationSpec::Path { to_path } => (None, Some(to_path)),
+                };
+                (
+                    None,
+                    None,
+                    None,
+                    Some(crate::config::MoveDocumentAction {
+                        to_directory,
+                        to_path,
+                    }),
+                )
             }
         };
         RepairRule {
@@ -463,6 +497,8 @@ mod tests {
             },
             set_frontmatter,
             remove_frontmatter,
+            add_frontmatter,
+            move_document,
         }
     }
 
