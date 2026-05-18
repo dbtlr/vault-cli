@@ -2,39 +2,50 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased (v0.26 Slice 1)
+## v0.26.0 - 2026-05-18
 
-Foundation tests and quick wins toward the v0.26 cleanup. No public API or output schema changes.
-
-### Added
-
-- Unit tests in `vault-core`, `vault-frontmatter`, `vault-links`, and `vault-standards` covering parsing rules, link resolution, frontmatter offsets, repair classification, and validate engine smoke paths.
-- `vault_core::display` module exposing `link_kind_str`, `link_status_str`, `severity_str`, `unresolved_reason_str` — one source of truth for enum-to-string mappings used by CLI output.
-- `--format paths` integration test pinning the unique-source-path contract for `vault links list`.
-
-### Changed
-
-- Wikilink and block-id regexes now compile once per process via `std::sync::LazyLock` instead of once per call.
-- `vault links list --format paths` (and `links unresolved` / `links backlinks`) now emit unique source paths — previously a document with N links contributed N rows.
-- Subcommand `--help` groups global flags under "Global options" via clap `help_heading`.
-- `repair apply <PLAN>`, `registry add <NAME> <PATH>`, and `registry remove <NAME>` positional arguments now have help text.
-
-## Unreleased (v0.26 Slice 4)
-
-Config schema rewrite, cache deletion, and CLI argument flatten.
+Structural cleanup release: apply migration to vault-standards, minimal-edit YAML preservation, repair plan schema v3 with SkipReason taxonomy, config schema serde rewrite, SQLite cache deletion, foundation tests across pure-parsing crates, and bundled CLI polish. Four-slice cleanup, four merged branches, 193 tests passing.
 
 ### Breaking changes
 
-- `vault cache build` command removed. The SQLite cache was write-only with no consumer; future warm-state needs (LSP/MCP/daemon) will be designed against memory-resident indexes instead.
-- `VaultFile.hash` is now `Option<String>`. Non-Markdown attachment files no longer carry BLAKE3 hashes — only Markdown documents (which need them for repair preconditions). Path identity remains stable; backlink queries by exact attachment path are unaffected.
+- **Repair plan JSON schema bumps from v2 to v3.**
+  - `RepairPlan` drops the separate `unsupported_findings` and `ambiguous_findings` top-level arrays. Use `skipped_findings` (single canonical list) and filter by `skip_reason` (`unsupported` | `ambiguous` | `missing_hash` | `precondition_failed`).
+  - `RepairPlanSummary` drops flat `skipped_findings` / `unsupported_findings` / `ambiguous_findings` count fields. Use `summary.skipped.{unsupported,ambiguous,missing_hash,precondition_failed,total}`.
+  - `RepairApplyReport.plan_context` restructures from three flat counts to nest a `skipped` object matching the plan's summary shape.
+  - `vault repair apply` rejects v2 plans with `unsupported repair plan schema version: expected 3, got 2`.
+  - Migration:
+    ```text
+    old: plan.unsupported_findings.length
+    new: plan.skipped_findings.filter(f => f.skip_reason === "unsupported").length
+
+    old: plan.summary.unsupported_findings
+    new: plan.summary.skipped.unsupported
+
+    old: apply.plan_context.unsupported_findings
+    new: apply.plan_context.skipped.unsupported
+    ```
+- **`vault cache build` command removed.** The SQLite cache was write-only with no consumer; future warm-state needs (LSP/MCP/daemon) will be designed against memory-resident indexes instead.
+- **`VaultFile.hash` is now `Option<String>`.** Non-Markdown attachment files no longer carry BLAKE3 hashes — only Markdown documents (which need them for repair preconditions). Path identity remains stable; backlink queries by exact attachment path are unaffected.
+
+### Added
+
+- **Apply migration to `vault-standards`.** New `vault-standards::apply` module with `ApplyError`, `RepairApplyReport`, `validate_plan_for_apply`, `changes_by_path`, `apply_file_changes`. Apply contract logic now lives in the engine crate, not the binary crate. CLI `repair_apply.rs` shrinks from ~230 lines to ~75 of orchestration.
+- **Minimal-edit YAML preservation.** `vault repair apply` no longer rewrites the entire frontmatter mapping through `serde_yaml::to_string`. YAML lines untouched by a repair are preserved byte-for-byte (comments, quote style, key ordering). Touched values preserve the original quote style when the new value can be expressed in it; double-quoted stays double-quoted, single-quoted stays single-quoted. Closes the v0.24 Atlas quote-churn issue.
+- **`vault-frontmatter::top_level_property_spans`** returning `PropertySpan { name, line_range, value_range, style }` for byte-range YAML editing.
+- **`vault-frontmatter::serialize_value_preserving_style`** with upgrade-only quote-style rules.
+- **`SkipReason` taxonomy.** Each `SkippedFinding` carries a tagged `skip_reason` (`unsupported` | `ambiguous` | `missing_hash` | `precondition_failed`) — replaces the prior string-heuristic `is_ambiguous_skipped` and the three overlapping result vectors. `MissingHash` produces a clearer message ("document hash not present in index — file may have been removed or renamed") instead of the previous misleading "inspect the repair rule".
+- **`vault-standards::config::parse_config`** as the single config entry point. Replaces the prior split between `serde_yaml::from_str` (CLI) and `validate_config_yaml` (engine).
+- **`vault_core::display`** module exposing `link_kind_str`, `link_status_str`, `severity_str`, `unresolved_reason_str` — one source of truth for enum-to-string mappings previously duplicated across three CLI files.
+- **Foundation tests** in `vault-core`, `vault-frontmatter`, `vault-links`, and `vault-standards` covering parsing rules, link resolution, frontmatter offsets, repair classification, and validate engine smoke paths. Slice 1 added ~53 tests; Slices 2 and 4 stack ~33 more. Total ~193 tests passing across the workspace.
+- **`--format paths` dedupe** for `vault links list`, `links unresolved`, `links backlinks`. Multiple links from the same source path now contribute one path-list row, matching `vault validate --format paths` behavior.
 
 ### Changed
 
-- `crates/vault-standards/src/config.rs` rewritten with `#[serde(deny_unknown_fields)]` typed structs plus a focused ~80-line `post_validate`. The 519-line hand-rolled `config_schema.rs` is deleted. Behavior preserved: every previously-rejected malformed config is still rejected; error messages should be at least as informative.
-- `parse_config(yaml, source_path) -> Result<VaultConfig, ConfigError>` is now the single entry point. The CLI's `load_config` delegates to it; the previous split between `serde_yaml::from_str` (CLI) and `validate_config_yaml` (engine) is gone.
-- `RepairRule.action()` method replaces the field-flattened `RepairAction` on the struct, computed from the present-exactly-one of `set_frontmatter` / `remove_frontmatter` enforced by `post_validate`.
-- `cli.rs` argument-struct duplication removed via `#[command(flatten)]`. `FrontmatterFilterArgs` is shared by `docs list`, `docs summary`, and `search`. `ValidateTriageArgs` is shared by `validate` and `repair plan`.
-- Help text now groups filter options under "Filter options" and "Triage filters" via clap's `help_heading`.
+- **Config schema rewritten with serde.** `crates/vault-standards/src/config.rs` uses `#[serde(deny_unknown_fields)]` typed structs plus a focused ~80-line `post_validate` for what serde can't express (field type whitelist, allowed_values scalar-only, repair rule action exclusivity, deprecated `graph.ignore` rename). The 519-line hand-rolled `config_schema.rs` is deleted.
+- **`RepairRule.action()` method** replaces the field-flattened `RepairAction` on the struct, computed from the present-exactly-one of `set_frontmatter` / `remove_frontmatter` enforced by `post_validate`.
+- **`cli.rs` argument-struct duplication removed** via `#[command(flatten)]`. `FrontmatterFilterArgs` is shared by `docs list`, `docs summary`, and `search`. `ValidateTriageArgs` is shared by `validate` and `repair plan`.
+- **Subcommand `--help` groups options** under "Global options", "Filter options", and "Triage filters" via clap `help_heading`. Positional arguments on `repair apply`, `registry add`, and `registry remove` now have descriptions.
+- **Wikilink and block-id regexes** now compile once per process via `std::sync::LazyLock` instead of once per call.
 
 ### Removed
 
@@ -42,63 +53,14 @@ Config schema rewrite, cache deletion, and CLI argument flatten.
 - `crates/vault-standards/src/config_schema.rs` (519 lines).
 - `rusqlite` dependency from `vault-graph` and `vault-cli` dev-deps.
 - BLAKE3 hashing of non-Markdown files — `(stat::size, stat::mtime)` identity is sufficient for path-based backlink queries against attachments.
-
-## Unreleased (v0.26 Slice 2)
-
-Apply migration and minimal-edit YAML preservation. Breaking change in `vault-standards` public surface; no JSON output schema break in Slice 2 (Slice 3 will introduce the v3 plan schema).
-
-### Added
-
-- `vault-standards::apply` module with `ApplyError`, `RepairApplyReport`, `validate_plan_for_apply`, `changes_by_path`, `apply_file_changes`. Apply contract logic now lives in the engine crate.
-- `vault-frontmatter::top_level_property_spans` returning `PropertySpan { name, line_range, value_range, style }` for byte-range YAML editing.
-- `vault-frontmatter::serialize_value_preserving_style` preserving original quote style when possible, upgrading when necessary, never downgrading.
-
-### Changed
-
-- `vault repair apply` now performs minimal-edit YAML rewriting. Untouched lines (including comments, quote style, and key ordering) are preserved byte-for-byte. Touched values preserve the original style when the new value can be expressed in it; double-quoted stays double-quoted, single-quoted stays single-quoted.
-- `crates/vault-cli/src/repair_apply.rs` reduced from ~230 lines to ~75 lines of orchestration. All apply contract checks moved to `vault-standards::apply`.
-
-### Notes
-
-- Apply now returns `ApplyError::CannotMinimalEdit` for `set_frontmatter` against block-style or flow-style values. The current repair action set only configures scalar targets, so this is a guard for future expansion.
-- The expected-old-value check still treats YAML null as equivalent to absent for the purpose of matching a `None` expected value.
-
-## Unreleased (v0.26 Slice 3)
-
-Repair plan schema bump to v3 with new SkipReason taxonomy.
-
-### Breaking changes
-
-- Repair plan JSON schema bumps from v2 to v3.
-- `RepairPlan` removes the separate `unsupported_findings` and `ambiguous_findings` top-level arrays. Use `skipped_findings` (single canonical list) and filter by `skip_reason` (`unsupported` | `ambiguous` | `missing_hash` | `precondition_failed`).
-- `RepairPlanSummary` removes flat `skipped_findings` / `unsupported_findings` / `ambiguous_findings` count fields. Use `summary.skipped.{unsupported,ambiguous,missing_hash,precondition_failed,total}`.
-- `RepairApplyReport.plan_context` restructures from three flat counts to nest a `skipped` object matching the plan's summary shape.
-- `vault repair apply` rejects v2 plans with `unsupported repair plan schema version: expected 3, got 2`.
-
-Agents reading these fields need to update accordingly. Migration:
-
-```text
-old: plan.unsupported_findings.length
-new: plan.skipped_findings.filter(f => f.skip_reason === "unsupported").length
-
-old: plan.summary.unsupported_findings
-new: plan.summary.skipped.unsupported
-
-old: apply.plan_context.unsupported_findings
-new: apply.plan_context.skipped.unsupported
-```
-
-### Added
-
-- `SkipReason` enum (`unsupported`, `ambiguous`, `missing_hash`, `precondition_failed`) tagging each `SkippedFinding` at construction time.
-- `SkippedSummary` with per-reason counts plus `total`.
-- `MissingHash` reason now produces a clearer message ("document hash not present in index — file may have been removed or renamed") instead of the previous misleading "inspect the repair rule".
+- `is_ambiguous_skipped` string heuristic.
+- `RepairPlanFinding` struct (replaced by `SkippedFinding`).
 
 ### Internal
 
 - `planned_change` returns `Result<PlannedChange, SkipReason>` instead of `Option<PlannedChange>`.
-- `is_ambiguous_skipped` string heuristic removed.
 - `REPAIR_PLAN_SCHEMA_VERSION` is now a single `pub const` in `vault-standards::repair`; `vault-standards::apply::validate_plan_for_apply` references it.
+- `crates/vault-cli/src/repair_apply.rs` reduced from ~230 lines to ~75 lines of orchestration. All apply contract checks moved to `vault-standards::apply`.
 
 ## v0.25.1 - 2026-05-18
 
