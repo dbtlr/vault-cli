@@ -10,7 +10,7 @@ mod validate_filter;
 
 use std::{collections::BTreeMap, fs, process};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::Parser;
 use vault_core::{GraphIndex, LinkStatus};
 use vault_graph::{build_index_with_options, concise_diagnostics, has_errors, write_sqlite_cache};
@@ -18,7 +18,7 @@ use vault_standards::{plan_repairs, summarize, validate, RepairPlanFilters};
 
 use crate::cli::{
     CacheSubcommand, Cli, Command, DocsSubcommand, LinksSubcommand, RegistrySubcommand,
-    RepairSubcommand,
+    RepairOutputFormat, RepairSubcommand,
 };
 use crate::config::{effective_cwd, load_config, resolve_path};
 use crate::filter::{
@@ -173,7 +173,18 @@ fn run(cli: Cli) -> Result<i32> {
                     &loaded_config.repair,
                     &document_hashes(&index),
                 );
-                write_repair_plan(&plan, args.format.into())?;
+                if let Some(out) = &args.out {
+                    if args.format != RepairOutputFormat::Json {
+                        bail!("repair plan --out only supports --format json");
+                    }
+                    let out_path = resolve_path(&cwd, out);
+                    let plan_text = serde_json::to_string_pretty(&plan)?;
+                    fs::write(&out_path, format!("{plan_text}\n")).map_err(|error| {
+                        anyhow::anyhow!("failed to write repair plan {out_path}: {error}")
+                    })?;
+                } else {
+                    write_repair_plan(&plan, args.format.into())?;
+                }
                 Ok(exit_code_for(&index))
             }
             RepairSubcommand::Apply(args) => {

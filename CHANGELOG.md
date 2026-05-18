@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here.
 
+## v0.25.0 - 2026-05-18
+
+Repair workflow ergonomics release.
+
+### Added
+
+- Added `vault repair plan --out <path>` to write JSON repair plan artifacts directly without shell redirection.
+- Documented a live repair maintenance recipe with snapshot, dry-run apply, verified apply, and diff inspection.
+
+### Changed
+
+- Documented YAML frontmatter style normalization during repair apply.
+- Updated README link/path repair wording to use ambiguous/skipped repair fallout vocabulary.
+
 ## v0.24.0 - 2026-05-18
 
 Repair workflow polish release.

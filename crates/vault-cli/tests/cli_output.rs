@@ -179,6 +179,7 @@ fn grouped_help_lists_new_surfaces() {
     let output = vault(&["repair", "plan", "--help"]);
     assert!(output.contains("[possible values: json, jsonl, table]"));
     assert!(output.contains("skipped, unsupported, and ambiguous findings"));
+    assert!(output.contains("--out"));
     assert!(!output.contains("paths"));
 
     let output = vault(&["repair", "apply", "--help"]);
@@ -348,6 +349,58 @@ fn repair_plan_generates_configured_frontmatter_change() {
     assert_eq!(plan["changes"][0]["field"], "status");
     assert_eq!(plan["changes"][0]["expected_old_value"], "someday");
     assert_eq!(plan["changes"][0]["new_value"], "backlog");
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_file(config_path).ok();
+}
+
+#[test]
+fn repair_plan_out_writes_json_artifact_without_stdout() {
+    let root = temp_cache_dir();
+    let config_path = root.with_extension("yaml");
+    fs::write(
+        &config_path,
+        "validate:\n  rules:\n    - name: task-status\n      match:\n        frontmatter:\n          type: task\n      allowed_values:\n        status:\n          - backlog\nrepair:\n  rules:\n    - name: map-someday-status\n      match:\n        code: frontmatter-disallowed-value\n        field: status\n        actual_value: someday\n      set_frontmatter:\n        field: status\n        value: backlog\n",
+    )
+    .expect("config should write");
+    fs::create_dir_all(&root).expect("temp dir should be created");
+    fs::write(
+        root.join("task.md"),
+        "---\ntype: task\nstatus: someday\n---\n# Task\n",
+    )
+    .expect("task should write");
+    let plan_path = root.join("repair.json");
+
+    let (stdout, _stderr) = vault_success(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--out",
+        plan_path.to_str().unwrap(),
+    ]);
+
+    assert_eq!(stdout, "");
+    let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
+    let plan = serde_json::from_str::<Value>(&plan_text).expect("repair plan should be JSON");
+    assert_eq!(plan["summary"]["planned_changes"], 1);
+    assert_eq!(plan["changes"][0]["path"], "task.md");
+
+    let error = vault_error(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--format",
+        "table",
+        "--out",
+        plan_path.to_str().unwrap(),
+    ]);
+    assert!(error.contains("repair plan --out only supports --format json"));
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();

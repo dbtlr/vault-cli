@@ -175,6 +175,11 @@ pub struct RepairPlanArgs {
     pub format: RepairOutputFormat,
     #[arg(
         long,
+        help = "Write the JSON repair plan artifact to this path instead of stdout"
+    )]
+    pub out: Option<Utf8PathBuf>,
+    #[arg(
+        long,
         help = "Filter findings by code. Comma-separated values match any listed code"
     )]
     pub code: Vec<String>,
@@ -367,7 +372,7 @@ pub struct ValidateArgs {
     pub reason: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
     Json,
     Jsonl,
@@ -375,7 +380,7 @@ pub enum OutputFormat {
     Paths,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum RepairOutputFormat {
     Json,
     Jsonl,

@@ -353,6 +353,27 @@ vault --vault atlas repair apply repair.json --dry-run --format json
 vault --vault atlas repair apply repair.json --verify --format json
 ```
 
+For a file-first workflow without shell redirection, write the plan artifact
+directly:
+
+```bash
+vault --vault atlas repair plan --out repair.json
+vault --vault atlas repair apply repair.json --dry-run --format json
+vault --vault atlas repair apply repair.json --verify --format json
+```
+
+Operational recipe for live maintenance:
+
+```bash
+git status --short
+git tag snapshot/vault-repair-$(date +%Y%m%d-%H%M%S)
+vault repair plan --out repair.json
+vault repair apply repair.json --dry-run --format json
+vault repair apply repair.json --verify --format json
+git diff --check
+git diff
+```
+
 Example search-assisted workflow:
 
 ```bash
@@ -387,8 +408,9 @@ they apply deterministic changes:
 ```
 
 Frontmatter apply preserves Markdown body content exactly. YAML frontmatter is
-rewritten through the YAML serializer, so comments and exact frontmatter styling
-are not guaranteed in the v1 apply boundary.
+rewritten through the YAML serializer, so comments, quote style, and exact
+frontmatter styling are not guaranteed in the v1 apply boundary. For example, an
+untouched scalar may normalize from double quotes to single quotes.
 
 ## Link And Path Planning
 
@@ -410,9 +432,9 @@ vault --vault atlas repair links --target "Workspaces/demo/note.md" --format jso
 vault --vault atlas repair links --target "note-stem" --format table
 ```
 
-Link and path planning separates deterministic facts from manual decisions. It
-does not automatically resolve ambiguous links, guess missing semantic targets,
-or apply path rewrites.
+Link and path planning separates deterministic facts from ambiguous/skipped
+repair fallout. It does not automatically resolve ambiguous links, guess missing
+semantic targets, or apply path rewrites.
 
 `vault docs list` supports small inventory filters: `--path <glob>` for
 vault-relative paths, repeatable `--filter field:value` for frontmatter scalar
