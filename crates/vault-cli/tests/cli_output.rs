@@ -328,11 +328,11 @@ fn repair_plan_generates_configured_frontmatter_change() {
     ]);
 
     let plan = serde_json::from_str::<Value>(&output).expect("repair plan should be JSON");
-    assert_eq!(plan["schema_version"], 2);
+    assert_eq!(plan["schema_version"], 3);
     assert_eq!(plan["summary"]["findings"], 1);
     assert_eq!(plan["summary"]["planned_changes"], 1);
-    assert_eq!(plan["summary"]["skipped_findings"], 0);
-    assert_eq!(plan["summary"]["unsupported_findings"], 0);
+    assert_eq!(plan["summary"]["skipped"]["total"], 0);
+    assert_eq!(plan["summary"]["skipped"]["unsupported"], 0);
     assert_eq!(
         plan["source_filters"]["code"],
         serde_json::json!([
@@ -431,8 +431,13 @@ fn broad_repair_plan_with_skipped_findings_still_applies_changes() {
     ]);
     let plan_json = serde_json::from_str::<Value>(&plan).expect("repair plan should be JSON");
     assert_eq!(plan_json["summary"]["planned_changes"], 1);
-    assert_eq!(plan_json["summary"]["skipped_findings"], 1);
+    assert_eq!(plan_json["summary"]["skipped"]["total"], 1);
+    assert_eq!(plan_json["summary"]["skipped"]["unsupported"], 1);
     assert_eq!(plan_json["skipped_findings"][0]["code"], "link-unresolved");
+    assert_eq!(
+        plan_json["skipped_findings"][0]["skip_reason"],
+        "unsupported"
+    );
     assert!(plan_json["skipped_findings"][0]["next_actions"]
         .as_array()
         .unwrap()
@@ -455,9 +460,9 @@ fn broad_repair_plan_with_skipped_findings_still_applies_changes() {
     let report = serde_json::from_str::<Value>(&output).expect("apply report should be JSON");
     assert_eq!(report["applied_changes"], 1);
     assert_eq!(report["changed_files"][0], "task.md");
-    assert_eq!(report["plan_context"]["skipped_findings"], 1);
-    assert_eq!(report["plan_context"]["unsupported_findings"], 1);
-    assert_eq!(report["plan_context"]["ambiguous_findings"], 0);
+    assert_eq!(report["plan_context"]["skipped"]["total"], 1);
+    assert_eq!(report["plan_context"]["skipped"]["unsupported"], 1);
+    assert_eq!(report["plan_context"]["skipped"]["ambiguous"], 0);
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -491,7 +496,8 @@ fn repair_plan_table_is_row_oriented() {
     ]);
 
     assert!(output.contains("planned_changes"));
-    assert!(output.contains("skipped_findings"));
+    assert!(output.contains("skipped/total"));
+    assert!(output.contains("skipped/unsupported"));
     assert!(output.contains("task.md"));
     assert!(output.contains("set_frontmatter"));
     assert!(output.contains("link-unresolved"));
@@ -547,9 +553,9 @@ fn repair_apply_writes_frontmatter_plan_and_verifies() {
     assert_eq!(report["dry_run"], false);
     assert_eq!(report["applied_changes"], 1);
     assert_eq!(report["changed_files"][0], "task.md");
-    assert_eq!(report["plan_context"]["skipped_findings"], 0);
-    assert_eq!(report["plan_context"]["unsupported_findings"], 0);
-    assert_eq!(report["plan_context"]["ambiguous_findings"], 0);
+    assert_eq!(report["plan_context"]["skipped"]["total"], 0);
+    assert_eq!(report["plan_context"]["skipped"]["unsupported"], 0);
+    assert_eq!(report["plan_context"]["skipped"]["ambiguous"], 0);
     assert_eq!(report["verification"]["remaining_findings"], 0);
 
     let updated = fs::read_to_string(root.join("task.md")).expect("task should read");

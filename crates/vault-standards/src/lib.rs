@@ -18,5 +18,8 @@ pub use config::{
 };
 pub use engine::validate;
 pub use findings::{Finding, FindingBody};
-pub use repair::{plan_repairs, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary};
+pub use repair::{
+    plan_repairs, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary, SkipReason,
+    SkippedFinding, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
+};
 pub use summary::{summarize, Summary};

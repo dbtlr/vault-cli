@@ -224,16 +224,24 @@ pub fn write_repair_plan(plan: &RepairPlan, format: OutputFormat) -> Result<()> 
                     plan.summary.planned_changes.to_string(),
                 ],
                 vec![
-                    "skipped_findings".to_string(),
-                    plan.summary.skipped_findings.to_string(),
+                    "skipped/unsupported".to_string(),
+                    plan.summary.skipped.unsupported.to_string(),
                 ],
                 vec![
-                    "unsupported_findings".to_string(),
-                    plan.summary.unsupported_findings.to_string(),
+                    "skipped/ambiguous".to_string(),
+                    plan.summary.skipped.ambiguous.to_string(),
                 ],
                 vec![
-                    "ambiguous_findings".to_string(),
-                    plan.summary.ambiguous_findings.to_string(),
+                    "skipped/missing_hash".to_string(),
+                    plan.summary.skipped.missing_hash.to_string(),
+                ],
+                vec![
+                    "skipped/precondition_failed".to_string(),
+                    plan.summary.skipped.precondition_failed.to_string(),
+                ],
+                vec![
+                    "skipped/total".to_string(),
+                    plan.summary.skipped.total.to_string(),
                 ],
             ];
             write_table(&["metric", "count"], &summary)?;
@@ -383,16 +391,24 @@ pub fn write_repair_apply_report(report: &RepairApplyReport, format: OutputForma
                         .join(","),
                 ],
                 vec![
-                    "skipped_findings".to_string(),
-                    report.plan_context.skipped_findings.to_string(),
+                    "skipped/unsupported".to_string(),
+                    report.plan_context.skipped.unsupported.to_string(),
                 ],
                 vec![
-                    "unsupported_findings".to_string(),
-                    report.plan_context.unsupported_findings.to_string(),
+                    "skipped/ambiguous".to_string(),
+                    report.plan_context.skipped.ambiguous.to_string(),
                 ],
                 vec![
-                    "ambiguous_findings".to_string(),
-                    report.plan_context.ambiguous_findings.to_string(),
+                    "skipped/missing_hash".to_string(),
+                    report.plan_context.skipped.missing_hash.to_string(),
+                ],
+                vec![
+                    "skipped/precondition_failed".to_string(),
+                    report.plan_context.skipped.precondition_failed.to_string(),
+                ],
+                vec![
+                    "skipped/total".to_string(),
+                    report.plan_context.skipped.total.to_string(),
                 ],
             ];
             if let Some(verification) = &report.verification {

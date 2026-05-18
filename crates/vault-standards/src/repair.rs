@@ -8,7 +8,7 @@ use vault_core::Severity;
 use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
 use crate::findings::{Finding, FindingBody};
 
-const REPAIR_PLAN_SCHEMA_VERSION: u32 = 2;
+pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct RepairPlanFilters {
@@ -21,6 +21,50 @@ pub struct RepairPlanFilters {
     pub reason: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    /// Finding has no matching deterministic repair rule.
+    Unsupported,
+    /// Link-ambiguous: multiple resolution candidates, manual decision required.
+    Ambiguous,
+    /// Index has no current hash for the finding's path (file removed between
+    /// indexing and planning, or path didn't normalize the same way).
+    MissingHash,
+    /// Reserved: rule matched but a precondition (e.g., target missing) blocked
+    /// planning. No current code emits this; placeholder for future expansion.
+    PreconditionFailed,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SkippedFinding {
+    pub path: Utf8PathBuf,
+    pub code: String,
+    pub severity: Severity,
+    pub message: String,
+    pub skip_reason: SkipReason,
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub candidates: Vec<Utf8PathBuf>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SkippedSummary {
+    pub unsupported: usize,
+    pub ambiguous: usize,
+    pub missing_hash: usize,
+    pub precondition_failed: usize,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RepairPlan {
     pub schema_version: u32,
@@ -28,18 +72,14 @@ pub struct RepairPlan {
     pub source_filters: RepairPlanFilters,
     pub summary: RepairPlanSummary,
     pub changes: Vec<PlannedChange>,
-    pub skipped_findings: Vec<RepairPlanFinding>,
-    pub unsupported_findings: Vec<RepairPlanFinding>,
-    pub ambiguous_findings: Vec<RepairPlanFinding>,
+    pub skipped_findings: Vec<SkippedFinding>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RepairPlanSummary {
     pub findings: usize,
     pub planned_changes: usize,
-    pub skipped_findings: usize,
-    pub unsupported_findings: usize,
-    pub ambiguous_findings: usize,
+    pub skipped: SkippedSummary,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -58,25 +98,6 @@ pub struct PlannedChange {
     pub new_value: Option<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RepairPlanFinding {
-    pub path: Utf8PathBuf,
-    pub code: String,
-    pub severity: Severity,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rule: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub field: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub candidates: Vec<Utf8PathBuf>,
-    pub reason: String,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub next_actions: Vec<String>,
-}
-
 pub fn plan_repairs(
     vault_root: Utf8PathBuf,
     filters: RepairPlanFilters,
@@ -85,32 +106,47 @@ pub fn plan_repairs(
     document_hashes: &BTreeMap<Utf8PathBuf, String>,
 ) -> RepairPlan {
     let mut changes = Vec::new();
-    let mut skipped_findings = Vec::new();
+    let mut skipped: Vec<SkippedFinding> = Vec::new();
 
     for finding in &findings {
-        if let Some((rule, action)) = matching_repair_rule(finding, &config.rules) {
-            match planned_change(finding, rule, &action, document_hashes) {
-                Some(change) => changes.push(change),
-                None => skipped_findings.push(plan_finding(
-                    finding,
-                    "matched repair rule cannot repair this finding",
-                    vec!["inspect the repair rule and rerun repair plan".to_string()],
-                )),
+        match matching_repair_rule(finding, &config.rules) {
+            Some((rule, action)) => match planned_change(finding, rule, &action, document_hashes) {
+                Ok(change) => changes.push(change),
+                Err(skip) => skipped.push(skipped_finding(finding, skip)),
+            },
+            None => {
+                let skip = if matches!(
+                    &finding.body,
+                    FindingBody::LinkIssue { link } if link.status == vault_core::LinkStatus::Ambiguous
+                ) {
+                    SkipReason::Ambiguous
+                } else {
+                    SkipReason::Unsupported
+                };
+                skipped.push(skipped_finding(finding, skip));
             }
-        } else {
-            skipped_findings.push(skipped_finding(finding));
         }
     }
-    let unsupported_findings = skipped_findings
-        .iter()
-        .filter(|finding| !is_ambiguous_skipped(finding))
-        .cloned()
-        .collect::<Vec<_>>();
-    let ambiguous_findings = skipped_findings
-        .iter()
-        .filter(|finding| is_ambiguous_skipped(finding))
-        .cloned()
-        .collect::<Vec<_>>();
+
+    let skipped_summary = SkippedSummary {
+        unsupported: skipped
+            .iter()
+            .filter(|s| s.skip_reason == SkipReason::Unsupported)
+            .count(),
+        ambiguous: skipped
+            .iter()
+            .filter(|s| s.skip_reason == SkipReason::Ambiguous)
+            .count(),
+        missing_hash: skipped
+            .iter()
+            .filter(|s| s.skip_reason == SkipReason::MissingHash)
+            .count(),
+        precondition_failed: skipped
+            .iter()
+            .filter(|s| s.skip_reason == SkipReason::PreconditionFailed)
+            .count(),
+        total: skipped.len(),
+    };
 
     RepairPlan {
         schema_version: REPAIR_PLAN_SCHEMA_VERSION,
@@ -119,14 +155,10 @@ pub fn plan_repairs(
         summary: RepairPlanSummary {
             findings: findings.len(),
             planned_changes: changes.len(),
-            skipped_findings: skipped_findings.len(),
-            unsupported_findings: unsupported_findings.len(),
-            ambiguous_findings: ambiguous_findings.len(),
+            skipped: skipped_summary,
         },
         changes,
-        skipped_findings,
-        unsupported_findings,
-        ambiguous_findings,
+        skipped_findings: skipped,
     }
 }
 
@@ -167,16 +199,19 @@ fn planned_change(
     rule: &RepairRule,
     action: &RepairAction,
     document_hashes: &BTreeMap<Utf8PathBuf, String>,
-) -> Option<PlannedChange> {
+) -> Result<PlannedChange, SkipReason> {
     let repair_rule = rule
         .name
         .clone()
         .unwrap_or_else(|| "unnamed-repair-rule".to_string());
-    let document_hash = document_hashes.get(&finding.path)?.clone();
-    match action {
-        RepairAction::SetFrontmatter { field, value } => Some(PlannedChange {
+    let document_hash = document_hashes
+        .get(&finding.path)
+        .ok_or(SkipReason::MissingHash)?
+        .clone();
+    Ok(match action {
+        RepairAction::SetFrontmatter { field, value } => PlannedChange {
             path: finding.path.clone(),
-            document_hash: document_hash.clone(),
+            document_hash,
             finding_code: finding.code.clone(),
             finding_rule: finding_rule(finding),
             repair_rule,
@@ -184,8 +219,8 @@ fn planned_change(
             field: field.clone(),
             expected_old_value: finding_actual_value(finding).cloned(),
             new_value: Some(value.clone()),
-        }),
-        RepairAction::RemoveFrontmatter { field } => Some(PlannedChange {
+        },
+        RepairAction::RemoveFrontmatter { field } => PlannedChange {
             path: finding.path.clone(),
             document_hash,
             finding_code: finding.code.clone(),
@@ -195,39 +230,30 @@ fn planned_change(
             field: field.clone(),
             expected_old_value: finding_actual_value(finding).cloned(),
             new_value: None,
-        }),
-    }
+        },
+    })
 }
 
-fn skipped_finding(finding: &Finding) -> RepairPlanFinding {
-    match &finding.body {
-        FindingBody::LinkIssue { link } => {
-            let reason = if link.status == vault_core::LinkStatus::Ambiguous {
-                "ambiguous link target"
-            } else {
-                "link repair requires an explicit path/link decision"
-            };
-            let next_actions = if link.status == vault_core::LinkStatus::Ambiguous {
-                vec![
-                    "change the link to an explicit path".to_string(),
-                    "rename one duplicate candidate".to_string(),
-                    "rerun repair plan after disambiguation".to_string(),
-                ]
-            } else {
-                vec![
-                    "create the missing target or target anchor".to_string(),
-                    "rewrite the link manually".to_string(),
-                    "rerun validate after resolving the link".to_string(),
-                ]
-            };
-            let mut finding = plan_finding(finding, reason, Vec::new());
-            finding.candidates = link.candidates.clone();
-            finding.next_actions = next_actions;
-            finding
-        }
-        FindingBody::RequiredFrontmatterMissing { field, .. } => plan_finding(
-            finding,
-            "missing field has no configured deterministic default",
+fn skipped_finding(finding: &Finding, skip_reason: SkipReason) -> SkippedFinding {
+    let (reason, next_actions) = match &finding.body {
+        FindingBody::LinkIssue { link } if link.status == vault_core::LinkStatus::Ambiguous => (
+            "ambiguous link target".to_string(),
+            vec![
+                "change the link to an explicit path".to_string(),
+                "rename one duplicate candidate".to_string(),
+                "rerun repair plan after disambiguation".to_string(),
+            ],
+        ),
+        FindingBody::LinkIssue { .. } => (
+            "link repair requires an explicit path/link decision".to_string(),
+            vec![
+                "create the missing target or target anchor".to_string(),
+                "rewrite the link manually".to_string(),
+                "rerun validate after resolving the link".to_string(),
+            ],
+        ),
+        FindingBody::RequiredFrontmatterMissing { field, .. } => (
+            "missing field has no configured deterministic default".to_string(),
             vec![
                 format!("add a repair rule that sets {field} when safe"),
                 "fill the field manually and rerun validate".to_string(),
@@ -235,50 +261,53 @@ fn skipped_finding(finding: &Finding) -> RepairPlanFinding {
         ),
         FindingBody::DisallowedValue { field, .. }
         | FindingBody::InvalidFieldType { field, .. }
-        | FindingBody::ForbiddenField { field, .. } => plan_finding(
-            finding,
-            "no configured deterministic repair rule matched",
+        | FindingBody::ForbiddenField { field, .. } => (
+            "no configured deterministic repair rule matched".to_string(),
             vec![
                 format!("add a repair rule for field {field}"),
                 "rerun repair plan after updating config".to_string(),
             ],
         ),
-        FindingBody::DocumentMisrouted { .. } => plan_finding(
-            finding,
-            "path repair is planning-only in this release",
+        FindingBody::DocumentMisrouted { .. } => (
+            "path repair is planning-only in this release".to_string(),
             vec![
                 "review allowed_paths and current document location".to_string(),
                 "move files manually or use a future path apply command".to_string(),
             ],
         ),
-        FindingBody::GraphDiagnostic { .. } => plan_finding(
-            finding,
-            "graph diagnostic cannot be repaired deterministically",
+        FindingBody::GraphDiagnostic { .. } => (
+            "graph diagnostic cannot be repaired deterministically".to_string(),
             vec![
                 "inspect the diagnostic detail".to_string(),
                 "fix the document manually and rerun validate".to_string(),
             ],
         ),
-    }
-}
+    };
 
-fn plan_finding(finding: &Finding, reason: &str, next_actions: Vec<String>) -> RepairPlanFinding {
-    RepairPlanFinding {
+    // MissingHash overrides the default reason since the cause is upstream of the rule.
+    let (reason, next_actions) = if matches!(skip_reason, SkipReason::MissingHash) {
+        (
+            "document hash not present in index — file may have been removed or renamed"
+                .to_string(),
+            vec!["rebuild the index and rerun repair plan".to_string()],
+        )
+    } else {
+        (reason, next_actions)
+    };
+
+    SkippedFinding {
         path: finding.path.clone(),
         code: finding.code.clone(),
         severity: finding.severity.clone(),
         message: finding.message.clone(),
+        skip_reason,
+        reason,
         rule: finding_rule(finding),
         field: finding_field(finding),
         target: finding_target(finding),
         candidates: finding_candidates(finding),
-        reason: reason.to_string(),
         next_actions,
     }
-}
-
-fn is_ambiguous_skipped(finding: &RepairPlanFinding) -> bool {
-    finding.code == "link-ambiguous" || finding.reason.contains("ambiguous")
 }
 
 fn finding_rule(finding: &Finding) -> Option<String> {
@@ -477,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn unmatched_finding_routes_to_skipped_and_unsupported() {
+    fn unmatched_finding_routes_to_skipped_with_unsupported_reason() {
         let finding = finding_disallowed_value("task.md", "status", json!("someday"));
         let config = RepairConfig { rules: vec![] };
         let hashes = document_hashes_for(&["task.md"]);
@@ -490,12 +519,16 @@ mod tests {
         );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
-        assert_eq!(plan.unsupported_findings.len(), 1);
-        assert_eq!(plan.ambiguous_findings.len(), 0);
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::Unsupported
+        );
+        assert_eq!(plan.summary.skipped.unsupported, 1);
+        assert_eq!(plan.summary.skipped.ambiguous, 0);
     }
 
     #[test]
-    fn ambiguous_link_finding_routes_to_skipped_and_ambiguous() {
+    fn ambiguous_link_finding_routes_to_skipped_with_ambiguous_reason() {
         let finding = finding_link_ambiguous(
             "note.md",
             "Daily",
@@ -510,18 +543,15 @@ mod tests {
             &config,
             &hashes,
         );
-        assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
-        // Current implementation puts ambiguous findings into BOTH skipped_findings AND ambiguous_findings.
-        assert_eq!(plan.ambiguous_findings.len(), 1);
-        assert_eq!(plan.unsupported_findings.len(), 0);
-        let skipped = &plan.skipped_findings[0];
-        assert_eq!(skipped.candidates.len(), 2);
-        assert!(skipped.reason.contains("ambiguous"));
+        assert_eq!(plan.skipped_findings[0].skip_reason, SkipReason::Ambiguous);
+        assert_eq!(plan.skipped_findings[0].candidates.len(), 2);
+        assert_eq!(plan.summary.skipped.ambiguous, 1);
+        assert_eq!(plan.summary.skipped.unsupported, 0);
     }
 
     #[test]
-    fn unresolved_link_finding_routes_to_skipped_and_unsupported() {
+    fn unresolved_link_finding_routes_to_skipped_with_unsupported_reason() {
         let finding = finding_link_unresolved("note.md", "missing");
         let config = RepairConfig { rules: vec![] };
         let hashes = document_hashes_for(&["note.md"]);
@@ -532,18 +562,15 @@ mod tests {
             &config,
             &hashes,
         );
-        assert_eq!(plan.changes.len(), 0);
-        assert_eq!(plan.skipped_findings.len(), 1);
-        assert_eq!(plan.unsupported_findings.len(), 1);
-        assert_eq!(plan.ambiguous_findings.len(), 0);
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::Unsupported
+        );
+        assert_eq!(plan.summary.skipped.unsupported, 1);
     }
 
     #[test]
-    fn missing_document_hash_routes_to_skipped() {
-        // Current behavior: a rule matches but document_hashes lacks the path; planned_change
-        // returns None, which routes the finding to skipped with the misleading "inspect the
-        // repair rule" message. Pin this behavior so Slice 3 can verify the new SkipReason
-        // enum produces a clearer reason.
+    fn missing_document_hash_routes_to_skipped_with_missing_hash_reason() {
         let finding = finding_disallowed_value("task.md", "status", json!("someday"));
         let config = RepairConfig {
             rules: vec![make_rule(
@@ -557,7 +584,7 @@ mod tests {
                 },
             )],
         };
-        let hashes: BTreeMap<Utf8PathBuf, String> = BTreeMap::new(); // empty
+        let hashes: BTreeMap<Utf8PathBuf, String> = BTreeMap::new();
         let plan = plan_repairs(
             vault_root(),
             RepairPlanFilters::default(),
@@ -567,14 +594,17 @@ mod tests {
         );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
-        // Current reason is "matched repair rule cannot repair this finding"
-        assert!(plan.skipped_findings[0]
-            .reason
-            .contains("matched repair rule"));
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::MissingHash
+        );
+        // The reason text reflects the new clearer message.
+        assert!(plan.skipped_findings[0].reason.contains("hash not present"));
+        assert_eq!(plan.summary.skipped.missing_hash, 1);
     }
 
     #[test]
-    fn summary_counts_match_vectors() {
+    fn summary_counts_match_skip_reason_partition() {
         let findings = vec![
             finding_disallowed_value("task1.md", "status", json!("someday")),
             finding_link_ambiguous("note.md", "Daily", vec!["a.md", "b.md"]),
@@ -602,8 +632,9 @@ mod tests {
         );
         assert_eq!(plan.summary.findings, 3);
         assert_eq!(plan.summary.planned_changes, 1);
-        assert_eq!(plan.summary.skipped_findings, 2);
-        assert_eq!(plan.summary.unsupported_findings, 1);
-        assert_eq!(plan.summary.ambiguous_findings, 1);
+        assert_eq!(plan.summary.skipped.total, 2);
+        assert_eq!(plan.summary.skipped.unsupported, 1);
+        assert_eq!(plan.summary.skipped.ambiguous, 1);
+        assert_eq!(plan.summary.skipped.missing_hash, 0);
     }
 }

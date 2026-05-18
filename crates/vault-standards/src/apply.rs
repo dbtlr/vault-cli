@@ -10,11 +10,9 @@ use vault_frontmatter::{
 };
 
 use crate::findings::Finding;
-use crate::repair::{PlannedChange, RepairPlan};
+use crate::repair::{PlannedChange, RepairPlan, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION};
 use crate::summarize;
 use crate::summary::Summary;
-
-const REPAIR_PLAN_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Error)]
 pub enum ApplyError {
@@ -77,9 +75,7 @@ pub struct RepairApplyReport {
 
 #[derive(Debug, Serialize)]
 pub struct RepairApplyPlanContext {
-    pub skipped_findings: usize,
-    pub unsupported_findings: usize,
-    pub ambiguous_findings: usize,
+    pub skipped: SkippedSummary,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,9 +92,7 @@ impl RepairApplyReport {
             changed_files: Vec::new(),
             applied_changes: plan.changes.len(),
             plan_context: RepairApplyPlanContext {
-                skipped_findings: plan.skipped_findings.len(),
-                unsupported_findings: plan.unsupported_findings.len(),
-                ambiguous_findings: plan.ambiguous_findings.len(),
+                skipped: plan.summary.skipped.clone(),
             },
             verification: None,
         }
@@ -316,7 +310,7 @@ fn check_expected_old_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repair::{RepairPlanFilters, RepairPlanSummary};
+    use crate::repair::{RepairPlanFilters, RepairPlanSummary, SkippedSummary};
     use serde_json::json;
 
     fn empty_plan(schema_version: u32, vault_root: &str) -> RepairPlan {
@@ -327,14 +321,16 @@ mod tests {
             summary: RepairPlanSummary {
                 findings: 0,
                 planned_changes: 0,
-                skipped_findings: 0,
-                unsupported_findings: 0,
-                ambiguous_findings: 0,
+                skipped: SkippedSummary {
+                    unsupported: 0,
+                    ambiguous: 0,
+                    missing_hash: 0,
+                    precondition_failed: 0,
+                    total: 0,
+                },
             },
             changes: vec![],
             skipped_findings: vec![],
-            unsupported_findings: vec![],
-            ambiguous_findings: vec![],
         }
     }
 
@@ -365,7 +361,7 @@ mod tests {
         assert!(matches!(
             err,
             ApplyError::UnsupportedSchemaVersion {
-                expected: 2,
+                expected: 3,
                 got: 99
             }
         ));
