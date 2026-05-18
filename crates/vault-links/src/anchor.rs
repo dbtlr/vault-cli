@@ -163,9 +163,15 @@ mod tests {
 
     #[test]
     fn split_anchor_separates_target_and_anchor() {
-        assert_eq!(split_anchor("Note#Heading"), ("Note".into(), Some("Heading".into())));
+        assert_eq!(
+            split_anchor("Note#Heading"),
+            ("Note".into(), Some("Heading".into()))
+        );
         assert_eq!(split_anchor("Note"), ("Note".into(), None));
-        assert_eq!(split_anchor("#Heading"), ("".into(), Some("Heading".into())));
+        assert_eq!(
+            split_anchor("#Heading"),
+            ("".into(), Some("Heading".into()))
+        );
     }
 
     #[test]
@@ -178,7 +184,10 @@ mod tests {
             split_anchor_or_block_ref("Note#Heading"),
             ("Note".into(), Some("Heading".into()), None)
         );
-        assert_eq!(split_anchor_or_block_ref("Note"), ("Note".into(), None, None));
+        assert_eq!(
+            split_anchor_or_block_ref("Note"),
+            ("Note".into(), None, None)
+        );
     }
 
     #[test]

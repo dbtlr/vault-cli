@@ -229,4 +229,3 @@ fn decision_for(link: &Link) -> String {
         }
     }
 }
-

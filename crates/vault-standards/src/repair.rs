@@ -350,10 +350,7 @@ mod tests {
                 rule: Some("task-status".into()),
                 field: field.into(),
                 actual_value: value,
-                allowed_values: vec![
-                    json!("backlog"),
-                    json!("completed"),
-                ],
+                allowed_values: vec![json!("backlog"), json!("completed")],
             },
         }
     }
@@ -408,7 +405,13 @@ mod tests {
         }
     }
 
-    fn make_rule(name: &str, match_code: &str, match_field: Option<&str>, match_actual: Option<serde_json::Value>, action: RepairAction) -> RepairRule {
+    fn make_rule(
+        name: &str,
+        match_code: &str,
+        match_field: Option<&str>,
+        match_actual: Option<serde_json::Value>,
+        action: RepairAction,
+    ) -> RepairRule {
         RepairRule {
             name: Some(name.into()),
             r#match: RepairRuleMatch {
@@ -422,7 +425,10 @@ mod tests {
     }
 
     fn document_hashes_for(paths: &[&str]) -> BTreeMap<Utf8PathBuf, String> {
-        paths.iter().map(|p| (Utf8PathBuf::from(*p), format!("hash-{p}"))).collect()
+        paths
+            .iter()
+            .map(|p| (Utf8PathBuf::from(*p), format!("hash-{p}")))
+            .collect()
     }
 
     #[test]
@@ -441,7 +447,13 @@ mod tests {
             )],
         };
         let hashes = document_hashes_for(&["task.md"]);
-        let plan = plan_repairs(vault_root(), RepairPlanFilters::default(), vec![finding], &config, &hashes);
+        let plan = plan_repairs(
+            vault_root(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &config,
+            &hashes,
+        );
         assert_eq!(plan.changes.len(), 1);
         assert_eq!(plan.skipped_findings.len(), 0);
         assert_eq!(plan.changes[0].operation, "set_frontmatter");
@@ -456,7 +468,13 @@ mod tests {
         let finding = finding_disallowed_value("task.md", "status", json!("someday"));
         let config = RepairConfig { rules: vec![] };
         let hashes = document_hashes_for(&["task.md"]);
-        let plan = plan_repairs(vault_root(), RepairPlanFilters::default(), vec![finding], &config, &hashes);
+        let plan = plan_repairs(
+            vault_root(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &config,
+            &hashes,
+        );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
         assert_eq!(plan.unsupported_findings.len(), 1);
@@ -465,10 +483,20 @@ mod tests {
 
     #[test]
     fn ambiguous_link_finding_routes_to_skipped_and_ambiguous() {
-        let finding = finding_link_ambiguous("note.md", "Daily", vec!["Calendar/Daily.md", "Templates/Daily.md"]);
+        let finding = finding_link_ambiguous(
+            "note.md",
+            "Daily",
+            vec!["Calendar/Daily.md", "Templates/Daily.md"],
+        );
         let config = RepairConfig { rules: vec![] };
         let hashes = document_hashes_for(&["note.md"]);
-        let plan = plan_repairs(vault_root(), RepairPlanFilters::default(), vec![finding], &config, &hashes);
+        let plan = plan_repairs(
+            vault_root(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &config,
+            &hashes,
+        );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
         // Current implementation puts ambiguous findings into BOTH skipped_findings AND ambiguous_findings.
@@ -484,7 +512,13 @@ mod tests {
         let finding = finding_link_unresolved("note.md", "missing");
         let config = RepairConfig { rules: vec![] };
         let hashes = document_hashes_for(&["note.md"]);
-        let plan = plan_repairs(vault_root(), RepairPlanFilters::default(), vec![finding], &config, &hashes);
+        let plan = plan_repairs(
+            vault_root(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &config,
+            &hashes,
+        );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
         assert_eq!(plan.unsupported_findings.len(), 1);
@@ -511,11 +545,19 @@ mod tests {
             )],
         };
         let hashes: BTreeMap<Utf8PathBuf, String> = BTreeMap::new(); // empty
-        let plan = plan_repairs(vault_root(), RepairPlanFilters::default(), vec![finding], &config, &hashes);
+        let plan = plan_repairs(
+            vault_root(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &config,
+            &hashes,
+        );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
         // Current reason is "matched repair rule cannot repair this finding"
-        assert!(plan.skipped_findings[0].reason.contains("matched repair rule"));
+        assert!(plan.skipped_findings[0]
+            .reason
+            .contains("matched repair rule"));
     }
 
     #[test]
@@ -538,7 +580,13 @@ mod tests {
             )],
         };
         let hashes = document_hashes_for(&["task1.md", "note.md"]);
-        let plan = plan_repairs(vault_root(), RepairPlanFilters::default(), findings, &config, &hashes);
+        let plan = plan_repairs(
+            vault_root(),
+            RepairPlanFilters::default(),
+            findings,
+            &config,
+            &hashes,
+        );
         assert_eq!(plan.summary.findings, 3);
         assert_eq!(plan.summary.planned_changes, 1);
         assert_eq!(plan.summary.skipped_findings, 2);

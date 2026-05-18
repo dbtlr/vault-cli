@@ -130,7 +130,9 @@ mod tests {
         let body = "before `[[ignored]]` after [[real]]\n";
         let ranges = ignored_wikilink_ranges(body);
         // The inline code span range should cover "[[ignored]]" but not "[[real]]".
-        assert!(ranges.iter().any(|r| body[r.clone()].contains("[[ignored]]")));
+        assert!(ranges
+            .iter()
+            .any(|r| body[r.clone()].contains("[[ignored]]")));
         assert!(!ranges.iter().any(|r| body[r.clone()].contains("[[real]]")));
     }
 
@@ -139,7 +141,9 @@ mod tests {
         let body = "outside [[real]]\n\n```\n[[in code]]\n```\n\nafter [[real2]]\n";
         let ranges = ignored_wikilink_ranges(body);
         // The fenced code block range covers "[[in code]]".
-        assert!(ranges.iter().any(|r| body[r.clone()].contains("[[in code]]")));
+        assert!(ranges
+            .iter()
+            .any(|r| body[r.clone()].contains("[[in code]]")));
         // The outside wikilinks are not in any ignored range.
         let real_start = body.find("[[real]]").unwrap();
         assert!(!ranges.iter().any(|r| r.contains(&real_start)));

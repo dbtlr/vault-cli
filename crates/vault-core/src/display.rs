@@ -63,9 +63,21 @@ mod tests {
 
     #[test]
     fn unresolved_reason_str_matches_serde_rename_all() {
-        assert_eq!(unresolved_reason_str(&UnresolvedReason::TargetMissing), "target-missing");
-        assert_eq!(unresolved_reason_str(&UnresolvedReason::AnchorMissing), "anchor-missing");
-        assert_eq!(unresolved_reason_str(&UnresolvedReason::BlockRefMissing), "block-ref-missing");
-        assert_eq!(unresolved_reason_str(&UnresolvedReason::Ambiguous), "ambiguous");
+        assert_eq!(
+            unresolved_reason_str(&UnresolvedReason::TargetMissing),
+            "target-missing"
+        );
+        assert_eq!(
+            unresolved_reason_str(&UnresolvedReason::AnchorMissing),
+            "anchor-missing"
+        );
+        assert_eq!(
+            unresolved_reason_str(&UnresolvedReason::BlockRefMissing),
+            "block-ref-missing"
+        );
+        assert_eq!(
+            unresolved_reason_str(&UnresolvedReason::Ambiguous),
+            "ambiguous"
+        );
     }
 }

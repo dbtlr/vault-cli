@@ -279,7 +279,11 @@ mod tests {
 
     #[test]
     fn ambiguous_stem_wikilink_returns_ambiguous_with_candidates() {
-        let files = vec![make_file("a.md"), make_file("dir/a.md"), make_file("src.md")];
+        let files = vec![
+            make_file("a.md"),
+            make_file("dir/a.md"),
+            make_file("src.md"),
+        ];
         let mut documents = vec![
             make_document("a.md"),
             make_document("dir/a.md"),
