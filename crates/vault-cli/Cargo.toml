@@ -3,6 +3,14 @@ name = "vault-cli"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
+authors = ["Drew Butler <hi@dbtlr.com>"]
+description = "Deterministic Markdown vault graph, link, and validation tooling"
+repository = "https://github.com/dbtlr/vault-cli"
+homepage = "https://github.com/dbtlr/vault-cli"
+readme = "../../README.md"
+categories = ["command-line-utilities"]
+keywords = ["markdown", "obsidian", "vault", "cli", "validation"]
+rust-version = "1.95"
 
 [[bin]]
 name = "vault"
