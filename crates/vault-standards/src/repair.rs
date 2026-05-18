@@ -508,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn unmatched_finding_routes_to_skipped_and_unsupported() {
+    fn unmatched_finding_routes_to_skipped_with_unsupported_reason() {
         let finding = finding_disallowed_value("task.md", "status", json!("someday"));
         let config = RepairConfig { rules: vec![] };
         let hashes = document_hashes_for(&["task.md"]);
@@ -521,12 +521,16 @@ mod tests {
         );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
-        assert_eq!(plan.unsupported_findings.len(), 1);
-        assert_eq!(plan.ambiguous_findings.len(), 0);
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::Unsupported
+        );
+        assert_eq!(plan.summary.skipped.unsupported, 1);
+        assert_eq!(plan.summary.skipped.ambiguous, 0);
     }
 
     #[test]
-    fn ambiguous_link_finding_routes_to_skipped_and_ambiguous() {
+    fn ambiguous_link_finding_routes_to_skipped_with_ambiguous_reason() {
         let finding = finding_link_ambiguous(
             "note.md",
             "Daily",
@@ -541,18 +545,15 @@ mod tests {
             &config,
             &hashes,
         );
-        assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
-        // Current implementation puts ambiguous findings into BOTH skipped_findings AND ambiguous_findings.
-        assert_eq!(plan.ambiguous_findings.len(), 1);
-        assert_eq!(plan.unsupported_findings.len(), 0);
-        let skipped = &plan.skipped_findings[0];
-        assert_eq!(skipped.candidates.len(), 2);
-        assert!(skipped.reason.contains("ambiguous"));
+        assert_eq!(plan.skipped_findings[0].skip_reason, SkipReason::Ambiguous);
+        assert_eq!(plan.skipped_findings[0].candidates.len(), 2);
+        assert_eq!(plan.summary.skipped.ambiguous, 1);
+        assert_eq!(plan.summary.skipped.unsupported, 0);
     }
 
     #[test]
-    fn unresolved_link_finding_routes_to_skipped_and_unsupported() {
+    fn unresolved_link_finding_routes_to_skipped_with_unsupported_reason() {
         let finding = finding_link_unresolved("note.md", "missing");
         let config = RepairConfig { rules: vec![] };
         let hashes = document_hashes_for(&["note.md"]);
@@ -563,18 +564,15 @@ mod tests {
             &config,
             &hashes,
         );
-        assert_eq!(plan.changes.len(), 0);
-        assert_eq!(plan.skipped_findings.len(), 1);
-        assert_eq!(plan.unsupported_findings.len(), 1);
-        assert_eq!(plan.ambiguous_findings.len(), 0);
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::Unsupported
+        );
+        assert_eq!(plan.summary.skipped.unsupported, 1);
     }
 
     #[test]
-    fn missing_document_hash_routes_to_skipped() {
-        // Current behavior: a rule matches but document_hashes lacks the path; planned_change
-        // returns None, which routes the finding to skipped with the misleading "inspect the
-        // repair rule" message. Pin this behavior so Slice 3 can verify the new SkipReason
-        // enum produces a clearer reason.
+    fn missing_document_hash_routes_to_skipped_with_missing_hash_reason() {
         let finding = finding_disallowed_value("task.md", "status", json!("someday"));
         let config = RepairConfig {
             rules: vec![make_rule(
@@ -588,7 +586,7 @@ mod tests {
                 },
             )],
         };
-        let hashes: BTreeMap<Utf8PathBuf, String> = BTreeMap::new(); // empty
+        let hashes: BTreeMap<Utf8PathBuf, String> = BTreeMap::new();
         let plan = plan_repairs(
             vault_root(),
             RepairPlanFilters::default(),
@@ -598,14 +596,19 @@ mod tests {
         );
         assert_eq!(plan.changes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
-        // Current reason is "matched repair rule cannot repair this finding"
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::MissingHash
+        );
+        // The reason text reflects the new clearer message.
         assert!(plan.skipped_findings[0]
             .reason
-            .contains("matched repair rule"));
+            .contains("hash not present"));
+        assert_eq!(plan.summary.skipped.missing_hash, 1);
     }
 
     #[test]
-    fn summary_counts_match_vectors() {
+    fn summary_counts_match_skip_reason_partition() {
         let findings = vec![
             finding_disallowed_value("task1.md", "status", json!("someday")),
             finding_link_ambiguous("note.md", "Daily", vec!["a.md", "b.md"]),
@@ -633,8 +636,9 @@ mod tests {
         );
         assert_eq!(plan.summary.findings, 3);
         assert_eq!(plan.summary.planned_changes, 1);
-        assert_eq!(plan.summary.skipped_findings, 2);
-        assert_eq!(plan.summary.unsupported_findings, 1);
-        assert_eq!(plan.summary.ambiguous_findings, 1);
+        assert_eq!(plan.summary.skipped.total, 2);
+        assert_eq!(plan.summary.skipped.unsupported, 1);
+        assert_eq!(plan.summary.skipped.ambiguous, 1);
+        assert_eq!(plan.summary.skipped.missing_hash, 0);
     }
 }
