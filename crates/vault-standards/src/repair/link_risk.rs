@@ -48,9 +48,6 @@ pub struct AffectedLink {
 
 /// Walk the index and classify every link to `old_path` against the `new_path`.
 /// Returns the LinkRisk.
-///
-/// Rewrite blockers (path traversal, glob chars, links outside the vault inventory)
-/// are NOT detected here — they're surfaced at the planner level (Task 8).
 pub fn classify(
     old_path: &Utf8Path,
     new_path: &Utf8Path,

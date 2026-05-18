@@ -35,8 +35,9 @@ pub enum SkipReason {
     /// Index has no current hash for the finding's path (file removed between
     /// indexing and planning, or path didn't normalize the same way).
     MissingHash,
-    /// Reserved: rule matched but a precondition (e.g., target missing) blocked
-    /// planning. No current code emits this; placeholder for future expansion.
+    /// Rule matched but a precondition blocked producing a change. Emitted when
+    /// `move_document` placeholder substitution fails (missing frontmatter field,
+    /// non-scalar value, unknown placeholder).
     PreconditionFailed,
 }
 
@@ -355,10 +356,10 @@ fn skipped_finding(
             ],
         ),
         FindingBody::DocumentMisrouted { .. } => (
-            "path repair is planning-only in this release".to_string(),
+            "no configured move_document repair rule matched this misrouted document".to_string(),
             vec![
                 "review allowed_paths and current document location".to_string(),
-                "move files manually or use a future path apply command".to_string(),
+                "add a move_document repair rule matching this finding's code".to_string(),
             ],
         ),
         FindingBody::GraphDiagnostic { .. } => (

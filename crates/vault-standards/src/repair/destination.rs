@@ -4,12 +4,6 @@
 //! All substitution failures (missing frontmatter field, non-scalar value)
 //! propagate as `SubstitutionError`, which the planner converts into a
 //! skipped finding with `skip_reason: precondition_failed`.
-//!
-//! The planner wiring that calls `resolve_destination` lands in Task 8 of the
-//! v0.28 repair-apply gap closure feature; until then these items are only
-//! exercised by the tests in this module.
-
-#![allow(dead_code)]
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;

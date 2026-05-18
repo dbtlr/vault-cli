@@ -370,8 +370,8 @@ pub fn apply_file_changes(content: &str, changes: &[&PlannedChange]) -> Result<S
                 edits.push((insertion..insertion, line_to_insert));
             }
             "move_document" => {
-                // move_document is plan-only in this commit; the apply path
-                // lands in Task 9 of the v0.28 repair-apply gap closure.
+                // Handled by `apply_move`, not the per-file edit pass.
+                // Reaching here means the caller bypassed `changes_by_path`.
                 return Err(ApplyError::UnsupportedOperation {
                     path: path.clone(),
                     operation: "move_document".to_string(),
