@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it ships v1.0. Pre-1.0 versions may include breaking changes in minor releases.
 
-## Unreleased (v0.26.1)
+## v0.26.1 - 2026-05-18
 
 First installer-backed release. GitHub-readiness work: standard repo files, public Cargo metadata, README/docs reorganization, generic agent skill template, CI workflow with quality gates, shell completions / man page, and hosted shell installer via cargo-dist. No code behavior changes beyond the new hidden `completions` and `manpage` subcommands.
 
