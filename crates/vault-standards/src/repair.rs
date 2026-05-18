@@ -21,6 +21,50 @@ pub struct RepairPlanFilters {
     pub reason: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    /// Finding has no matching deterministic repair rule.
+    Unsupported,
+    /// Link-ambiguous: multiple resolution candidates, manual decision required.
+    Ambiguous,
+    /// Index has no current hash for the finding's path (file removed between
+    /// indexing and planning, or path didn't normalize the same way).
+    MissingHash,
+    /// Reserved: rule matched but a precondition (e.g., target missing) blocked
+    /// planning. No current code emits this; placeholder for future expansion.
+    PreconditionFailed,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SkippedFinding {
+    pub path: Utf8PathBuf,
+    pub code: String,
+    pub severity: Severity,
+    pub message: String,
+    pub skip_reason: SkipReason,
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub candidates: Vec<Utf8PathBuf>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub next_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SkippedSummary {
+    pub unsupported: usize,
+    pub ambiguous: usize,
+    pub missing_hash: usize,
+    pub precondition_failed: usize,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RepairPlan {
     pub schema_version: u32,
