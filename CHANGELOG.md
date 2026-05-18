@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it ships v1.0. Pre-1.0 versions may include breaking changes in minor releases.
 
+## v0.26.2 - 2026-05-18
+
+Release-pipeline patch on top of v0.26.1. The v0.26.1 tag was pushed but the release workflow failed before publishing artifacts; this version supersedes it. No user-facing CLI behavior changes.
+
+### Fixed
+
+- `build.rs` now generates `target/completions/{vault.bash,_vault,vault.fish}` and `target/man/vault.1` as a side effect of every `cargo build`. Previously the cargo-dist release workflow listed those paths in `dist-workspace.toml`'s `include` directive but never invoked the `just completions` / `just manpage` recipes that produced them, so packaging failed. The hidden `vault completions <shell>` and `vault manpage` subcommands are unchanged; the Justfile recipes remain as convenience wrappers.
+- Dropped `rust-version = "1.95"` from `crates/vault-cli/Cargo.toml`. Cargo-dist's `aarch64-unknown-linux-musl` builder ships rustc 1.93.1 and rejected the build with "rustc 1.93.1 is not supported". vault-cli does not yet publish to crates.io, so the field was informational only. CI continues to track latest stable via `dtolnay/rust-toolchain@stable` and `mise.toml`. The MSRV policy in `docs/development.md` is updated to explain the omission.
+
+### Changed
+
+- `InspectOutput` moved from `crates/vault-cli/src/cli.rs` to `crates/vault-cli/src/target.rs`. This keeps `cli.rs` free of intra-crate dependencies so `build.rs` can include it via `#[path = "src/cli.rs"]` without pulling in the full graph crates as build-dependencies. Internal refactor only; no public surface change.
+
 ## v0.26.1 - 2026-05-18
 
 First installer-backed release. GitHub-readiness work: standard repo files, public Cargo metadata, README/docs reorganization, generic agent skill template, CI workflow with quality gates, shell completions / man page, and hosted shell installer via cargo-dist. No code behavior changes beyond the new hidden `completions` and `manpage` subcommands.

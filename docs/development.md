@@ -65,9 +65,9 @@ crates/
 
 ## MSRV policy
 
-The minimum supported Rust version is **latest stable**. `rust-version` in `crates/vault-cli/Cargo.toml`, the toolchain pin in `mise.toml`, and the `dtolnay/rust-toolchain` action in CI move in lockstep.
+The project tracks **latest stable** Rust. The toolchain pin in `mise.toml` and the `dtolnay/rust-toolchain` action in CI move in lockstep when a new stable lands; update both in one commit and note the bump in the CHANGELOG.
 
-When a new Rust stable lands, bump all three in one commit, then update the CHANGELOG.
+`rust-version` is intentionally omitted from `crates/vault-cli/Cargo.toml` for now. Cargo-dist's release builders (notably `aarch64-unknown-linux-musl`) ship rustc versions that lag the latest stable by several months, and declaring a high MSRV would reject those builders even though the actual code compiles cleanly. The field will be re-added when vault-cli commits to publishing on crates.io and needs to advertise a stable MSRV contract.
 
 ## Test fixtures
 

@@ -2934,3 +2934,43 @@ fn completions_rejects_unknown_shell() {
         "expected clap to reject the unknown shell `tcsh`, got stderr:\n{stderr}"
     );
 }
+
+/// Cargo-dist's `include` directive packages completion scripts and the
+/// man page from a stable path under the workspace `target/` directory.
+/// `build.rs` produces those artifacts as a side effect of any build of
+/// `vault-cli`, so the integration test binary having compiled at all
+/// implies the files now exist. This guards against silent regressions
+/// where the build script stops emitting one of the expected outputs
+/// (for example after a clap_complete shell list change).
+#[test]
+fn build_script_emits_release_artifacts() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let completions = workspace_root.join("target").join("completions");
+    let man = workspace_root.join("target").join("man");
+
+    for expected in ["vault.bash", "_vault", "vault.fish"] {
+        let path = completions.join(expected);
+        let metadata = fs::metadata(&path).unwrap_or_else(|err| {
+            panic!(
+                "build.rs must emit completions artifact {}: {err}",
+                path.display()
+            )
+        });
+        assert!(
+            metadata.len() > 0,
+            "completions artifact {} must be non-empty",
+            path.display()
+        );
+    }
+
+    let man_path = man.join("vault.1");
+    let metadata = fs::metadata(&man_path)
+        .unwrap_or_else(|err| panic!("build.rs must emit {}: {err}", man_path.display()));
+    assert!(
+        metadata.len() > 0,
+        "man page artifact {} must be non-empty",
+        man_path.display()
+    );
+}

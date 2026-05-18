@@ -52,7 +52,7 @@ Or pin a specific tag:
 cargo install --git https://github.com/dbtlr/vault-cli --tag v0.26.1 vault-cli
 ```
 
-`vault` requires the minimum supported Rust version (MSRV) declared in `crates/vault-cli/Cargo.toml` (`rust-version`). The project tracks latest stable.
+`vault` tracks the latest stable Rust toolchain (see `mise.toml`). See `docs/development.md` for the full MSRV policy.
 
 ## Manual binary download
 
