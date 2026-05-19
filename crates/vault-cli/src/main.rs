@@ -7,6 +7,7 @@ mod link_repair;
 mod output;
 mod registry;
 mod repair_apply;
+mod query;
 mod target;
 mod validate_filter;
 

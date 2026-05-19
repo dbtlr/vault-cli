@@ -17,7 +17,7 @@ pub use config::{
     RepairRule, RepairRuleMatch, RuleExclude, RuleSelector, SetFrontmatterAction, ValidateConfig,
     ValidateRule, VaultConfig,
 };
-pub use engine::validate;
+pub use engine::{validate, validate_rule};
 pub use findings::{Finding, FindingBody};
 pub use repair::link_risk::{classify as classify_link_risk, AffectedLink, LinkRisk};
 pub use repair::warnings::{detect_stem_collision, PlanWarning};

@@ -15,7 +15,7 @@ pub struct DocumentFilterOptions<'a> {
 }
 
 #[derive(Debug, Serialize)]
-pub struct DocumentSummary {
+pub struct DocsSummaryReport {
     pub count_by: String,
     pub total: usize,
     pub counts: BTreeMap<String, usize>,
@@ -50,12 +50,12 @@ pub fn summarize_documents(
     documents: &[&Document],
     count_by: &str,
     known_fields: &BTreeSet<String>,
-) -> DocumentSummary {
+) -> DocsSummaryReport {
     if !known_fields.contains(count_by) {
         eprintln!(
             "warning: count-by field '{count_by}' is not a frontmatter key in any document; returning empty counts"
         );
-        return DocumentSummary {
+        return DocsSummaryReport {
             count_by: count_by.to_string(),
             total: documents.len(),
             counts: BTreeMap::new(),
@@ -70,7 +70,7 @@ pub fn summarize_documents(
         count_value(value, &mut counts);
     }
 
-    DocumentSummary {
+    DocsSummaryReport {
         count_by: count_by.to_string(),
         total: documents.len(),
         counts,

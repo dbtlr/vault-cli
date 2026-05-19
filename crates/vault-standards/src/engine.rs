@@ -1,4 +1,4 @@
-use vault_core::{Document, GraphIndex};
+use vault_core::{Document, DocumentSummary, GraphIndex};
 use vault_graph::pattern_matches_path;
 
 use crate::config::{ValidateConfig, ValidateRule};
@@ -59,6 +59,69 @@ pub fn validate(index: &GraphIndex, config: &ValidateConfig) -> Vec<Finding> {
     }
 
     findings
+}
+
+/// Apply a single validate rule against a pre-narrowed scope of document
+/// summaries. The rule's `match` predicates are assumed already applied
+/// (the caller narrowed the scope via SQL). Only the constraint checks
+/// (required / forbidden / allowed_values / field_types / allowed_paths)
+/// run.
+///
+/// Internally lifts each `DocumentSummary` to a `Document` with empty
+/// joined tables so the existing per-doc check helpers can be reused
+/// without signature changes.
+pub fn validate_rule(rule: &ValidateRule, scope: &[DocumentSummary]) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for summary in scope {
+        let doc = summary_to_document(summary);
+
+        findings.extend(crate::checks::check_required_frontmatter(
+            &doc,
+            &rule.required_frontmatter,
+            rule.name.as_deref(),
+        ));
+
+        findings.extend(crate::checks::check_field_types(
+            &doc,
+            &rule.field_types,
+            rule.name.as_deref(),
+        ));
+
+        findings.extend(crate::checks::check_forbidden_frontmatter(
+            &doc,
+            &rule.forbidden_frontmatter,
+            rule.name.as_deref(),
+        ));
+
+        if let Some(finding) = crate::checks::check_allowed_paths(
+            &doc,
+            &rule.allowed_paths,
+            rule.name.as_deref(),
+        ) {
+            findings.push(finding);
+        }
+
+        findings.extend(crate::checks::check_allowed_values(
+            &doc,
+            &rule.allowed_values,
+            rule.name.as_deref(),
+        ));
+    }
+    findings
+}
+
+fn summary_to_document(summary: &DocumentSummary) -> Document {
+    Document {
+        path: summary.path.clone(),
+        stem: summary.stem.clone(),
+        hash: summary.hash.clone(),
+        frontmatter: summary.frontmatter.clone(),
+        body_text: summary.body_text.clone(),
+        headings: Vec::new(),
+        block_ids: Vec::new(),
+        links: Vec::new(),
+        diagnostics: Vec::new(),
+    }
 }
 
 pub(crate) fn document_ignored(document: &Document, config: &ValidateConfig) -> bool {
@@ -200,5 +263,54 @@ mod tests {
         // Only the Workspaces/foo/notes/a.md document should fire the rule.
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].path, "Workspaces/foo/notes/a.md");
+    }
+}
+
+#[cfg(test)]
+mod validate_rule_tests {
+    use super::*;
+    use crate::config::{RuleExclude, RuleSelector, ValidateRule};
+    use serde_json::json;
+    use std::collections::HashMap;
+    use vault_core::DocumentSummary;
+
+    #[test]
+    fn validate_rule_applies_required_frontmatter_only_to_scope() {
+        let rule = ValidateRule {
+            name: Some("type-note-requires-kind".into()),
+            r#match: RuleSelector {
+                path: None,
+                path_not: None,
+                frontmatter: HashMap::new(),
+            },
+            exclude: RuleExclude { path: None },
+            required_frontmatter: vec!["kind".into()],
+            forbidden_frontmatter: vec![],
+            field_types: HashMap::new(),
+            allowed_values: HashMap::new(),
+            allowed_paths: vec![],
+        };
+
+        let scope = vec![
+            DocumentSummary {
+                path: "good.md".into(),
+                stem: "good".into(),
+                hash: "h".into(),
+                frontmatter: Some(json!({"type": "note", "kind": "log"})),
+                body_text: String::new(),
+            },
+            DocumentSummary {
+                path: "bad.md".into(),
+                stem: "bad".into(),
+                hash: "h".into(),
+                frontmatter: Some(json!({"type": "note"})),
+                body_text: String::new(),
+            },
+        ];
+
+        let findings = validate_rule(&rule, &scope);
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path.as_str(), "bad.md");
     }
 }

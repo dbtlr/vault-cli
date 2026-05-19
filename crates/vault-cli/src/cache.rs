@@ -40,6 +40,28 @@ pub fn load_graph_index(
     Ok(index)
 }
 
+/// Open the per-vault cache for query commands. Runs the implicit
+/// incremental refresh (unless `no_cache_refresh = true`), returning a
+/// usable `Cache` handle. Lock contention during refresh is non-fatal —
+/// emits the same stderr note as `load_graph_index` and continues against
+/// the current cache state.
+#[allow(dead_code)]
+pub fn open_for_query(vault_root: &Utf8Path, no_cache_refresh: bool) -> Result<Cache> {
+    let mut cache = Cache::open(vault_root)?;
+    if !no_cache_refresh {
+        match cache.index_incremental(vault_root, &ChangeDetectOptions::default()) {
+            Ok(_) => {}
+            Err(CacheError::LockTimeout) => {
+                eprintln!(
+                    "vault: another cache operation is in progress; using current cache state"
+                );
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(cache)
+}
+
 fn apply_ignore_filter(index: &mut GraphIndex, ignore: &[String]) {
     let patterns: Vec<&str> = ignore
         .iter()

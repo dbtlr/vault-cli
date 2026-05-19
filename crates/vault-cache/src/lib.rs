@@ -8,10 +8,17 @@
 //! identity-drifted caches trigger a silent rebuild rather than erroring.
 
 pub mod error;
+pub mod query;
 
 pub use error::CacheError;
+pub use query::{json_path_for, DocumentQuery};
+pub use vault_core::DocumentSummary;
 
 mod change_detection;
+mod query_diagnostics;
+mod query_documents;
+mod query_files;
+mod query_links;
 mod identity;
 mod invalidation;
 mod lock;

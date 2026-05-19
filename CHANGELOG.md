@@ -22,18 +22,29 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
   - Aggressive invalidation: any change to a file drops that doc's rows + every incoming link targeting it; added files re-resolve every link whose target could now match.
   - Concurrency: SQLite WAL mode for parallel reads; advisory `flock(2)` write lock at `<cache_dir>/.lock` with a 5-second timeout for `cache index|rebuild|clear`. Read commands never block.
   - Performance: cold rebuild on a 1k-doc fixture clocks under 200 ms in our perf regression test (target was < 2s); warm reads on an unchanged vault stay near steady-state. The `vault-cache` crate ships its own property test (`incremental == from-scratch` for random op sequences) and a `#[ignore]`-gated perf gate.
-  - New `vault-cache` workspace crate. SQL-direct queries and FTS5 are designed-for but not implemented; both are v2 work tracked in [[bring-back-sqlite-cache#out-of-scope]] in the atlas vault.
+  - New `vault-cache` workspace crate. SQL-direct queries and FTS5 are designed-for but not implemented; tracked separately as v3 (command migrations) and v4 (FTS5) in the atlas vault.
   - `body_text` field added to `vault_core::Document`, populated during parse. Pre-positions FTS5 to land later without a full vault re-scan.
 - New `--no-cache-refresh` global flag.
+- **Cache query API foundations** (v2 — internal plumbing for the upcoming v3 command migrations). New typed methods on `vault_cache::Cache` that query the persisted schema directly instead of reconstructing a full `GraphIndex`:
+  - `documents_matching(&DocumentQuery) -> Vec<DocumentSummary>` — SQL-narrowed scan. Frontmatter predicates push into SQL via `json_extract` with the JSON path bound as a parameter (closes the SQL-injection vector and supports any character in frontmatter keys, including hyphens and dots). Path globs apply via a Rust post-pass using the same `vault_graph::pattern_matches_path` matcher v1's `filter_documents` uses.
+  - `document_by_path(&Utf8Path) -> Option<Document>` — single-doc fetch with full joined data (headings, block_ids, links, diagnostics). For `docs inspect`-style use.
+  - `files() -> Vec<VaultFile>` — non-markdown inventory.
+  - `links() / links_unresolved() / backlinks_to(&Utf8Path) -> Vec<Link>` — link queries; all share a private row-decoder.
+  - `diagnostics() -> Vec<(Utf8PathBuf, Diagnostic)>` — per-doc diagnostic rows.
+  - `has_diagnostic_errors() -> bool` — single `SELECT EXISTS` primitive for exit-code derivation on cache-direct command paths.
+- `vault_core::DocumentSummary` — lean projection type (`path`, `stem`, `hash`, `frontmatter`, `body_text`) returned by `documents_matching`. `Document` minus the joined tables. Implements `From<Document>` and `From<&Document>` for use by helpers that don't need the joined data.
+- `vault_standards::validate_rule(&ValidateRule, &[DocumentSummary]) -> Vec<Finding>` — per-rule validate entrypoint that accepts a pre-narrowed scope. The existing `validate(&GraphIndex, &ValidateConfig)` keeps working unchanged.
 
 ### Changed
 
 - Query commands no longer rebuild the in-memory `GraphIndex` from a full filesystem scan on every invocation. They open the cache, optionally refresh it, and reconstruct `GraphIndex` from rows. Existing query logic is unchanged — only the source of the index moved from "filesystem walk" to "cache read".
 - Content hashing in the cache uses blake3 throughout (matches `vault_graph`'s existing hash; the implementation plan's SHA-256 specification was corrected to blake3 during execution to avoid mismatches with parser-emitted hashes).
+- `vault_cli::filter::DocumentSummary` renamed to `DocsSummaryReport`. The renamed struct is the aggregation report from `summarize_documents` — the new name reflects what it actually is, and frees the `DocumentSummary` name for the new `vault_core` projection. Internal rename; no command behavior change.
 
 ### Notes
 
-- No version bump for this work. The cache is v1; we'll dogfood on `main` and bundle the version bump with the upcoming v2 release (SQL-direct queries, see follow-up tasks).
+- No version bump for this work. The cache is at v1 + v2 (foundations); we'll dogfood on `main` and bundle the version bump with v3 (query command migrations) and v4 (FTS5 native search) once that work lands.
+- v2's planned command migrations (`docs query`, `docs summary`, `links list`, `search`, `validate`, `repair plan`) are **deferred to v3** pending a command-by-command user-story re-evaluation. Some commands may be redesigned, consolidated, or removed rather than directly migrated. The cache query API above is the foundation v3 will build on.
 - Operator documentation: `docs/cache.md`.
 - Follow-ups already tracked in the atlas vault: `cache-telemetry-and-doctor` (observability for slow-query debugging), `repair-plan-schema-self-heal` (apply the same self-heal posture to repair-plan v3→v4), `self-heal-audit` (broader CLI surface review).
 

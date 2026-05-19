@@ -157,6 +157,43 @@ pub struct Document {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// A lean Document projection — Document minus the joined tables (headings,
+/// block_ids, outgoing links, diagnostics). Sufficient for every query
+/// command except `docs inspect`, which needs the joined data and uses
+/// `Document` directly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DocumentSummary {
+    pub path: Utf8PathBuf,
+    pub stem: String,
+    pub hash: String,
+    pub frontmatter: Option<Value>,
+    pub body_text: String,
+}
+
+impl From<&Document> for DocumentSummary {
+    fn from(doc: &Document) -> Self {
+        DocumentSummary {
+            path: doc.path.clone(),
+            stem: doc.stem.clone(),
+            hash: doc.hash.clone(),
+            frontmatter: doc.frontmatter.clone(),
+            body_text: doc.body_text.clone(),
+        }
+    }
+}
+
+impl From<Document> for DocumentSummary {
+    fn from(doc: Document) -> Self {
+        DocumentSummary {
+            path: doc.path,
+            stem: doc.stem,
+            hash: doc.hash,
+            frontmatter: doc.frontmatter,
+            body_text: doc.body_text,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphIndex {
     pub root: Utf8PathBuf,
@@ -164,4 +201,52 @@ pub struct GraphIndex {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub ignored_files: Vec<Utf8PathBuf>,
     pub documents: Vec<Document>,
+}
+
+#[cfg(test)]
+mod document_summary_tests {
+    use super::*;
+    use camino::Utf8PathBuf;
+    use serde_json::json;
+
+    #[test]
+    fn from_document_drops_joined_tables() {
+        let doc = Document {
+            path: Utf8PathBuf::from("notes/a.md"),
+            stem: "a".to_string(),
+            hash: "abc".to_string(),
+            frontmatter: Some(json!({"type": "note"})),
+            body_text: "hello".to_string(),
+            headings: vec![],
+            block_ids: vec![],
+            links: vec![],
+            diagnostics: vec![],
+        };
+
+        let summary: DocumentSummary = (&doc).into();
+
+        assert_eq!(summary.path, doc.path);
+        assert_eq!(summary.stem, doc.stem);
+        assert_eq!(summary.hash, doc.hash);
+        assert_eq!(summary.frontmatter, doc.frontmatter);
+        assert_eq!(summary.body_text, doc.body_text);
+    }
+
+    #[test]
+    fn from_owned_document_matches_ref_conversion() {
+        let doc = Document {
+            path: camino::Utf8PathBuf::from("notes/a.md"),
+            stem: "a".to_string(),
+            hash: "abc".to_string(),
+            frontmatter: Some(serde_json::json!({"type": "note"})),
+            body_text: "hello".to_string(),
+            headings: vec![],
+            block_ids: vec![],
+            links: vec![],
+            diagnostics: vec![],
+        };
+        let from_ref: DocumentSummary = (&doc).into();
+        let from_owned: DocumentSummary = doc.into();
+        assert_eq!(from_owned, from_ref);
+    }
 }

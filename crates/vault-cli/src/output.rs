@@ -10,7 +10,7 @@ use vault_core::{Document, Link, VaultFile};
 use vault_standards::{Finding, FindingBody, RepairPlan, Summary};
 
 use crate::cli::OutputFormat;
-use crate::filter::DocumentSummary;
+use crate::filter::DocsSummaryReport;
 use crate::link_repair::LinkRepairReport;
 use crate::repair_apply::RepairApplyReport;
 
@@ -82,7 +82,7 @@ pub fn write_documents(documents: &[&Document], format: OutputFormat) -> Result<
     }
 }
 
-pub fn write_document_summary(summary: &DocumentSummary, format: OutputFormat) -> Result<()> {
+pub fn write_document_summary(summary: &DocsSummaryReport, format: OutputFormat) -> Result<()> {
     match format {
         OutputFormat::Json | OutputFormat::Jsonl => write_item_output(summary, format),
         OutputFormat::Paths => write_item_output(summary, OutputFormat::Json),

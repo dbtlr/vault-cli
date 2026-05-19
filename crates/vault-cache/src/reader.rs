@@ -65,7 +65,7 @@ fn load_documents(conn: &rusqlite::Connection) -> Result<Vec<Document>, CacheErr
     Ok(documents)
 }
 
-fn load_headings(conn: &rusqlite::Connection, doc_path: &str) -> Result<Vec<Heading>, CacheError> {
+pub(crate) fn load_headings(conn: &rusqlite::Connection, doc_path: &str) -> Result<Vec<Heading>, CacheError> {
     let mut stmt = conn.prepare(
         "SELECT level, text, slug, source_span_line, source_span_column, source_span_byte_offset
          FROM headings WHERE doc_path = ?",
@@ -99,7 +99,7 @@ fn load_headings(conn: &rusqlite::Connection, doc_path: &str) -> Result<Vec<Head
     Ok(headings)
 }
 
-fn load_diagnostics(
+pub(crate) fn load_diagnostics(
     conn: &rusqlite::Connection,
     doc_path: &str,
 ) -> Result<Vec<Diagnostic>, CacheError> {
@@ -129,7 +129,7 @@ fn load_diagnostics(
     Ok(diagnostics)
 }
 
-fn load_block_ids(conn: &rusqlite::Connection, doc_path: &str) -> Result<Vec<String>, CacheError> {
+pub(crate) fn load_block_ids(conn: &rusqlite::Connection, doc_path: &str) -> Result<Vec<String>, CacheError> {
     let mut stmt = conn.prepare("SELECT block_id FROM block_ids WHERE doc_path = ?")?;
     let rows = stmt.query_map([doc_path], |r| r.get::<_, String>(0))?;
     let mut block_ids = Vec::new();
@@ -139,7 +139,7 @@ fn load_block_ids(conn: &rusqlite::Connection, doc_path: &str) -> Result<Vec<Str
     Ok(block_ids)
 }
 
-fn load_links(conn: &rusqlite::Connection, source_path: &str) -> Result<Vec<Link>, CacheError> {
+pub(crate) fn load_links(conn: &rusqlite::Connection, source_path: &str) -> Result<Vec<Link>, CacheError> {
     let mut stmt = conn.prepare(
         "SELECT raw, kind, target_raw, resolved_path, anchor, block_ref, label,
                 source_span_start, source_span_end, source_span_line, source_span_column,
