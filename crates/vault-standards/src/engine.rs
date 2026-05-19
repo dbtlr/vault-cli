@@ -93,11 +93,9 @@ pub fn validate_rule(rule: &ValidateRule, scope: &[DocumentSummary]) -> Vec<Find
             rule.name.as_deref(),
         ));
 
-        if let Some(finding) = crate::checks::check_allowed_paths(
-            &doc,
-            &rule.allowed_paths,
-            rule.name.as_deref(),
-        ) {
+        if let Some(finding) =
+            crate::checks::check_allowed_paths(&doc, &rule.allowed_paths, rule.name.as_deref())
+        {
             findings.push(finding);
         }
 

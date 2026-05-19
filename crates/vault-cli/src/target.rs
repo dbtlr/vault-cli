@@ -87,7 +87,10 @@ pub fn resolve_target_path_cache(cache: &Cache, target: &str) -> Result<Utf8Path
         [] => bail!("no document matched path or stem: {target}"),
         many => bail!(
             "ambiguous document stem: {target}; candidates: {}",
-            many.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", ")
+            many.iter()
+                .map(|p| p.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
     }
 }

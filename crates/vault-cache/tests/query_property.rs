@@ -263,11 +263,7 @@ fn synth_link_vault() -> (TempDir, Utf8PathBuf) {
         "---\n---\n[to b](b.md) [to nowhere](missing.md)\n",
     )
     .unwrap();
-    std::fs::write(
-        root.join("b.md").as_std_path(),
-        "---\n---\n[to a](a.md)\n",
-    )
-    .unwrap();
+    std::fs::write(root.join("b.md").as_std_path(), "---\n---\n[to a](a.md)\n").unwrap();
     (tmp, root)
 }
 
@@ -303,9 +299,7 @@ fn backlinks_to_returns_incoming_resolved_links() {
     let mut cache = Cache::open(&root).unwrap();
     cache.rebuild(&root).unwrap();
 
-    let incoming = cache
-        .backlinks_to(camino::Utf8Path::new("a.md"))
-        .unwrap();
+    let incoming = cache.backlinks_to(camino::Utf8Path::new("a.md")).unwrap();
 
     assert_eq!(incoming.len(), 1);
     assert_eq!(incoming[0].source_path.as_str(), "b.md");

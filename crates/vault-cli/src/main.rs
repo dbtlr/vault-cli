@@ -5,9 +5,9 @@ mod config;
 mod filter;
 mod link_repair;
 mod output;
+mod query;
 mod registry;
 mod repair_apply;
-mod query;
 mod target;
 mod validate_filter;
 

@@ -31,7 +31,11 @@ pub fn document_query_from_options(
             .split_once(':')
             .ok_or_else(|| anyhow::anyhow!("invalid filter, expected field:value: {filter}"))?;
         let field = field.trim().to_string();
-        for value in values_csv.split(',').map(str::trim).filter(|v| !v.is_empty()) {
+        for value in values_csv
+            .split(',')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
             query
                 .frontmatter_eq
                 .push((field.clone(), serde_json::Value::String(value.to_string())));
