@@ -1,3 +1,4 @@
+mod cache;
 mod cli;
 mod completions;
 mod config;
@@ -14,12 +15,12 @@ use std::{fs, process};
 use anyhow::{bail, Result};
 use clap::Parser;
 use vault_core::{GraphIndex, LinkStatus};
-use vault_graph::{build_index_with_options, concise_diagnostics, has_errors};
+use vault_graph::{concise_diagnostics, has_errors};
 use vault_standards::{plan_repairs, summarize, validate, RepairPlanFilters};
 
 use crate::cli::{
-    Cli, Command, DocsSubcommand, LinksSubcommand, RegistrySubcommand, RepairOutputFormat,
-    RepairSubcommand,
+    CacheSubcommand, Cli, Command, DocsSubcommand, LinksSubcommand, RegistrySubcommand,
+    RepairOutputFormat, RepairSubcommand,
 };
 use crate::config::{effective_cwd, load_config, resolve_path};
 use crate::filter::{
@@ -55,6 +56,7 @@ fn run(cli: Cli) -> Result<i32> {
         vault,
         config,
         verbose,
+        no_cache_refresh,
         command,
     } = cli;
 
@@ -71,7 +73,7 @@ fn run(cli: Cli) -> Result<i32> {
     match command {
         Command::Docs(docs) => match docs.command {
             DocsSubcommand::List(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);
                 let options = DocumentFilterOptions {
                     filters: &args.filters.filters,
@@ -84,7 +86,7 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
             DocsSubcommand::Summary(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);
                 let options = DocumentFilterOptions {
                     filters: &args.filters.filters,
@@ -99,7 +101,7 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
             DocsSubcommand::Inspect(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);
                 let target_path = resolve_target_path(&index, &args.target)?;
                 let output = inspect_document(&index, &target_path)?;
@@ -108,7 +110,7 @@ fn run(cli: Cli) -> Result<i32> {
             }
         },
         Command::Files(args) => {
-            let mut index = build_index_for(&cwd, config_path.as_ref())?;
+            let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
             trim_diagnostics(&mut index, verbose);
             let files: Vec<_> = index.files.iter().collect();
             write_files(&files, resolve_format(args.format))?;
@@ -116,7 +118,7 @@ fn run(cli: Cli) -> Result<i32> {
         }
         Command::Links(links_command) => match links_command.command {
             LinksSubcommand::List(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);
                 let links: Vec<_> = index
                     .documents
@@ -127,7 +129,7 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
             LinksSubcommand::Unresolved(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);
                 let links: Vec<_> = index
                     .documents
@@ -139,7 +141,7 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
             LinksSubcommand::Backlinks(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);
                 let target_path = resolve_backlink_target_path(&index, &args.target)?;
                 let links = backlinks(&index, &target_path);
@@ -148,7 +150,7 @@ fn run(cli: Cli) -> Result<i32> {
             }
         },
         Command::Search(args) => {
-            let mut index = build_index_for(&cwd, config_path.as_ref())?;
+            let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
             trim_diagnostics(&mut index, verbose);
             let options = DocumentFilterOptions {
                 filters: &args.filters.filters,
@@ -164,7 +166,11 @@ fn run(cli: Cli) -> Result<i32> {
         Command::Repair(repair_command) => match repair_command.command {
             RepairSubcommand::Plan(args) => {
                 let loaded_config = load_config(&cwd, config_path.as_ref())?;
-                let mut index = build_index_with_options(&cwd, &loaded_config.index_options)?;
+                let mut index = crate::cache::load_graph_index(
+                    &cwd,
+                    &loaded_config.index_options,
+                    no_cache_refresh,
+                )?;
                 trim_diagnostics(&mut index, verbose);
                 let findings = validate(&index, &loaded_config.validate);
                 let filters = ValidateFilterOptions::from(&args);
@@ -202,12 +208,19 @@ fn run(cli: Cli) -> Result<i32> {
                         anyhow::anyhow!("failed to parse repair plan {plan_path}: {error}")
                     })?;
                 let loaded_config = load_config(&cwd, config_path.as_ref())?;
-                let mut index = build_index_with_options(&cwd, &loaded_config.index_options)?;
+                let mut index = crate::cache::load_graph_index(
+                    &cwd,
+                    &loaded_config.index_options,
+                    no_cache_refresh,
+                )?;
                 trim_diagnostics(&mut index, verbose);
                 let mut report = apply_repair_plan(&cwd, &index, &plan, args.dry_run)?;
                 if args.verify {
+                    // After apply, files on disk changed — force a refresh
+                    // regardless of the user's flag so verification reflects
+                    // the post-apply state.
                     let mut verify_index =
-                        build_index_with_options(&cwd, &loaded_config.index_options)?;
+                        crate::cache::load_graph_index(&cwd, &loaded_config.index_options, false)?;
                     trim_diagnostics(&mut verify_index, verbose);
                     let findings = validate(&verify_index, &loaded_config.validate);
                     report = with_verification(report, &findings);
@@ -216,7 +229,7 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
             RepairSubcommand::Links(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref())?;
+                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);
                 let report =
                     plan_link_repairs(&index, args.target.as_deref(), args.move_to.as_deref())?;
@@ -224,9 +237,22 @@ fn run(cli: Cli) -> Result<i32> {
                 Ok(exit_code_for(&index))
             }
         },
+        Command::Cache(cache_command) => {
+            match &cache_command.command {
+                CacheSubcommand::Index(args) => crate::cache::run_index(&cwd, args)?,
+                CacheSubcommand::Rebuild => crate::cache::run_rebuild(&cwd)?,
+                CacheSubcommand::Clear => crate::cache::run_clear(&cwd)?,
+                CacheSubcommand::Status(args) => crate::cache::run_status(&cwd, args)?,
+            }
+            Ok(0)
+        }
         Command::Validate(args) => {
             let loaded_config = load_config(&cwd, config_path.as_ref())?;
-            let mut index = build_index_with_options(&cwd, &loaded_config.index_options)?;
+            let mut index = crate::cache::load_graph_index(
+                &cwd,
+                &loaded_config.index_options,
+                no_cache_refresh,
+            )?;
             trim_diagnostics(&mut index, verbose);
             let findings = validate(&index, &loaded_config.validate);
             let filters = ValidateFilterOptions::from(&args);
@@ -336,9 +362,10 @@ fn filter_documents_by_text<'a>(
 fn build_index_for(
     cwd: &camino::Utf8PathBuf,
     config_path: Option<&camino::Utf8PathBuf>,
+    no_cache_refresh: bool,
 ) -> Result<GraphIndex> {
     let loaded_config = load_config(cwd, config_path)?;
-    Ok(build_index_with_options(cwd, &loaded_config.index_options)?)
+    crate::cache::load_graph_index(cwd, &loaded_config.index_options, no_cache_refresh)
 }
 
 fn trim_diagnostics(index: &mut GraphIndex, verbose: bool) {

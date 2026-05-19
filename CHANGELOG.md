@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it ships v1.0. Pre-1.0 versions may include breaking changes in minor releases.
 
+## [Unreleased]
+
+Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
+
+### Added
+
+- **SQLite cache as the read path for query commands** (v1). Reintroduces a cache surface that was removed in v0.26.0 — this time, query commands actually consume it. Closes the "every command does a full filesystem rescan" performance gap.
+  - Cache lives at `~/.cache/vault/<sha256(canonical-vault-root)>/cache.db` (honors `$XDG_CACHE_HOME`). Directory is `0700`, database file is `0600`. Identity hash uses the canonical vault-root path so symlinked roots, `--vault registry-name`, and direct cwd-discovery all resolve to the same cache.
+  - New `vault cache` subcommand: `index` (incremental, default), `rebuild` (full from scratch), `clear` (delete the cache file), `status` (path, size, doc/file/link counts, schema version, last full rebuild). `index --rebuild` and `index --force-hash` flags; `status --format json|text`. New global flag `--no-cache-refresh` skips the implicit refresh before query commands.
+  - Query commands (`validate`, `docs`, `files`, `links`, `repair plan/apply`, `search`) now load from the cache via a shared helper. The cache is refreshed transparently before each command unless `--no-cache-refresh` is set. Lock contention during refresh downgrades to a stderr notice and reads stale; never errors.
+  - Cache schema starts at `v2` (bumped during implementation to persist `Link.unresolved_reason`, `Link.candidates`, and a new `diagnostics` table; the v1 → v2 jump was internal and never released).
+  - Self-heal triggers on `Cache::open`: missing file, schema older than the binary, identity drift (vault root path changed), and SQLite corruption (failed `PRAGMA integrity_check`) all auto-rebuild silently with a one-line stderr message. Only a *newer*-than-known schema hard-errors (interpreting unknown future fields is the destructive risk).
+  - Incremental updates use a `(mtime, size)` cheap-check then blake3 hash-verify on mismatch. `--force-hash` skips the cheap-check for filesystems where mtime is unreliable (NFS, Docker bind-mounts on macOS, rsync-restored vaults, post-`git-restore-mtime` workflows).
+  - Aggressive invalidation: any change to a file drops that doc's rows + every incoming link targeting it; added files re-resolve every link whose target could now match.
+  - Concurrency: SQLite WAL mode for parallel reads; advisory `flock(2)` write lock at `<cache_dir>/.lock` with a 5-second timeout for `cache index|rebuild|clear`. Read commands never block.
+  - Performance: cold rebuild on a 1k-doc fixture clocks under 200 ms in our perf regression test (target was < 2s); warm reads on an unchanged vault stay near steady-state. The `vault-cache` crate ships its own property test (`incremental == from-scratch` for random op sequences) and a `#[ignore]`-gated perf gate.
+  - New `vault-cache` workspace crate. SQL-direct queries and FTS5 are designed-for but not implemented; both are v2 work tracked in [[bring-back-sqlite-cache#out-of-scope]] in the atlas vault.
+  - `body_text` field added to `vault_core::Document`, populated during parse. Pre-positions FTS5 to land later without a full vault re-scan.
+- New `--no-cache-refresh` global flag.
+
+### Changed
+
+- Query commands no longer rebuild the in-memory `GraphIndex` from a full filesystem scan on every invocation. They open the cache, optionally refresh it, and reconstruct `GraphIndex` from rows. Existing query logic is unchanged — only the source of the index moved from "filesystem walk" to "cache read".
+- Content hashing in the cache uses blake3 throughout (matches `vault_graph`'s existing hash; the implementation plan's SHA-256 specification was corrected to blake3 during execution to avoid mismatches with parser-emitted hashes).
+
+### Notes
+
+- No version bump for this work. The cache is v1; we'll dogfood on `main` and bundle the version bump with the upcoming v2 release (SQL-direct queries, see follow-up tasks).
+- Operator documentation: `docs/cache.md`.
+- Follow-ups already tracked in the atlas vault: `cache-telemetry-and-doctor` (observability for slow-query debugging), `repair-plan-schema-self-heal` (apply the same self-heal posture to repair-plan v3→v4), `self-heal-audit` (broader CLI surface review).
+
 ## v0.28.0 - 2026-05-18
 
 Closes the validate → plan → apply → verify loop for `frontmatter-required-field-missing` and `document-misrouted` findings by adding two new repair actions. Bumps the repair plan JSON schema to v4.

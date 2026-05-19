@@ -151,6 +151,21 @@ vault registry list --format table
 vault registry remove myvault
 ```
 
+## cache
+
+Cache management subcommands. See [cache.md](cache.md) for full documentation.
+
+| Command | Purpose |
+|---|---|
+| `vault cache index` | Update the cache incrementally (default). |
+| `vault cache index --rebuild` | Full rebuild from scratch. |
+| `vault cache index --force-hash` | Skip mtime cheap-check; hash every file. |
+| `vault cache rebuild` | Alias for `cache index --rebuild`. |
+| `vault cache clear` | Delete the cache; next command rebuilds. |
+| `vault cache status` | Report cache path, size, doc/link/file counts, schema version. |
+
+Query commands (`vault validate`, `vault docs`, `vault files`, `vault links`, `vault repair`) refresh the cache implicitly before reading. Pass the global `--no-cache-refresh` flag to skip that step.
+
 ## Hidden subcommands
 
 `vault` also exposes hidden subcommands for shell completions and the man page (used by the installer). These don't appear in `vault --help` top-level output:

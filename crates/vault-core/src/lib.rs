@@ -142,6 +142,11 @@ pub struct Document {
     pub hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frontmatter: Option<Value>,
+    /// The post-frontmatter body of the document, retained for downstream
+    /// indexing (cache writer, future FTS5). Empty when the file could not
+    /// be read.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body_text: String,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub headings: Vec<Heading>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]

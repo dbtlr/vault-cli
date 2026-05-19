@@ -152,6 +152,14 @@ vault --vault myvault repair apply repair.json --dry-run --format json
 vault --vault myvault repair apply repair.json --verify --format json
 ```
 
+## Cache
+
+`vault` maintains a SQLite cache of the graph (documents, links, headings, frontmatter, body text). Query commands automatically refresh the cache before reading; agents don't need to run `vault cache index` explicitly in the common case.
+
+If you observe stale results, try `vault cache rebuild` to force a clean state.
+
+The cache is disposable — missing or corrupted caches rebuild silently. Don't program around cache-error retries; surface them as bugs to fix.
+
 ## Common pitfalls
 
 - **Don't filter by un-indexed fields.** `vault docs list --filter` matches frontmatter scalar or list values only. For body text matching, use `vault search --text "..."`.

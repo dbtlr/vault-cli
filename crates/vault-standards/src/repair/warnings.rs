@@ -62,6 +62,7 @@ mod tests {
             stem: Utf8Path::new(path).file_stem().unwrap().to_string(),
             hash: String::new(),
             frontmatter: None,
+            body_text: String::new(),
             headings: vec![],
             block_ids: vec![],
             links: vec![],

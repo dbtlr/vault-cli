@@ -105,6 +105,7 @@ fn parse_document(root: &Utf8Path, absolute_path: &Utf8Path) -> Document {
                 stem,
                 hash: String::new(),
                 frontmatter: None,
+                body_text: String::new(),
                 headings: Vec::new(),
                 block_ids: Vec::new(),
                 links: Vec::new(),
@@ -117,6 +118,7 @@ fn parse_document(root: &Utf8Path, absolute_path: &Utf8Path) -> Document {
     let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
     let (frontmatter, frontmatter_range, body, body_start) =
         extract_frontmatter(&content, &mut diagnostics);
+    let body_text = body.to_string();
     let (headings, mut links) = parse_commonmark(&path, &content, body, body_start);
     links.extend(parse_wikilinks(&path, &content, body, body_start));
     if let Some(frontmatter) = &frontmatter {
@@ -134,6 +136,7 @@ fn parse_document(root: &Utf8Path, absolute_path: &Utf8Path) -> Document {
         stem,
         hash,
         frontmatter,
+        body_text,
         headings,
         block_ids,
         links,

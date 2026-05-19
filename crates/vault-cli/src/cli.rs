@@ -35,6 +35,13 @@ pub struct Cli {
         help = "Include full diagnostic detail in output"
     )]
     pub verbose: bool,
+    #[arg(
+        long = "no-cache-refresh",
+        global = true,
+        help_heading = "Global options",
+        help = "Skip the implicit cache refresh that query commands run before reading the graph index"
+    )]
+    pub no_cache_refresh: bool,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -66,8 +73,63 @@ pub enum Command {
     Validate(ValidateArgs),
     #[command(about = "Shell completion installation and script emission")]
     Completions(CompletionsCommand),
+    #[command(
+        about = "Manage the SQLite-backed vault graph cache",
+        long_about = "Manage the SQLite-backed vault graph cache.\n\nThe cache is a per-vault disposable read-acceleration store. Query commands open it transparently; these subcommands let you index, rebuild, clear, or inspect it explicitly."
+    )]
+    Cache(CacheCommand),
     #[command(hide = true, about = "Emit roff-format man page to stdout")]
     Manpage,
+}
+
+#[derive(Debug, Parser)]
+pub struct CacheCommand {
+    #[command(subcommand)]
+    pub command: CacheSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CacheSubcommand {
+    #[command(
+        about = "Update the cache incrementally",
+        long_about = "Update the cache incrementally.\n\nDetects changed files via mtime+size and re-parses only the affected documents. Pass --rebuild to force a full from-scratch rebuild, or --force-hash to bypass the cheap-check and hash every file."
+    )]
+    Index(CacheIndexArgs),
+    #[command(about = "Rebuild the cache from scratch")]
+    Rebuild,
+    #[command(
+        about = "Delete the cache database",
+        long_about = "Delete the cache database.\n\nRemoves the cache.db file and its WAL/SHM siblings. The next cache-aware command auto-recreates a fresh database."
+    )]
+    Clear,
+    #[command(about = "Show cache path, size, document and link counts, and schema version")]
+    Status(CacheStatusArgs),
+}
+
+#[derive(Debug, Parser)]
+pub struct CacheIndexArgs {
+    #[arg(
+        long,
+        help = "Rebuild the cache from scratch instead of an incremental update"
+    )]
+    pub rebuild: bool,
+    #[arg(
+        long = "force-hash",
+        help = "Skip the mtime+size cheap-check and hash every file"
+    )]
+    pub force_hash: bool,
+}
+
+#[derive(Debug, Parser)]
+pub struct CacheStatusArgs {
+    #[arg(long, value_enum, default_value_t = CacheOutputFormat::Text, help = "Stdout format")]
+    pub format: CacheOutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CacheOutputFormat {
+    Text,
+    Json,
 }
 
 #[derive(Debug, Parser)]

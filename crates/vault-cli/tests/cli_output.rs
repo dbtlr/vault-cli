@@ -15,15 +15,24 @@ fn fixture_root() -> PathBuf {
         .join("fixtures/basic")
 }
 
+/// Wraps a vault invocation with a per-test `XDG_CACHE_HOME` so each test
+/// gets a fresh SQLite cache. Without this, tests against the same vault
+/// root (e.g. `fixtures/basic`) would share — and race on — the cache.
+fn isolate_cache(command: &mut Command) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("temp cache dir should be created");
+    command.env("XDG_CACHE_HOME", dir.path());
+    dir
+}
+
 fn vault(args: &[&str]) -> String {
     vault_success(args).0
 }
 
 fn vault_success(args: &[&str]) -> (String, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
-        .args(args)
-        .output()
-        .expect("vault command should run");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    command.args(args);
+    let _cache_dir = isolate_cache(&mut command);
+    let output = command.output().expect("vault command should run");
 
     assert!(
         output.status.success(),
@@ -41,6 +50,11 @@ fn vault_success(args: &[&str]) -> (String, String) {
 fn vault_success_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
     command.args(args);
+    let _cache_dir = if envs.iter().any(|(k, _)| *k == "XDG_CACHE_HOME") {
+        None
+    } else {
+        Some(isolate_cache(&mut command))
+    };
     for (key, value) in envs {
         command.env(key, value);
     }
@@ -60,10 +74,10 @@ fn vault_success_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String) {
 }
 
 fn vault_error(args: &[&str]) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
-        .args(args)
-        .output()
-        .expect("vault command should run");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    command.args(args);
+    let _cache_dir = isolate_cache(&mut command);
+    let output = command.output().expect("vault command should run");
 
     assert!(
         !output.status.success(),
@@ -78,6 +92,11 @@ fn vault_error(args: &[&str]) -> String {
 fn vault_error_env(args: &[&str], envs: &[(&str, &str)]) -> String {
     let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
     command.args(args);
+    let _cache_dir = if envs.iter().any(|(k, _)| *k == "XDG_CACHE_HOME") {
+        None
+    } else {
+        Some(isolate_cache(&mut command))
+    };
     for (key, value) in envs {
         command.env(key, value);
     }
@@ -94,11 +113,10 @@ fn vault_error_env(args: &[&str], envs: &[(&str, &str)]) -> String {
 }
 
 fn vault_in_dir(args: &[&str], current_dir: &PathBuf) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
-        .current_dir(current_dir)
-        .args(args)
-        .output()
-        .expect("vault command should run");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    command.current_dir(current_dir).args(args);
+    let _cache_dir = isolate_cache(&mut command);
+    let output = command.output().expect("vault command should run");
 
     assert!(
         output.status.success(),
@@ -139,7 +157,7 @@ fn vault_help_documents_global_cwd() {
     assert!(output.contains("search"));
     assert!(output.contains("registry"));
     assert!(output.contains("repair"));
-    assert!(!output.contains("cache"));
+    assert!(output.contains("cache"));
 }
 
 #[test]
@@ -160,8 +178,12 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("unresolved"));
     assert!(output.contains("backlinks"));
 
-    let error = vault_error(&["cache", "--help"]);
-    assert!(error.contains("unrecognized subcommand 'cache'"));
+    let output = vault(&["cache", "--help"]);
+    assert!(output.contains("Manage the SQLite-backed vault graph cache"));
+    assert!(output.contains("index"));
+    assert!(output.contains("rebuild"));
+    assert!(output.contains("clear"));
+    assert!(output.contains("status"));
 
     let output = vault(&["registry", "--help"]);
     assert!(output.contains("Manage named vault roots"));
@@ -3736,4 +3758,111 @@ fn repair_links_move_to_reports_risk_without_plan() {
     );
 
     fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn cache_index_creates_cache_and_status_reports_documents() {
+    let root = temp_cache_dir();
+    let cache_home = temp_cache_dir();
+    fs::create_dir_all(&root).expect("vault dir should be created");
+    fs::create_dir_all(&cache_home).expect("cache home should be created");
+    fs::write(root.join("a.md"), "---\ntitle: A\n---\nbody\n").expect("a.md should write");
+
+    let envs = [("XDG_CACHE_HOME", cache_home.to_str().unwrap())];
+
+    vault_success_env(&["-C", root.to_str().unwrap(), "cache", "index"], &envs);
+
+    let (stdout, _stderr) = vault_success_env(
+        &[
+            "-C",
+            root.to_str().unwrap(),
+            "cache",
+            "status",
+            "--format",
+            "json",
+        ],
+        &envs,
+    );
+    let status = serde_json::from_str::<Value>(&stdout).expect("status should be JSON");
+    assert!(
+        status["doc_count"].as_u64().unwrap() >= 1,
+        "expected at least one indexed document; got: {status}"
+    );
+    assert!(status["cache_path"].as_str().unwrap().ends_with("cache.db"));
+    assert!(status["size_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(status["schema_version"], 2);
+
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&cache_home).ok();
+}
+
+#[test]
+fn cache_clear_removes_cache_and_next_status_reports_empty() {
+    let root = temp_cache_dir();
+    let cache_home = temp_cache_dir();
+    fs::create_dir_all(&root).expect("vault dir should be created");
+    fs::create_dir_all(&cache_home).expect("cache home should be created");
+    fs::write(root.join("a.md"), "---\ntitle: A\n---\nbody\n").expect("a.md should write");
+
+    let envs = [("XDG_CACHE_HOME", cache_home.to_str().unwrap())];
+
+    vault_success_env(&["-C", root.to_str().unwrap(), "cache", "index"], &envs);
+    vault_success_env(&["-C", root.to_str().unwrap(), "cache", "clear"], &envs);
+
+    let (stdout, _stderr) = vault_success_env(
+        &[
+            "-C",
+            root.to_str().unwrap(),
+            "cache",
+            "status",
+            "--format",
+            "json",
+        ],
+        &envs,
+    );
+    let status = serde_json::from_str::<Value>(&stdout).expect("status should be JSON");
+    assert_eq!(
+        status["doc_count"].as_u64().unwrap(),
+        0,
+        "expected freshly-recreated cache to report zero documents; got: {status}"
+    );
+
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&cache_home).ok();
+}
+
+#[test]
+fn cache_rebuild_repopulates_after_adding_documents() {
+    let root = temp_cache_dir();
+    let cache_home = temp_cache_dir();
+    fs::create_dir_all(&root).expect("vault dir should be created");
+    fs::create_dir_all(&cache_home).expect("cache home should be created");
+    fs::write(root.join("a.md"), "---\ntitle: A\n---\nbody\n").expect("a.md should write");
+
+    let envs = [("XDG_CACHE_HOME", cache_home.to_str().unwrap())];
+
+    vault_success_env(&["-C", root.to_str().unwrap(), "cache", "index"], &envs);
+    fs::write(root.join("b.md"), "---\ntitle: B\n---\nbody\n").expect("b.md should write");
+    vault_success_env(&["-C", root.to_str().unwrap(), "cache", "rebuild"], &envs);
+
+    let (stdout, _stderr) = vault_success_env(
+        &[
+            "-C",
+            root.to_str().unwrap(),
+            "cache",
+            "status",
+            "--format",
+            "json",
+        ],
+        &envs,
+    );
+    let status = serde_json::from_str::<Value>(&stdout).expect("status should be JSON");
+    assert_eq!(
+        status["doc_count"].as_u64().unwrap(),
+        2,
+        "expected rebuild to repopulate both documents; got: {status}"
+    );
+
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&cache_home).ok();
 }
