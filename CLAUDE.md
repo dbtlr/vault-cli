@@ -1,6 +1,6 @@
 # vault-cli — working principles for Claude
 
-Project-level instructions for agents working in this repo. Workspace-specific Atlas integration lives in `CLAUDE.local.md` (gitignored). Universal collaboration patterns live in the partner-model. This file is the durable middle layer: vault-cli-specific habits learned from real CI failures and Drew's stated design constraints.
+Project-level instructions for agents working in this repo. Workspace-private setup details live in `CLAUDE.local.md` (gitignored). This file is the durable middle layer: vault-cli-specific habits learned from real CI failures and Drew's stated design constraints.
 
 ## Northstar
 
@@ -40,11 +40,11 @@ vault-cli is pre-1.0. No external consumers besides Drew. Drew has been explicit
 
 When CI failures or downstream tests surface a v1-parity gap during a redesign, the default response is **redesign, not restore.** Question whether the existing contract was deliberate or historical-accident-shaped; prefer breaking changes (with CHANGELOG breaking-change entries) over preserving suspect behavior. This flips post-1.0 — but until then, churn is cheap.
 
-## Atlas as the perf + dogfood vault
+## Dogfood against a representative real vault
 
-The Atlas vault at `/Volumes/data/vaults/atlas` is the canonical performance and integration target. Every shipped command runs against it before merge — both for correctness (output shape, exit codes) and for timing (the 50ms target). Atlas is ~780 docs / 2673 links as of 2026-05-19. If a query exceeds the 50ms budget on Atlas, that's a real signal.
+Every shipped command runs against a representative real-world Markdown vault before merge — both for correctness (output shape, exit codes) and for timing (the 50ms target for typical queries). Don't ship if a command exceeds the perf budget on real-vault scale data, or surface the regression deliberately in the CHANGELOG if it's intentional.
 
-`EXPLAIN QUERY PLAN` against `documents` / `links` / `headings` is the standard tool for diagnosing slow queries. Guard tests verify the plan stays a single SCAN/SEARCH (no per-row sub-queries).
+`EXPLAIN QUERY PLAN` against `documents` / `links` / `headings` is the standard tool for diagnosing slow queries. Guard tests verify the plan stays a single SCAN/SEARCH (no per-row sub-queries). The specific dogfood vault path and current baseline numbers are in `CLAUDE.local.md`.
 
 ## Subagent dispatch patterns
 
@@ -70,7 +70,7 @@ These are durable preferences across sessions. Honor them when they apply:
 - **The `docs` namespace is dead.** Drew: *"I hate the docs commands, their naming is unintuitive."* Any new command must use a job-shaped name (`find`, `links`, `validate`), not a noun-shaped one (`docs`, `files` is borderline). When `vault docs summary` and `vault docs inspect` get their redesign turn, they need new names.
 - **Records output, not tables.** Drew: terminal rendering of query results is per-doc key-value blocks with terminal-width-aware value wrapping. The reference is pgcli / mycli vertical mode, not a spreadsheet grid. Don't reach for column-style tables for multi-field output.
 - **Default to dump-everything; let users narrow.** Drew: *"Without it, dump everything. Let the user / agent ask for less, they might not know what that is until they see it and then filter down."* `--col` and similar narrowing flags are subtractive; the default shows everything.
-- **`warn`, don't `block`** (from memory `[[feedback-warn-dont-block]]`). For non-destructive operator decisions, vault-cli warns and proceeds; blockers reserved for cases where the action can't proceed cleanly.
+- **`warn`, don't `block`.** For non-destructive operator decisions, vault-cli warns and proceeds; blockers reserved for cases where the action can't proceed cleanly.
 
 ## Three-layer durability for shipping
 
@@ -78,12 +78,12 @@ When shipping any non-trivial work:
 
 1. **CHANGELOG `## [Unreleased]`** — operator-facing summary of every user-visible change (per the `changelog` skill).
 2. **Squash commit body** — preserve per-task SHAs + design highlights + mid-execution catches inline. `git log -1 <sha>` recovers the per-task history that squash deletes.
-3. **Atlas vault `agent-artifacts/`** — design spec, implementation plan, dev log.
+3. **External design archive** — design spec, implementation plan, dev log. Drew's specific archive location is in `CLAUDE.local.md`.
 
 Each layer answers a different question (what shipped / what's the code history / why was it built this way). Don't duplicate effort across them.
 
 ## Worktree workflow
 
-Drew prefers isolated worktrees for substantial multi-commit work ([[feedback-worktrees]]). Use the native `EnterWorktree` tool — not `git worktree add` directly. The harness needs to see the worktree state; `git worktree add` creates phantom state it can't see or manage.
+Drew prefers isolated worktrees for substantial multi-commit work. Use the native `EnterWorktree` tool — not `git worktree add` directly. The harness needs to see the worktree state; `git worktree add` creates phantom state it can't see or manage.
 
-`EnterWorktree` branches from `origin/main`. Always check that local main is in sync with origin before creating a worktree, and rebase if local is ahead. (Memory: `[[2026-05-19_0924_cache-v2-foundations-v3-reframe]]` learnings.)
+`EnterWorktree` branches from `origin/main`. Always check that local main is in sync with origin before creating a worktree, and rebase if local is ahead.
