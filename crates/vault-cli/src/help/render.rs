@@ -14,7 +14,7 @@ use super::model::{FlagEntry, GlobalEntry, HelpModel};
 use crate::output::palette::Palette;
 
 const GLOBAL_DESC_MAX: usize = 70;
-const DOCS_URL: &str = "https://github.com/dbtlr/vault-cli";
+const REPO_URL: &str = "https://github.com/dbtlr/vault-cli";
 
 /// Abstracts over `FlagEntry` and `GlobalEntry` so `label()` can serve both.
 trait LabelSource {
@@ -377,7 +377,7 @@ pub fn render_long(
         out,
         "{}Documentation: {}{}",
         palette.dim.render(),
-        DOCS_URL,
+        REPO_URL,
         palette.dim.render_reset()
     )?;
 
@@ -608,6 +608,47 @@ mod tests {
             "hanging indent (8 spaces), got: {next:?}"
         );
         assert!(next.contains("Full-text substring"));
+    }
+
+    #[test]
+    fn long_form_renders_long_desc_paragraphs_at_hanging_indent() {
+        let mut model = sample_model();
+        model.groups[0].flags[0].long_desc = Some(
+            "First paragraph of long_desc body.\n\nSecond paragraph of long_desc body.".to_string(),
+        );
+        let out = render_long_to_string(&model);
+        let lines: Vec<&str> = out.lines().collect();
+        // short_desc comes first under the flag; long_desc paragraphs follow.
+        let short_idx = lines
+            .iter()
+            .position(|l| l.contains("Full-text substring"))
+            .expect("short_desc line");
+        let first_para_idx = lines
+            .iter()
+            .position(|l| l.contains("First paragraph of long_desc body."))
+            .expect("first long_desc paragraph");
+        let second_para_idx = lines
+            .iter()
+            .position(|l| l.contains("Second paragraph of long_desc body."))
+            .expect("second long_desc paragraph");
+        assert!(
+            short_idx < first_para_idx,
+            "short_desc must come before long_desc"
+        );
+        assert!(
+            first_para_idx < second_para_idx,
+            "paragraphs render in order"
+        );
+        assert!(
+            lines[first_para_idx].starts_with("        "),
+            "first paragraph at 8-space indent, got: {:?}",
+            lines[first_para_idx]
+        );
+        assert!(
+            lines[second_para_idx].starts_with("        "),
+            "second paragraph at 8-space indent, got: {:?}",
+            lines[second_para_idx]
+        );
     }
 
     #[test]
