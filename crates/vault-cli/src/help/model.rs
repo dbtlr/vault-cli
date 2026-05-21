@@ -18,13 +18,13 @@ pub struct FlagEntry {
     pub short: Option<char>,
     /// Long flag like `--text`. `None` if the arg has only a short form.
     pub long: Option<String>,
-    /// Value placeholder like `<NEEDLE>` or `<FIELD:VALUE>`. Empty if the flag
-    /// takes no value (e.g. `--all`).
+    /// Value placeholder like `<NEEDLE>` or `<FIELD:VALUE>`. `None` if the
+    /// flag takes no value (e.g. `--all`).
     pub value_name: Option<String>,
     /// One-line description (shown in `-h` and as the lead line in `--help`).
     pub short_desc: String,
-    /// Optional multi-paragraph prose. Rendered only in `--help`. None means
-    /// the short description is the only text.
+    /// Optional multi-paragraph prose. Rendered only in `--help`. `None`
+    /// means the short description is the only text.
     pub long_desc: Option<String>,
 }
 
@@ -34,6 +34,7 @@ pub struct FlagEntry {
 pub struct FlagGroup {
     /// Display heading. Always rendered uppercase + dim bold by the renderer.
     pub heading: String,
+    /// Flags in this group, in clap declaration order.
     pub flags: Vec<FlagEntry>,
 }
 
@@ -44,6 +45,7 @@ pub struct FlagGroup {
 pub struct GlobalEntry {
     pub short: Option<char>,
     pub long: Option<String>,
+    /// `None` if the global takes no value (e.g. `--verbose`).
     pub value_name: Option<String>,
     /// Constrained to ≤70 chars per the help-output v2 spec §2.2.
     pub short_desc: String,
