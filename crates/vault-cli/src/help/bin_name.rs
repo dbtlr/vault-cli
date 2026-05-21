@@ -3,7 +3,6 @@
 //! Reads from `CARGO_BIN_NAME` so the rename to `norn` is one line change in
 //! `Cargo.toml` rather than a project-wide string sweep.
 
-#[allow(dead_code)]
 pub const BIN_NAME: &str = env!("CARGO_BIN_NAME");
 
 #[cfg(test)]

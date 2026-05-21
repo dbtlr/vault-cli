@@ -1,7 +1,6 @@
 //! Help rendering data model.
 
 /// Which form of help is being rendered.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpForm {
     /// `-h` — orient. Fits a screen. One-line descriptions.
@@ -11,7 +10,6 @@ pub enum HelpForm {
 }
 
 /// A single flag or option entry.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FlagEntry {
     /// Short flag like `-h`. `None` if the arg has only a long form.
@@ -26,10 +24,12 @@ pub struct FlagEntry {
     /// Optional multi-paragraph prose. Rendered only in `--help`. `None`
     /// means the short description is the only text.
     pub long_desc: Option<String>,
+    /// Possible enum values like `["json", "jsonl", "table"]`. Empty for
+    /// free-form args. Shown in `--help` (long form) only.
+    pub possible_values: Vec<String>,
 }
 
 /// A named group of flags, e.g. "Filter options", "Triage filters".
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FlagGroup {
     /// Display heading. Always rendered uppercase + dim bold by the renderer.
@@ -40,7 +40,6 @@ pub struct FlagGroup {
 
 /// A global option. Globals always render in one block (no collapse) with
 /// one short line each.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct GlobalEntry {
     pub short: Option<char>,
@@ -65,7 +64,6 @@ pub struct HelpExtras {
 }
 
 /// Complete rendering input for one help invocation.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct HelpModel {
     /// e.g. `"vault"`, `"vault find"`, `"vault repair plan"`.
@@ -85,6 +83,7 @@ pub struct HelpModel {
     /// Subcommand list for parent commands (e.g. `vault --help` lists
     /// `find`, `init`, `repair`, …). Empty for leaf commands.
     pub subcommands: Vec<(String, String)>, // (name, about)
+    #[allow(dead_code)]
     pub extras: HelpExtras,
 }
 
@@ -100,6 +99,7 @@ mod tests {
             value_name: None,
             short_desc: "Print help".to_string(),
             long_desc: None,
+            possible_values: vec![],
         };
         assert_eq!(e.short, Some('h'));
         assert_eq!(e.long.as_deref(), Some("help"));

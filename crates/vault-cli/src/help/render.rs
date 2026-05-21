@@ -69,7 +69,6 @@ fn label<T: LabelSource>(item: &T) -> String {
 /// `term_width` controls wrapping for the description line only — flag lines
 /// in `-h` are one-liners per spec §1; they truncate at the value column,
 /// never wrap.
-#[allow(dead_code)]
 pub fn render_short(
     out: &mut dyn Write,
     model: &HelpModel,
@@ -272,7 +271,6 @@ fn write_global_line(
 ///
 /// Hanging-indent style for flags: flag on its own line, descriptions/prose
 /// indented 8 spaces beneath. Globals still use the aligned column.
-#[allow(dead_code)]
 pub fn render_long(
     out: &mut dyn Write,
     model: &HelpModel,
@@ -425,6 +423,16 @@ fn write_flag_hanging(
             )?;
         }
     }
+    // Possible enum values (e.g. "Possible values: bash, zsh, fish, ...").
+    if !f.possible_values.is_empty() {
+        writeln!(
+            out,
+            "        {ds}Possible values: {vals}{de}",
+            ds = palette.dim.render(),
+            vals = f.possible_values.join(", "),
+            de = palette.dim.render_reset(),
+        )?;
+    }
     writeln!(out)?;
     Ok(())
 }
@@ -450,6 +458,7 @@ mod tests {
                         value_name: Some("NEEDLE".to_string()),
                         short_desc: "Full-text substring".to_string(),
                         long_desc: None,
+                        possible_values: vec![],
                     },
                     FlagEntry {
                         short: None,
@@ -457,6 +466,7 @@ mod tests {
                         value_name: None,
                         short_desc: "Return every document".to_string(),
                         long_desc: None,
+                        possible_values: vec![],
                     },
                 ],
             }],
@@ -545,6 +555,7 @@ mod tests {
                         value_name: None,
                         short_desc: "short".to_string(),
                         long_desc: None,
+                        possible_values: vec![],
                     }],
                 },
                 FlagGroup {
@@ -555,6 +566,7 @@ mod tests {
                         value_name: Some("PLACEHOLDER".to_string()),
                         short_desc: "zebra".to_string(),
                         long_desc: None,
+                        possible_values: vec![],
                     }],
                 },
             ],

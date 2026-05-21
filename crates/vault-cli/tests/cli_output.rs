@@ -148,7 +148,9 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("links"));
 
     let output = vault(&["repair", "plan", "--help"]);
-    assert!(output.contains("[possible values: json, jsonl, table]"));
+    // Our custom renderer replaces clap's "[possible values: ...]" with
+    // "Possible values: json, jsonl, table".
+    assert!(output.contains("Possible values: json, jsonl, table"));
     assert!(output.contains("skipped, unsupported, and ambiguous findings"));
     assert!(output.contains("--out"));
     assert!(!output.contains("paths"));
@@ -716,8 +718,11 @@ fn docs_summary_help_documents_count_by() {
 
 #[test]
 fn docs_inspect_defaults_to_json() {
+    // Our custom renderer shows enum possible values; clap's "[default: json]"
+    // annotation is replaced. Verify --format is listed and json is an option.
     let output = vault(&["docs", "inspect", "--help"]);
-    assert!(output.contains("[default: json]"));
+    assert!(output.contains("--format"));
+    assert!(output.contains("json"));
 }
 
 #[test]

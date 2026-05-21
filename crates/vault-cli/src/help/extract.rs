@@ -12,11 +12,13 @@ const DEFAULT_FLAG_HEADING: &str = "Options";
 ///
 /// - `cmd_path` is the user-facing path string, e.g. `"vault find"`. The
 ///   caller assembles this from `BIN_NAME` and the subcommand chain.
+/// - `root` is the root `Cli::command()`. When `cmd` is a subcommand,
+///   global options are read from `root` (clap only marks them `global_set`
+///   on the declaring command, not on inherited copies in subcommands).
 /// - `form` selects whether long_about/long_help should be carried into the
 ///   model (the renderer also branches on `form`, but trimming early keeps
 ///   the model shape consistent).
-#[allow(dead_code)]
-pub fn build_model(cmd: &Command, cmd_path: &str, form: HelpForm) -> HelpModel {
+pub fn build_model(cmd: &Command, root: &Command, cmd_path: &str, form: HelpForm) -> HelpModel {
     let about = cmd.get_about().map(|s| s.to_string()).unwrap_or_default();
     let long_about = match form {
         HelpForm::Long => cmd.get_long_about().map(|s| s.to_string()),
@@ -25,12 +27,49 @@ pub fn build_model(cmd: &Command, cmd_path: &str, form: HelpForm) -> HelpModel {
 
     let mut positionals: Vec<FlagEntry> = Vec::new();
     let mut groups: Vec<FlagGroup> = Vec::new();
-    let mut globals: Vec<GlobalEntry> = Vec::new();
+
+    // Collect globals from the root command (the source of truth for global
+    // args). Clap propagates globals to subcommands but `is_global_set()`
+    // only returns `true` on the declaring command, not on inherited copies.
+    let mut globals: Vec<GlobalEntry> = root
+        .get_arguments()
+        .filter(|a| {
+            a.is_global_set()
+                && !matches!(
+                    a.get_id().as_str(),
+                    "help" | "help_short" | "help_long" | "version"
+                )
+        })
+        .map(|a| {
+            let entry = flag_entry_from_arg(a, form);
+            GlobalEntry {
+                short: entry.short,
+                long: entry.long,
+                value_name: entry.value_name,
+                short_desc: entry.short_desc,
+            }
+        })
+        .collect();
+
+    // If cmd IS the root (vault --help with no subcommand), globals come from
+    // the iteration above; skip them in the main arg loop to avoid duplication.
+    let is_root = std::ptr::eq(cmd as *const Command, root as *const Command);
 
     for arg in cmd.get_arguments() {
-        if arg.get_id() == "help" || arg.get_id() == "help_short" || arg.get_id() == "help_long" {
-            // Help flags are not rendered in the model — the renderer adds
-            // its own canonical help line in every group's tail block.
+        if arg.get_id() == "help"
+            || arg.get_id() == "help_short"
+            || arg.get_id() == "help_long"
+            || arg.get_id() == "version"
+        {
+            // Help and version flags are not rendered in the model.
+            continue;
+        }
+        // Skip global args when processing a non-root command — they were
+        // already collected from the root above. When IS the root, process
+        // them through the heading/group logic (they show up under Global
+        // options heading in that case, but we've already put them in globals
+        // above, so we still skip to avoid duplication).
+        if arg.is_global_set() {
             continue;
         }
         let entry = flag_entry_from_arg(arg, form);
@@ -38,15 +77,11 @@ pub fn build_model(cmd: &Command, cmd_path: &str, form: HelpForm) -> HelpModel {
             positionals.push(entry);
             continue;
         }
-        if arg.is_global_set() {
-            globals.push(GlobalEntry {
-                short: entry.short,
-                long: entry.long,
-                value_name: entry.value_name,
-                short_desc: entry.short_desc,
-            });
-            continue;
-        }
+        // For the root command, the global args (already in `globals`) should
+        // not reappear as flag groups either. Non-global root args also go into
+        // groups (but the root has no non-global non-subcommand non-help args
+        // other than the subcommand itself).
+        let _ = is_root; // suppress unused warning; logic handled by is_global_set() skip above
         let heading = arg
             .get_help_heading()
             .map(|s| s.to_string())
@@ -60,6 +95,9 @@ pub fn build_model(cmd: &Command, cmd_path: &str, form: HelpForm) -> HelpModel {
             });
         }
     }
+
+    // De-duplicate globals list in case root IS the subcmd (both paths ran).
+    globals.dedup_by(|a, b| a.long == b.long && a.short == b.short);
 
     let subcommands = cmd
         .get_subcommands()
@@ -88,21 +126,36 @@ pub fn build_model(cmd: &Command, cmd_path: &str, form: HelpForm) -> HelpModel {
 fn flag_entry_from_arg(arg: &clap::Arg, form: HelpForm) -> FlagEntry {
     let short = arg.get_short();
     let long = arg.get_long().map(|s| s.to_string());
-    let value_name = arg
-        .get_value_names()
-        .and_then(|v| v.first())
-        .map(|s| s.to_string());
+    // SetTrue / SetFalse flags take no value — suppress any clap-generated
+    // placeholder even if `get_value_names` returns one.
+    let value_name = match arg.get_action() {
+        clap::ArgAction::SetTrue | clap::ArgAction::SetFalse => None,
+        _ => arg
+            .get_value_names()
+            .and_then(|v| v.first())
+            .map(|s| s.to_string()),
+    };
     let short_desc = arg.get_help().map(|s| s.to_string()).unwrap_or_default();
     let long_desc = match form {
         HelpForm::Long => arg.get_long_help().map(|s| s.to_string()),
         HelpForm::Short => None,
     };
+    // Collect enum possible values (e.g. ["json", "jsonl", "table"] for
+    // --format). These are rendered in --help to replace the clap-generated
+    // "[possible values: …]" annotation.
+    let possible_values: Vec<String> = arg
+        .get_possible_values()
+        .iter()
+        .filter(|pv| !pv.is_hide_set())
+        .map(|pv| pv.get_name().to_string())
+        .collect();
     FlagEntry {
         short,
         long,
         value_name,
         short_desc,
         long_desc,
+        possible_values,
     }
 }
 
@@ -149,28 +202,28 @@ mod tests {
     #[test]
     fn extracts_about() {
         let cmd = sample_command();
-        let model = build_model(&cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
         assert_eq!(model.about, "Find documents");
     }
 
     #[test]
     fn short_form_omits_long_about() {
         let cmd = sample_command();
-        let model = build_model(&cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
         assert!(model.long_about.is_none());
     }
 
     #[test]
     fn long_form_includes_long_about() {
         let cmd = sample_command();
-        let model = build_model(&cmd, "vault find", HelpForm::Long);
+        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Long);
         assert!(model.long_about.as_deref().unwrap().contains("vault"));
     }
 
     #[test]
     fn groups_flags_by_help_heading() {
         let cmd = sample_command();
-        let model = build_model(&cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
         let filter = model
             .groups
             .iter()
@@ -182,7 +235,7 @@ mod tests {
     #[test]
     fn groups_preserve_first_seen_order() {
         let cmd = sample_command();
-        let model = build_model(&cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
         let headings: Vec<&str> = model.groups.iter().map(|g| g.heading.as_str()).collect();
         assert_eq!(headings, vec!["Filter options", "Output"]);
     }
@@ -190,7 +243,7 @@ mod tests {
     #[test]
     fn globals_are_separated() {
         let cmd = sample_command();
-        let model = build_model(&cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
         assert_eq!(model.globals.len(), 1);
         assert_eq!(model.globals[0].long.as_deref(), Some("cwd"));
         // The global should NOT appear inside a group.
@@ -202,7 +255,7 @@ mod tests {
     #[test]
     fn value_names_are_captured() {
         let cmd = sample_command();
-        let model = build_model(&cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
         let text = model
             .groups
             .iter()
