@@ -413,68 +413,100 @@ pub struct DocsSummaryArgs {
 pub struct FindArgs {
     // ── Predicate operators ─────────────────────────────────────────────
     /// Full-text body substring. Case-insensitive. Empty string is a no-op.
-    #[arg(long, value_name = "NEEDLE")]
+    #[arg(long, value_name = "NEEDLE", help_heading = "Filter options")]
     pub text: Option<String>,
 
     /// Frontmatter equality predicate `field:value`. JSON-typed (e.g.
     /// `--eq published:true` for bool, `--eq priority:5` for number).
     /// Repeat for multiple predicates; ALL-of across repeats.
-    #[arg(long = "eq", value_name = "FIELD:VALUE")]
+    #[arg(
+        long = "eq",
+        value_name = "FIELD:VALUE",
+        help_heading = "Filter options"
+    )]
     pub eq: Vec<String>,
 
     /// Frontmatter `field` is NOT equal to `value`. Negation of `--eq`.
     /// For array-shaped fields, matches when no element equals the value.
-    #[arg(long = "not-eq", value_name = "FIELD:VALUE")]
+    #[arg(
+        long = "not-eq",
+        value_name = "FIELD:VALUE",
+        help_heading = "Filter options"
+    )]
     pub not_eq: Vec<String>,
 
     /// Frontmatter `field` is one of the comma-separated values (ANY-of).
     /// E.g. `--in status:backlog,active`. Repeat for multiple fields;
     /// ALL-of across repeats.
-    #[arg(long = "in", value_name = "FIELD:V1,V2,...")]
+    #[arg(
+        long = "in",
+        value_name = "FIELD:V1,V2,...",
+        help_heading = "Filter options"
+    )]
     pub r#in: Vec<String>,
 
     /// Frontmatter `field` is NOT one of the comma-separated values.
-    #[arg(long = "not-in", value_name = "FIELD:V1,V2,...")]
+    #[arg(
+        long = "not-in",
+        value_name = "FIELD:V1,V2,...",
+        help_heading = "Filter options"
+    )]
     pub not_in: Vec<String>,
 
     /// Frontmatter `field` is present (non-null). Repeat for multiple fields.
-    #[arg(long = "has", value_name = "FIELD")]
+    #[arg(long = "has", value_name = "FIELD", help_heading = "Filter options")]
     pub has: Vec<String>,
 
     /// Frontmatter `field` is absent or null. Repeat for multiple fields.
-    #[arg(long = "missing", value_name = "FIELD")]
+    #[arg(
+        long = "missing",
+        value_name = "FIELD",
+        help_heading = "Filter options"
+    )]
     pub missing: Vec<String>,
 
     /// Frontmatter `field` (a date) is before `DATE`. ISO 8601 expected.
     /// E.g. `--before created:2026-05-01`.
-    #[arg(long = "before", value_name = "FIELD:DATE")]
+    #[arg(
+        long = "before",
+        value_name = "FIELD:DATE",
+        help_heading = "Filter options"
+    )]
     pub before: Vec<String>,
 
     /// Frontmatter `field` (a date) is after `DATE`.
-    #[arg(long = "after", value_name = "FIELD:DATE")]
+    #[arg(
+        long = "after",
+        value_name = "FIELD:DATE",
+        help_heading = "Filter options"
+    )]
     pub after: Vec<String>,
 
     /// Frontmatter `field` (a date) is exactly `DATE`. Accepts `today`.
-    #[arg(long = "on", value_name = "FIELD:DATE")]
+    #[arg(
+        long = "on",
+        value_name = "FIELD:DATE",
+        help_heading = "Filter options"
+    )]
     pub on: Vec<String>,
 
     /// Path glob pattern. Repeat for multiple patterns (ANY-of).
-    #[arg(long = "path", value_name = "GLOB")]
+    #[arg(long = "path", value_name = "GLOB", help_heading = "Filter options")]
     pub path: Vec<String>,
 
     /// Return every document — escape hatch when no predicate is specified.
     /// Without --all and without any predicate, `vault find` prints its help
     /// page (a full-vault dump is almost always a mistake; require opt-in).
-    #[arg(long)]
+    #[arg(long, help_heading = "Filter options")]
     pub all: bool,
 
     // ── Sort / limit / paging ───────────────────────────────────────────
     /// Sort by field (frontmatter key, `path`, or `stem`). Ascending by default.
-    #[arg(long, value_name = "FIELD")]
+    #[arg(long, value_name = "FIELD", help_heading = "Sort and paging")]
     pub sort: Option<String>,
 
     /// Sort descending (only meaningful with --sort).
-    #[arg(long)]
+    #[arg(long, help_heading = "Sort and paging")]
     pub desc: bool,
 
     /// Maximum number of matches to return. Default 10.
@@ -482,30 +514,41 @@ pub struct FindArgs {
         long,
         value_name = "N",
         default_value = "10",
-        conflicts_with = "no_limit"
+        conflicts_with = "no_limit",
+        help_heading = "Sort and paging"
     )]
     pub limit: usize,
 
     /// Return all matches; no limit. Overrides --limit.
-    #[arg(long = "no-limit")]
+    #[arg(long = "no-limit", help_heading = "Sort and paging")]
     pub no_limit: bool,
 
     /// 1-indexed starting offset for paging. Default 1.
-    #[arg(long = "starts-at", value_name = "N", default_value = "1")]
+    #[arg(
+        long = "starts-at",
+        value_name = "N",
+        default_value = "1",
+        help_heading = "Sort and paging"
+    )]
     pub starts_at: usize,
 
     // ── Output ───────────────────────────────────────────────────────────
     /// Output format. Default auto-detects: TTY → records, piped → paths.
-    #[arg(long, value_enum)]
+    #[arg(long, value_enum, help_heading = "Output")]
     pub format: Option<FindFormat>,
 
     /// Comma-separated list of frontmatter fields to include in output.
     /// Default: all (records/json/jsonl). Ignored with warning on paths format.
-    #[arg(long, value_name = "FIELD1,FIELD2,...", value_delimiter = ',')]
+    #[arg(
+        long,
+        value_name = "FIELD1,FIELD2,...",
+        value_delimiter = ',',
+        help_heading = "Output"
+    )]
     pub col: Vec<String>,
 
     /// Skip the pager even when stdout is a TTY.
-    #[arg(long = "no-pager")]
+    #[arg(long = "no-pager", help_heading = "Output")]
     pub no_pager: bool,
 }
 
