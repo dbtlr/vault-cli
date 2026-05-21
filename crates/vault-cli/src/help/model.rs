@@ -50,17 +50,32 @@ pub struct GlobalEntry {
     pub short_desc: String,
 }
 
+/// A single generated, runnable example for the LIVE EXAMPLES block in
+/// `--help`. Phase 3 emits at most one per command.
+#[derive(Debug, Clone)]
+pub struct LiveExample {
+    /// Full command line including the binary name (built with `BIN_NAME`),
+    /// e.g. `"vault find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"`.
+    /// The renderer tokenizes this for per-token coloring; no trailing whitespace.
+    pub query: String,
+    /// Confirmed non-zero match count. Rendered as the tail
+    /// `"{match_count} documents match"`.
+    pub match_count: usize,
+}
+
 /// Phase-deferred extras: examples, conceptual sections, live-examples hook.
-/// Empty for every command in Phase 1.
 #[derive(Debug, Clone, Default)]
 pub struct HelpExtras {
     /// Phase 2: `Vec<(command_str, comment_str)>`.
-    #[allow(dead_code)]
     pub canned_examples: Vec<(String, String)>,
     /// Phase 4: `Vec<(heading, body)>`.
     #[allow(dead_code)]
     pub conceptual_sections: Vec<(String, String)>,
-    // Phase 3 adds a live-examples generator hook here.
+    /// Phase 3: optional generator producing the LIVE EXAMPLES `Vec` from
+    /// an open cache. `None` for commands without live-examples support.
+    /// The interceptor invokes this on `--help` form only; the result is
+    /// materialized onto `HelpModel::live_examples`.
+    pub live_examples_fn: Option<fn(&vault_cache::Cache) -> Vec<LiveExample>>,
 }
 
 /// Complete rendering input for one help invocation.
@@ -83,8 +98,11 @@ pub struct HelpModel {
     /// Subcommand list for parent commands (e.g. `vault --help` lists
     /// `find`, `init`, `repair`, …). Empty for leaf commands.
     pub subcommands: Vec<(String, String)>, // (name, about)
-    #[allow(dead_code)]
     pub extras: HelpExtras,
+    /// Materialized live examples for this render. Populated by the
+    /// interceptor when gating passes; empty otherwise. The renderer reads
+    /// this directly — it does not invoke `extras.live_examples_fn`.
+    pub live_examples: Vec<LiveExample>,
 }
 
 #[cfg(test)]
@@ -115,5 +133,37 @@ mod tests {
     #[test]
     fn help_form_distinguishes_short_and_long() {
         assert_ne!(HelpForm::Short, HelpForm::Long);
+    }
+
+    #[test]
+    fn live_example_holds_query_and_count() {
+        let e = LiveExample {
+            query: "vault find --eq type:note --limit 5".to_string(),
+            match_count: 412,
+        };
+        assert_eq!(e.match_count, 412);
+        assert!(e.query.contains("--eq"));
+    }
+
+    #[test]
+    fn extras_default_has_no_live_generator() {
+        let x = HelpExtras::default();
+        assert!(x.live_examples_fn.is_none());
+    }
+
+    #[test]
+    fn help_model_default_live_examples_is_empty() {
+        let m = HelpModel {
+            command_path: "vault find".to_string(),
+            about: String::new(),
+            long_about: None,
+            positionals: vec![],
+            groups: vec![],
+            globals: vec![],
+            subcommands: vec![],
+            extras: HelpExtras::default(),
+            live_examples: vec![],
+        };
+        assert!(m.live_examples.is_empty());
     }
 }

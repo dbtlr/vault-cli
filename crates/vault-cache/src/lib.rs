@@ -8,10 +8,12 @@
 //! identity-drifted caches trigger a silent rebuild rather than erroring.
 
 pub mod error;
+pub mod live_examples;
 pub mod query;
 
 pub use error::CacheError;
 pub use find::{FindQuery, FindResult, SortClause, SortDirection};
+pub use live_examples::{count_matching, field_statistics, FieldStats};
 pub use query::{json_path_for, DocumentQuery};
 pub use vault_core::DocumentSummary;
 
@@ -74,12 +76,11 @@ impl Cache {
         Ok(())
     }
 
-    /// Expose the underlying connection for query-plan tests.
-    ///
-    /// Only compiled when the `test-utils` feature is enabled or during
-    /// `cargo test` (integration tests need it via the crate's public API).
+    /// Crate-internal connection accessor for production primitives and
+    /// for tests (including cross-crate integration tests) that need direct
+    /// SQL access. Not part of the stable public API — treat as `#[doc(hidden)]`.
     #[doc(hidden)]
-    pub fn conn_for_test(&self) -> &rusqlite::Connection {
+    pub fn conn(&self) -> &rusqlite::Connection {
         &self.conn
     }
 }

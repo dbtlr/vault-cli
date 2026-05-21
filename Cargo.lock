@@ -953,6 +953,7 @@ dependencies = [
  "clap_complete",
  "clap_complete_nushell",
  "clap_mangen",
+ "rusqlite",
  "serde",
  "serde_json",
  "serde_yaml",

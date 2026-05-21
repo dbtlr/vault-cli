@@ -6,6 +6,7 @@
 pub mod bin_name;
 pub mod examples;
 pub mod extract;
+pub mod find_live;
 pub mod model;
 pub mod render;
 
@@ -55,7 +56,24 @@ pub fn intercept_from_args() -> Option<i32> {
         // run so clap can report the "unrecognized subcommand" error.
         return None;
     }
-    let model = build_model(subcmd, &root, &cmd_path, form);
+    let mut model = build_model(subcmd, &root, &cmd_path, form);
+
+    // Phase 3 — materialize live examples on `--help` form only. Gate on the
+    // command having a generator AND the effective cwd being a vault root
+    // (`.vault/` present). If `Cache::open` fails for any reason, fall back
+    // silently to the no-live-examples path — help must never error.
+    if form == HelpForm::Long {
+        if let Some(generator) = model.extras.live_examples_fn {
+            let cwd_arg = parse_cwd_from_args(&args);
+            if let Ok(root_path) = crate::config_loader::effective_cwd(cwd_arg.as_ref()) {
+                if root_path.join(".vault").as_std_path().is_dir() {
+                    if let Ok(cache) = vault_cache::Cache::open(&root_path) {
+                        model.live_examples = generator(&cache);
+                    }
+                }
+            }
+        }
+    }
 
     let mut buf: Vec<u8> = Vec::new();
     let render_result = match form {
@@ -147,6 +165,22 @@ fn resolve_subcmd_from_raw_args<'a>(
     }
 
     (current, path, false)
+}
+
+/// Parse `--cwd <PATH>` (or `-C <PATH>`, or `--cwd=PATH`) from raw args.
+/// Returns `None` when the flag is absent or the value is not UTF-8.
+fn parse_cwd_from_args(args: &[String]) -> Option<camino::Utf8PathBuf> {
+    let mut iter = args.iter();
+    while let Some(token) = iter.next() {
+        if token == "--cwd" || token == "-C" {
+            if let Some(val) = iter.next() {
+                return camino::Utf8PathBuf::from_path_buf(std::path::PathBuf::from(val)).ok();
+            }
+        } else if let Some(val) = token.strip_prefix("--cwd=") {
+            return camino::Utf8PathBuf::from_path_buf(std::path::PathBuf::from(val)).ok();
+        }
+    }
+    None
 }
 
 /// Parse `--color <VALUE>` from raw args, defaulting to `ColorWhen::Auto`.

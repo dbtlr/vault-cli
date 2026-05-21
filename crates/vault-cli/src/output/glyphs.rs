@@ -17,6 +17,9 @@ pub enum Glyph {
     Mod,
     Del,
     Leader,
+    /// Live-example marker. UTF: `▸` (BLACK RIGHT-POINTING SMALL TRIANGLE).
+    /// ASCII fallback: `>`.
+    Marker,
 }
 
 pub fn render(g: Glyph, ascii: bool) -> &'static str {
@@ -36,6 +39,8 @@ pub fn render(g: Glyph, ascii: bool) -> &'static str {
         (Glyph::Del, _) => "-",
         (Glyph::Leader, false) => "·",
         (Glyph::Leader, true) => ".",
+        (Glyph::Marker, false) => "▸",
+        (Glyph::Marker, true) => ">",
     }
 }
 
@@ -96,5 +101,11 @@ mod tests {
     fn leader_utf_and_ascii() {
         assert_eq!(render(Glyph::Leader, false), "·");
         assert_eq!(render(Glyph::Leader, true), ".");
+    }
+
+    #[test]
+    fn marker_utf_and_ascii() {
+        assert_eq!(render(Glyph::Marker, false), "▸");
+        assert_eq!(render(Glyph::Marker, true), ">");
     }
 }

@@ -210,7 +210,7 @@ fn find_documents_query_plan_is_single_select() {
     let mut cache = Cache::open(&root).unwrap();
     cache.rebuild(&root).unwrap();
 
-    let conn = cache.conn_for_test();
+    let conn = cache.conn();
     let mut stmt = conn
         .prepare(
             "EXPLAIN QUERY PLAN \

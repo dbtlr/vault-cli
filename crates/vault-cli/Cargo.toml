@@ -43,4 +43,5 @@ clap_complete_nushell.workspace = true
 clap_mangen.workspace = true
 
 [dev-dependencies]
+rusqlite = { workspace = true }
 tempfile = "3"

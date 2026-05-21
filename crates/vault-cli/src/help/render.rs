@@ -328,6 +328,94 @@ fn write_example_command(out: &mut dyn Write, palette: &Palette, cmd: &str) -> i
     Ok(())
 }
 
+/// Render the `LIVE EXAMPLES` block. No-op when `model.live_examples` is
+/// empty. Layout per Phase 3 spec §5:
+///
+///   LIVE EXAMPLES · generated from this vault — try it yourself
+///     ▸ <query tokenized like canned examples>
+///       <count> documents match[ (live) under no-color]
+///
+/// `LIVE EXAMPLES` is `dim` bold; the dot separator and the qualifier
+/// `generated from this vault — try it yourself` are `dim` normal weight.
+/// The marker `▸` (or `>` under NORN_ASCII / non-UTF locale) is `moss`.
+/// The match-count line is `moss`. When the palette is off (no-color), the
+/// match-count line gains a trailing `(live)` tag to preserve the live-data
+/// signal that color would otherwise carry.
+fn write_live_examples_block(
+    out: &mut dyn Write,
+    palette: &Palette,
+    examples: &[crate::help::model::LiveExample],
+) -> io::Result<()> {
+    if examples.is_empty() {
+        return Ok(());
+    }
+    let ascii = crate::output::glyphs::use_ascii();
+    let dot = crate::output::glyphs::render(crate::output::glyphs::Glyph::Sep, ascii);
+    let marker = crate::output::glyphs::render(crate::output::glyphs::Glyph::Marker, ascii);
+
+    // Header: "LIVE EXAMPLES" (dim bold) + " · generated from this vault — try it yourself" (dim).
+    writeln!(
+        out,
+        "{}LIVE EXAMPLES{} {}{} generated from this vault — try it yourself{}",
+        palette.section.render(),
+        palette.section.render_reset(),
+        palette.dim.render(),
+        dot,
+        palette.dim.render_reset(),
+    )?;
+
+    for ex in examples {
+        // Marker line: 2-space indent, marker in moss, then tokenized command.
+        write!(
+            out,
+            "  {ms}{marker}{me} ",
+            ms = palette.moss.render(),
+            marker = marker,
+            me = palette.moss.render_reset(),
+        )?;
+        // Tokenize the query body using the same rule as canned examples:
+        // tokens starting with `-` render in `thread`; everything else in `bone`.
+        let mut first = true;
+        for token in ex.query.split_whitespace() {
+            if !first {
+                write!(out, " ")?;
+            }
+            first = false;
+            if token.starts_with('-') {
+                write!(
+                    out,
+                    "{ts}{token}{te}",
+                    ts = palette.thread.render(),
+                    te = palette.thread.render_reset(),
+                )?;
+            } else {
+                write!(
+                    out,
+                    "{bs}{token}{be}",
+                    bs = palette.bone.render(),
+                    be = palette.bone.render_reset(),
+                )?;
+            }
+        }
+        writeln!(out)?;
+
+        // Count line: 4-space indent, count in moss, " documents match" suffix.
+        // Append " (live)" when palette is off so the live signal survives
+        // without color.
+        let live_tag = if palette.is_off() { " (live)" } else { "" };
+        writeln!(
+            out,
+            "    {ms}{count} documents match{live_tag}{me}",
+            ms = palette.moss.render(),
+            count = ex.match_count,
+            live_tag = live_tag,
+            me = palette.moss.render_reset(),
+        )?;
+    }
+    writeln!(out)?;
+    Ok(())
+}
+
 /// Render the long (`--help`) form of `model` to `out`.
 ///
 /// Hanging-indent style for flags: flag on its own line, descriptions/prose
@@ -425,6 +513,9 @@ pub fn render_long(
     // the section entirely.
     write_examples_block(out, palette, &model.extras.canned_examples)?;
 
+    // LIVE EXAMPLES — Phase 3. Empty `live_examples` suppresses the block.
+    write_live_examples_block(out, palette, &model.live_examples)?;
+
     // GLOBAL OPTIONS — aligned column (spec §3.1 — short lines use the column).
     if !model.globals.is_empty() {
         write_section_header(out, palette, "GLOBAL OPTIONS")?;
@@ -505,7 +596,9 @@ fn write_flag_hanging(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::help::model::{FlagEntry, FlagGroup, GlobalEntry, HelpExtras, HelpModel};
+    use crate::help::model::{
+        FlagEntry, FlagGroup, GlobalEntry, HelpExtras, HelpModel, LiveExample,
+    };
     use crate::output::palette::Palette;
 
     fn sample_model() -> HelpModel {
@@ -543,6 +636,7 @@ mod tests {
             }],
             subcommands: vec![],
             extras: HelpExtras::default(),
+            live_examples: vec![],
         }
     }
 
@@ -638,6 +732,7 @@ mod tests {
             globals: vec![],
             subcommands: vec![],
             extras: HelpExtras::default(),
+            live_examples: vec![],
         };
         let out = render_to_string(&model);
         let lines: Vec<&str> = out.lines().collect();
@@ -836,6 +931,117 @@ mod tests {
         assert!(
             !out.contains("EXAMPLES\n"),
             "short form (-h) must not include EXAMPLES; got:\n{out}"
+        );
+    }
+
+    fn sample_model_with_live() -> HelpModel {
+        let mut m = sample_model();
+        m.live_examples = vec![LiveExample {
+            query: "vault find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
+                .to_string(),
+            match_count: 412,
+        }];
+        m
+    }
+
+    #[test]
+    fn long_form_emits_live_examples_header_when_populated() {
+        let out = render_long_to_string(&sample_model_with_live());
+        assert!(
+            out.contains("LIVE EXAMPLES"),
+            "expected LIVE EXAMPLES header; got:\n{out}"
+        );
+        assert!(
+            out.contains("generated from this vault — try it yourself"),
+            "expected qualifier text; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn long_form_emits_live_examples_query_and_count() {
+        let out = render_long_to_string(&sample_model_with_live());
+        assert!(out.contains(
+            "vault find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
+        ));
+        assert!(
+            out.contains("412 documents match"),
+            "expected match-count tail; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn long_form_emits_live_marker_utf_by_default() {
+        let saved = std::env::var("NORN_ASCII").ok();
+        std::env::remove_var("NORN_ASCII");
+        std::env::set_var("LC_ALL", "en_US.UTF-8");
+        let out = render_long_to_string(&sample_model_with_live());
+        if let Some(v) = saved {
+            std::env::set_var("NORN_ASCII", v);
+        }
+        assert!(out.contains("▸"), "expected ▸ marker; got:\n{out}");
+    }
+
+    #[test]
+    fn long_form_emits_ascii_marker_when_norn_ascii_set() {
+        std::env::set_var("NORN_ASCII", "1");
+        let out = render_long_to_string(&sample_model_with_live());
+        std::env::remove_var("NORN_ASCII");
+        assert!(
+            out.contains("> vault find"),
+            "expected '> vault find' under NORN_ASCII; got:\n{out}"
+        );
+        assert!(
+            !out.contains("▸ vault find"),
+            "ASCII fallback must replace ▸; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn long_form_emits_live_tag_when_color_off() {
+        // Palette::off() is the no-color path used by every test in this
+        // module — count line should carry the (live) tag.
+        let out = render_long_to_string(&sample_model_with_live());
+        assert!(
+            out.contains("412 documents match (live)"),
+            "expected '(live)' suffix under no-color; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn long_form_omits_live_examples_block_when_empty() {
+        let out = render_long_to_string(&sample_model());
+        assert!(
+            !out.contains("LIVE EXAMPLES"),
+            "empty live_examples must not produce a block; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn live_examples_positioned_between_examples_and_globals() {
+        let mut m = sample_model_with_live();
+        m.extras.canned_examples = vec![(
+            "vault find --eq type:note --limit 5".to_string(),
+            "canned".to_string(),
+        )];
+        let out = render_long_to_string(&m);
+        let ex_idx = out.find("EXAMPLES\n").expect("EXAMPLES present");
+        let live_idx = out.find("LIVE EXAMPLES").expect("LIVE EXAMPLES present");
+        let go_idx = out
+            .find("GLOBAL OPTIONS\n")
+            .expect("GLOBAL OPTIONS present");
+        assert!(ex_idx < live_idx, "EXAMPLES must precede LIVE EXAMPLES");
+        assert!(
+            live_idx < go_idx,
+            "LIVE EXAMPLES must precede GLOBAL OPTIONS"
+        );
+    }
+
+    #[test]
+    fn short_form_never_emits_live_examples() {
+        let out = render_to_string(&sample_model_with_live());
+        assert!(
+            !out.contains("LIVE EXAMPLES"),
+            "short form (-h) must not include LIVE EXAMPLES; got:\n{out}"
         );
     }
 }

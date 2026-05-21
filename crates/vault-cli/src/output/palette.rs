@@ -35,11 +35,9 @@ pub struct Palette {
     /// Record-block header — bone bold per norn-cli-output §4.3.
     pub header: Style,
     /// Section headers (= `dim().bold()`). Used by future grouped-tally commands.
-    #[allow(dead_code)]
     pub section: Style,
     /// Whether color output is enabled. Read by future commands that need to
     /// branch on color state (e.g. suppress ANSI control chars in paths output).
-    #[allow(dead_code)]
     pub enabled: bool,
 }
 
@@ -62,6 +60,16 @@ impl Palette {
             section: Style::new(),
             enabled: false,
         }
+    }
+
+    /// Returns `true` when this palette has all styles disabled (no-color path).
+    ///
+    /// Callers use this to branch on whether to append textual signals that
+    /// color would otherwise carry — e.g. the `(live)` tag on the LIVE
+    /// EXAMPLES count line. Wraps the existing `enabled` field rather than
+    /// introducing a parallel sentinel.
+    pub const fn is_off(&self) -> bool {
+        !self.enabled
     }
 
     /// Returns the full brand-token palette with ANSI 256 colors applied.

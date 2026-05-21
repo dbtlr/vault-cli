@@ -17,6 +17,12 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 ### Added
 
 - vault-cli: `--help` now includes canned EXAMPLES on most commands. Examples are hand-authored, vault-independent, and concentrated on multi-shape commands (`find`, `validate`, `repair plan`, top-level `vault`) where the flag block alone leaves invocation patterns unclear. `-h` short form unchanged.
+- `vault find --help` now emits a `LIVE EXAMPLES` block with a real, runnable
+  query generated from your vault's cached index. The block appears only when
+  a vault is in scope and the cache loads, and only when your vault has at
+  least one enum-like frontmatter field (small set of values, ≥ 3 docs at the
+  top value, ≥ 10% field coverage). Outside a vault, on `-h`, or in vaults
+  without enum-shaped frontmatter, the block is omitted silently.
 
 ## v0.29.0 - 2026-05-20
 

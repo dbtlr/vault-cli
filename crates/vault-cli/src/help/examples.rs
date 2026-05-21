@@ -9,6 +9,8 @@
 //! except for required literals, no trailing period. The command line uses
 //! the literal `vault` prefix; the renderer styles tokens per palette.
 
+use crate::help::model::LiveExample;
+
 /// Return canned examples for the given command path string (e.g. `"vault find"`).
 ///
 /// Returns `vec![]` for unknown paths and for paths intentionally without
@@ -191,6 +193,19 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
         .iter()
         .map(|(cmd, comment)| (cmd.to_string(), comment.to_string()))
         .collect()
+}
+
+/// Map a command path to its live-examples generator, if any. Phase 3 wires
+/// `vault find`; everything else returns `None` and the LIVE EXAMPLES block
+/// is omitted at render time.
+///
+/// The generator (when present) is invoked by the help interceptor on
+/// `--help` form only, after `Cache::open` succeeds.
+pub fn live_examples_fn_for(cmd_path: &str) -> Option<fn(&vault_cache::Cache) -> Vec<LiveExample>> {
+    match cmd_path {
+        "vault find" => Some(crate::help::find_live::live_examples_for_find),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
