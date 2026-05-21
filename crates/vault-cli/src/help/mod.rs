@@ -4,9 +4,12 @@
 //! argument parser and the source of arg metadata; it does not emit help text.
 
 pub mod bin_name;
+pub mod extract;
 pub mod model;
 
 #[allow(unused_imports)]
 pub use bin_name::BIN_NAME;
+#[allow(unused_imports)]
+pub use extract::build_model;
 #[allow(unused_imports)]
 pub use model::{FlagEntry, FlagGroup, GlobalEntry, HelpExtras, HelpForm, HelpModel};
