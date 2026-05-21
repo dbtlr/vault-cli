@@ -34,7 +34,7 @@ pub struct Cli {
         long = "no-cache-refresh",
         global = true,
         help_heading = "Global options",
-        help = "Skip the implicit cache refresh that query commands run before reading the graph index"
+        help = "Skip the implicit cache refresh before reading the graph"
     )]
     pub no_cache_refresh: bool,
     #[arg(
