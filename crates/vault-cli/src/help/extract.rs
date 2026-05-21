@@ -31,7 +31,7 @@ pub fn build_model(cmd: &Command, root: &Command, cmd_path: &str, form: HelpForm
     // Collect globals from the root command (the source of truth for global
     // args). Clap propagates globals to subcommands but `is_global_set()`
     // only returns `true` on the declaring command, not on inherited copies.
-    let mut globals: Vec<GlobalEntry> = root
+    let globals: Vec<GlobalEntry> = root
         .get_arguments()
         .filter(|a| {
             a.is_global_set()
