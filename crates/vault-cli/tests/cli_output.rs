@@ -3321,8 +3321,7 @@ fn find_with_no_predicate_shows_help_on_stderr_exit_2() {
 
 #[test]
 fn find_with_all_dumps_everything() {
-    let (stdout, _stderr) =
-        vault_success_in_minimal_vault(&["find", "--all", "--format", "paths"]);
+    let (stdout, _stderr) = vault_success_in_minimal_vault(&["find", "--all", "--format", "paths"]);
     assert!(
         stdout.contains("note.md"),
         "expected --all to return the fixture doc: {stdout:?}"
