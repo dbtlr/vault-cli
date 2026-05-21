@@ -23,6 +23,7 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
   least one enum-like frontmatter field (small set of values, ≥ 3 docs at the
   top value, ≥ 10% field coverage). Outside a vault, on `-h`, or in vaults
   without enum-shaped frontmatter, the block is omitted silently.
+- `vault validate --help`, `vault repair plan --help`, and `vault repair apply --help` now carry conceptual prose sections explaining how each workflow fits together. `HOW VALIDATION WORKS` covers finding shapes, severity, exit codes, and how triage filters compose. `THE PLAN/APPLY BOUNDARY` walks through what plan emits vs. what apply consumes, with sample JSON for a planned change and a skipped finding. `HOW APPLY WRITES` numbers the precondition checks and write sequence apply runs. Conceptual sections render only on `--help`, positioned after EXAMPLES and LIVE EXAMPLES. Commands without workflow-shaped operation skip the section silently.
 
 ## v0.29.0 - 2026-05-20
 

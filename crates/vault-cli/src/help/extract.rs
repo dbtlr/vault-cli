@@ -106,8 +106,8 @@ pub fn build_model(cmd: &Command, root: &Command, cmd_path: &str, form: HelpForm
         subcommands,
         extras: HelpExtras {
             canned_examples: super::examples::examples_for(cmd_path),
+            conceptual_sections: super::examples::conceptual_sections_for(cmd_path),
             live_examples_fn: super::examples::live_examples_fn_for(cmd_path),
-            ..HelpExtras::default()
         },
         live_examples: Vec::new(),
     }

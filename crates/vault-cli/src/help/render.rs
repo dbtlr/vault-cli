@@ -416,6 +416,33 @@ fn write_live_examples_block(
     Ok(())
 }
 
+/// Render the `CONCEPTUAL SECTIONS` block (Phase 4). One section per
+/// `(heading, body)` pair: header in `dim` bold uppercase, body in default
+/// foreground at 4-space indent. Paragraphs (split on `\n\n`) are separated
+/// by a blank line; every line of a multi-line paragraph (numbered lists,
+/// JSON blocks, etc.) is indented. No-op when `sections` is empty.
+/// Positioned in `render_long` between LIVE EXAMPLES and GLOBAL OPTIONS.
+fn write_conceptual_sections_block(
+    out: &mut dyn Write,
+    palette: &Palette,
+    sections: &[(String, String)],
+) -> io::Result<()> {
+    for (heading, body) in sections {
+        write_section_header(out, palette, &heading.to_uppercase())?;
+        let paragraphs: Vec<&str> = body.split("\n\n").collect();
+        for (i, paragraph) in paragraphs.iter().enumerate() {
+            for line in paragraph.lines() {
+                writeln!(out, "    {line}")?;
+            }
+            if i + 1 < paragraphs.len() {
+                writeln!(out)?;
+            }
+        }
+        writeln!(out)?;
+    }
+    Ok(())
+}
+
 /// Render the long (`--help`) form of `model` to `out`.
 ///
 /// Hanging-indent style for flags: flag on its own line, descriptions/prose
@@ -515,6 +542,10 @@ pub fn render_long(
 
     // LIVE EXAMPLES — Phase 3. Empty `live_examples` suppresses the block.
     write_live_examples_block(out, palette, &model.live_examples)?;
+
+    // Conceptual sections — Phase 4. Empty `conceptual_sections` suppresses
+    // the block.
+    write_conceptual_sections_block(out, palette, &model.extras.conceptual_sections)?;
 
     // GLOBAL OPTIONS — aligned column (spec §3.1 — short lines use the column).
     if !model.globals.is_empty() {
@@ -1043,5 +1074,168 @@ mod tests {
             !out.contains("LIVE EXAMPLES"),
             "short form (-h) must not include LIVE EXAMPLES; got:\n{out}"
         );
+    }
+
+    fn sample_model_with_conceptual() -> HelpModel {
+        let mut m = sample_model();
+        m.extras.conceptual_sections = vec![(
+            "How validation works".to_string(),
+            "First paragraph of conceptual prose.\n\nSecond paragraph.".to_string(),
+        )];
+        m
+    }
+
+    #[test]
+    fn long_form_emits_conceptual_section_header_uppercased() {
+        let out = render_long_to_string(&sample_model_with_conceptual());
+        assert!(
+            out.contains("HOW VALIDATION WORKS\n"),
+            "expected HOW VALIDATION WORKS header; got:\n{out}"
+        );
+        assert!(
+            !out.contains("How validation works\n"),
+            "header must be uppercased; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn long_form_emits_conceptual_section_body_paragraphs() {
+        let out = render_long_to_string(&sample_model_with_conceptual());
+        let lines: Vec<&str> = out.lines().collect();
+        let first_idx = lines
+            .iter()
+            .position(|l| l.contains("First paragraph of conceptual prose."))
+            .expect("first paragraph present");
+        let second_idx = lines
+            .iter()
+            .position(|l| l.contains("Second paragraph."))
+            .expect("second paragraph present");
+        assert!(first_idx < second_idx, "paragraphs render in order");
+        // Blank line between paragraphs.
+        assert!(
+            lines[first_idx + 1..second_idx]
+                .iter()
+                .any(|l| l.is_empty()),
+            "expected blank line between paragraphs; got: {:?}",
+            &lines[first_idx..=second_idx]
+        );
+    }
+
+    #[test]
+    fn long_form_conceptual_body_indented_at_4_spaces() {
+        let out = render_long_to_string(&sample_model_with_conceptual());
+        let lines: Vec<&str> = out.lines().collect();
+        let para = lines
+            .iter()
+            .find(|l| l.contains("First paragraph of conceptual prose."))
+            .expect("paragraph present");
+        assert!(
+            para.starts_with("    "),
+            "conceptual body at 4-space indent, got: {para:?}"
+        );
+    }
+
+    #[test]
+    fn long_form_omits_conceptual_block_when_empty() {
+        let out = render_long_to_string(&sample_model());
+        assert!(
+            !out.contains("HOW VALIDATION WORKS"),
+            "empty conceptual_sections must not produce a block; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn long_form_emits_multiple_conceptual_sections() {
+        let mut m = sample_model();
+        m.extras.conceptual_sections = vec![
+            (
+                "How validation works".to_string(),
+                "Validation body.".to_string(),
+            ),
+            (
+                "The plan/apply boundary".to_string(),
+                "Boundary body.".to_string(),
+            ),
+        ];
+        let out = render_long_to_string(&m);
+        let first_idx = out
+            .find("HOW VALIDATION WORKS")
+            .expect("first header present");
+        let second_idx = out
+            .find("THE PLAN/APPLY BOUNDARY")
+            .expect("second header present");
+        assert!(
+            first_idx < second_idx,
+            "sections render in declaration order"
+        );
+    }
+
+    #[test]
+    fn conceptual_sections_positioned_between_live_examples_and_globals() {
+        let mut m = sample_model_with_conceptual();
+        m.extras.canned_examples = vec![(
+            "vault validate".to_string(),
+            "human-readable findings".to_string(),
+        )];
+        m.live_examples = vec![LiveExample {
+            query: "vault validate --severity error".to_string(),
+            match_count: 7,
+        }];
+        let out = render_long_to_string(&m);
+        let ex_idx = out.find("EXAMPLES\n").expect("EXAMPLES present");
+        let live_idx = out.find("LIVE EXAMPLES").expect("LIVE EXAMPLES present");
+        let concept_idx = out
+            .find("HOW VALIDATION WORKS")
+            .expect("conceptual section present");
+        let go_idx = out
+            .find("GLOBAL OPTIONS\n")
+            .expect("GLOBAL OPTIONS present");
+        assert!(ex_idx < live_idx, "EXAMPLES must precede LIVE EXAMPLES");
+        assert!(
+            live_idx < concept_idx,
+            "LIVE EXAMPLES must precede conceptual sections"
+        );
+        assert!(
+            concept_idx < go_idx,
+            "conceptual sections must precede GLOBAL OPTIONS"
+        );
+    }
+
+    #[test]
+    fn short_form_never_emits_conceptual_sections() {
+        let out = render_to_string(&sample_model_with_conceptual());
+        assert!(
+            !out.contains("HOW VALIDATION WORKS"),
+            "short form (-h) must not include conceptual sections; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn long_form_indents_every_line_of_multiline_paragraph() {
+        // A paragraph with internal single-newlines (e.g. a numbered list or
+        // a code block) must render with EVERY line at the 4-space indent —
+        // not just the first line.
+        let mut m = sample_model();
+        m.extras.conceptual_sections = vec![(
+            "Apply order".to_string(),
+            "Apply runs:\n1. First step.\n2. Second step.\n3. Third step.".to_string(),
+        )];
+        let out = render_long_to_string(&m);
+        let lines: Vec<&str> = out.lines().collect();
+        for needle in [
+            "Apply runs:",
+            "1. First step.",
+            "2. Second step.",
+            "3. Third step.",
+        ] {
+            let line = lines
+                .iter()
+                .find(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("expected line containing {needle:?}; got:\n{out}"));
+            assert!(
+                line.starts_with("    "),
+                "line {needle:?} must be 4-space indented, got: {line:?}"
+            );
+        }
     }
 }

@@ -69,7 +69,6 @@ pub struct HelpExtras {
     /// Phase 2: `Vec<(command_str, comment_str)>`.
     pub canned_examples: Vec<(String, String)>,
     /// Phase 4: `Vec<(heading, body)>`.
-    #[allow(dead_code)]
     pub conceptual_sections: Vec<(String, String)>,
     /// Phase 3: optional generator producing the LIVE EXAMPLES `Vec` from
     /// an open cache. `None` for commands without live-examples support.

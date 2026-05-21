@@ -195,6 +195,39 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Return Phase 4 conceptual sections for the given command path.
+///
+/// Each entry is `(heading, body)`. Headings render in `dim` bold uppercase
+/// (the renderer uppercases them); bodies are markdown-light paragraphs
+/// separated by blank lines. Returns `vec![]` for command paths that have
+/// no conceptual sections — the renderer's block is suppressed in that case.
+///
+/// Sections are emitted on `--help` only, after EXAMPLES / LIVE EXAMPLES
+/// and before GLOBAL OPTIONS. Headings render in `dim` bold uppercase; body
+/// paragraphs split on blank lines. Numbered lists and JSON blocks within a
+/// paragraph keep their internal indentation.
+pub fn conceptual_sections_for(cmd_path: &str) -> Vec<(String, String)> {
+    let pairs: &[(&str, &str)] = match cmd_path {
+        "vault validate" => &[(
+            "How validation works",
+            "Validate reads `.vault/config.yaml` for the rules that shape your vault: required frontmatter fields, allowed values, expected types, and path scoping. Each rule produces findings with a stable code and a severity (`error`, `warning`, `info`).\n\nFindings cover three surfaces. Frontmatter findings come from schema rules — codes like `frontmatter-required-field-missing` and `frontmatter-disallowed-value`. Link findings come from graph facts — `link-unresolved` and `link-ambiguous`. Document diagnostics come from parse — malformed frontmatter, encoding issues. Validate never writes files.\n\nExit code is `1` when any finding has severity `error`, `0` otherwise. Pipelines gate on this exit code.\n\nTriage filters combine with AND across types and OR within a type. `--severity error --code frontmatter-required-field-missing` returns errors that match that code. `--code link-unresolved --code link-ambiguous` returns either. `--path 'notes/**'` scopes to a path glob; `--field`, `--rule`, `--target`, and `--reason` narrow further.",
+        )],
+        "vault repair plan" => &[(
+            "The plan/apply boundary",
+            "Repair runs in two halves. Plan reads validate findings and emits a JSON artifact describing every change it would make. Plan never writes to vault documents. Apply consumes that artifact and writes the changes; preconditions are checked before any file is touched.\n\nPlan classifies each finding as supported or skipped. Supported findings produce a `PlannedChange` — the path, the field, the new value, and the source document's hash recorded at plan time. Skipped findings carry a reason: `unsupported`, `ambiguous`, `missing_hash`, or `precondition_failed`.\n\nA planned change:\n\n{\n  \"path\": \"notes/welcome.md\",\n  \"field\": \"kind\",\n  \"new_value\": \"note\",\n  \"document_hash\": \"a3f2…\"\n}\n\nA skipped finding records the reason:\n\n{\n  \"path\": \"drafts/x.md\",\n  \"code\": \"link-ambiguous\",\n  \"skip_reason\": \"ambiguous\"\n}\n\nThe plan captures a vault snapshot. Each change records the document's hash at plan time; apply refuses to write if that hash has changed. Re-run plan after editing files between plan and apply.\n\nTriage filters here are the same as on `validate` — pass `--severity error` to plan only error-level findings. Filters that excluded a finding from validate also exclude it from plan.",
+        )],
+        "vault repair apply" => &[(
+            "How apply writes",
+            "Apply walks the plan in this order:\n\n1. Load the plan JSON and verify its schema version.\n2. Confirm the plan's recorded vault root matches the effective cwd.\n3. Re-read each source document and verify its hash matches what the plan recorded; abort if any file changed since plan time.\n4. Verify each `expected_old_value` matches the current field value; abort on mismatch.\n5. Write the new frontmatter, preserving the Markdown body.\n6. Re-run validate when `--verify` is set.\n\nPass `--dry-run` to walk steps 1–4 without writing.",
+        )],
+        _ => &[],
+    };
+    pairs
+        .iter()
+        .map(|(heading, body)| (heading.to_string(), body.to_string()))
+        .collect()
+}
+
 /// Map a command path to its live-examples generator, if any. Phase 3 wires
 /// `vault find`; everything else returns `None` and the LIVE EXAMPLES block
 /// is omitted at render time.
@@ -228,5 +261,69 @@ mod tests {
         assert!(!ex.is_empty());
         // At least one example should demonstrate the `--eq` predicate.
         assert!(ex.iter().any(|(cmd, _)| cmd.contains("--eq")));
+    }
+
+    #[test]
+    fn conceptual_sections_for_unknown_path_returns_empty() {
+        assert!(conceptual_sections_for("vault nonexistent").is_empty());
+    }
+
+    #[test]
+    fn validate_has_how_validation_works_section() {
+        let sections = conceptual_sections_for("vault validate");
+        assert!(
+            sections.iter().any(|(h, _)| h == "How validation works"),
+            "expected `How validation works` section; got headings: {:?}",
+            sections.iter().map(|(h, _)| h).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn repair_plan_has_plan_apply_boundary_section() {
+        let sections = conceptual_sections_for("vault repair plan");
+        assert!(
+            sections.iter().any(|(h, _)| h == "The plan/apply boundary"),
+            "expected `The plan/apply boundary` section; got headings: {:?}",
+            sections.iter().map(|(h, _)| h).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn repair_apply_has_how_apply_writes_section() {
+        let sections = conceptual_sections_for("vault repair apply");
+        assert!(
+            sections.iter().any(|(h, _)| h == "How apply writes"),
+            "expected `How apply writes` section; got headings: {:?}",
+            sections.iter().map(|(h, _)| h).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn repair_plan_section_mentions_supported_and_skipped() {
+        let sections = conceptual_sections_for("vault repair plan");
+        let (_, body) = sections
+            .iter()
+            .find(|(h, _)| h == "The plan/apply boundary")
+            .expect("boundary section present");
+        assert!(body.contains("supported"));
+        assert!(body.contains("skipped"));
+    }
+
+    #[test]
+    fn repair_apply_section_is_a_numbered_sequence() {
+        let sections = conceptual_sections_for("vault repair apply");
+        let (_, body) = sections
+            .iter()
+            .find(|(h, _)| h == "How apply writes")
+            .expect("apply section present");
+        // The acceptance criterion is a numbered list; verify the first few
+        // items render as `1.`, `2.`, `3.` so we don't regress to bullets or
+        // prose.
+        for needle in ["1.", "2.", "3."] {
+            assert!(
+                body.contains(needle),
+                "expected numbered item {needle:?}; got body:\n{body}"
+            );
+        }
     }
 }
