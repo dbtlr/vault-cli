@@ -116,17 +116,6 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(exit_code_for(&index))
         }
         Command::Links(links_command) => match links_command.command {
-            LinksSubcommand::List(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
-                trim_diagnostics(&mut index, verbose);
-                let links: Vec<_> = index
-                    .documents
-                    .iter()
-                    .flat_map(|d| d.links.iter())
-                    .collect();
-                write_links(&links, resolve_format(args.format))?;
-                Ok(exit_code_for(&index))
-            }
             LinksSubcommand::Unresolved(args) => {
                 let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
                 trim_diagnostics(&mut index, verbose);

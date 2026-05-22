@@ -136,12 +136,6 @@ fn repair_links_short_help() {
 }
 
 #[test]
-fn links_list_short_help() {
-    let out = vault_help(&["links", "list", "-h"]);
-    assert_short_help_shape(&out, "vault links list");
-}
-
-#[test]
 fn links_unresolved_short_help() {
     let out = vault_help(&["links", "unresolved", "-h"]);
     assert_short_help_shape(&out, "vault links unresolved");

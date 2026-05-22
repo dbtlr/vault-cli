@@ -68,7 +68,7 @@ For a deeper walkthrough including scoped rules and a first repair plan, see [do
 |---|---|---|
 | Inventory documents | `vault docs list --format table` | [commands.md](docs/commands.md) |
 | Inspect one document | `vault docs inspect <path-or-stem>` | [commands.md](docs/commands.md) |
-| Walk links | `vault links list / unresolved / backlinks` | [commands.md](docs/commands.md) |
+| Walk links | `vault links unresolved / backlinks` | [commands.md](docs/commands.md) |
 | Validate against rules | `vault validate --summary` | [validation.md](docs/validation.md) |
 | Plan a repair | `vault repair plan --out repair.json` | [validation.md](docs/validation.md) |
 | Apply a repair | `vault repair apply repair.json --verify` | [validation.md](docs/validation.md) |

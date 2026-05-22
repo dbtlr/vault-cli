@@ -205,12 +205,6 @@ pub struct LinksCommand {
 pub enum LinksSubcommand {
     #[command(
         disable_help_flag = true,
-        about = "Emit all parsed link facts",
-        long_about = "Emit all parsed link facts.\n\nIncludes body wikilinks, embeds, frontmatter/property wikilinks, URL-decoded Markdown internal links, extensionless Markdown note links, same-note heading/block references, Markdown image links to local files, and links to existing attachments. Use source_context.area and source_context.property to distinguish body links from frontmatter links.\n\n--format paths emits unique source paths; multiple links from the same source appear once."
-    )]
-    List(GraphArgs),
-    #[command(
-        disable_help_flag = true,
         about = "Emit unresolved and ambiguous link facts",
         long_about = "Emit unresolved and ambiguous link facts.\n\nRows include target-missing, anchor-missing, block-ref-missing, and ambiguous reasons. Ambiguous rows include candidate document paths.\n\n--format paths emits unique source paths."
     )]

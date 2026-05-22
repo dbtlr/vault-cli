@@ -123,10 +123,6 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "machine-readable config for pipelines",
             ),
         ],
-        "vault links list" => &[(
-            "vault links list --format paths",
-            "every link source as a path; pipe-friendly",
-        )],
         "vault links backlinks" => &[
             (
                 "vault links backlinks path/to/doc.md",

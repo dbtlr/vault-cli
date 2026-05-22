@@ -124,6 +124,15 @@ fn graph_umbrella_is_removed() {
 }
 
 #[test]
+fn links_list_is_removed() {
+    let error = vault_error(&["links", "list"]);
+    assert!(
+        error.contains("unrecognized subcommand 'list'"),
+        "expected unrecognized-subcommand error for `vault links list`; got: {error}"
+    );
+}
+
+#[test]
 fn grouped_help_lists_new_surfaces() {
     let output = vault(&["docs", "--help"]);
     assert!(output.contains("Parsed Markdown documents"));
@@ -727,15 +736,6 @@ fn docs_inspect_help_lists_format_options() {
 }
 
 #[test]
-fn graph_links_help_documents_obsidian_semantics() {
-    let output = vault(&["links", "list", "--help"]);
-    assert!(output.contains("frontmatter/property wikilinks"));
-    assert!(output.contains("same-note heading/block references"));
-    assert!(output.contains("Markdown image links to local files"));
-    assert!(output.contains("source_context.area"));
-}
-
-#[test]
 fn graph_unresolved_help_documents_reasons() {
     let output = vault(&["links", "unresolved", "--help"]);
     assert!(output.contains("target-missing"));
@@ -749,36 +749,6 @@ fn graph_backlinks_help_documents_file_targets() {
     let output = vault(&["links", "backlinks", "--help"]);
     assert!(output.contains("non-Markdown files"));
     assert!(output.contains("Stem matching only applies to Markdown documents"));
-}
-
-#[test]
-fn links_list_paths_dedupes_source_paths() {
-    let root = temp_cache_dir();
-    fs::create_dir_all(&root).expect("temp dir should be created");
-    fs::write(root.join("multi.md"), "[[a]]\n[[b]]\n[[c]]\n").expect("multi.md should write");
-    fs::write(root.join("a.md"), "").expect("a.md should write");
-    fs::write(root.join("b.md"), "").expect("b.md should write");
-    fs::write(root.join("c.md"), "").expect("c.md should write");
-
-    let stdout = vault(&[
-        "-C",
-        root.to_str().unwrap(),
-        "links",
-        "list",
-        "--format",
-        "paths",
-    ]);
-    let original: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
-    let mut deduped: Vec<&str> = original.clone();
-    deduped.sort();
-    deduped.dedup();
-    assert_eq!(
-        original.len(),
-        deduped.len(),
-        "expected unique source paths; got: {original:?}"
-    );
-
-    fs::remove_dir_all(root).ok();
 }
 
 #[test]
@@ -1769,141 +1739,6 @@ fn graph_files_jsonl_contract() {
     assert!(files.iter().any(|file| file["path"] == "alpha.md"
         && file["stem"] == "alpha"
         && file["extension"] == "md"));
-}
-
-#[test]
-fn graph_links_jsonl_contract() {
-    let root = fixture_root();
-    let output = vault(&[
-        "links",
-        "list",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    let links = output
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
-        .collect::<Vec<_>>();
-
-    assert_eq!(links.len(), 23);
-    assert_eq!(links[0]["kind"], "markdown");
-    assert_eq!(links[0]["source_span"]["line"], 20);
-    let encoded_with_ext = links
-        .iter()
-        .find(|link| link["raw"] == "Markdown%20Target.md")
-        .unwrap();
-    let encoded_without_ext = links
-        .iter()
-        .find(|link| link["raw"] == "Markdown%20Target")
-        .unwrap();
-    let encoded_anchor = links
-        .iter()
-        .find(|link| link["raw"] == "Markdown%20Target.md#Encoded%20Heading")
-        .unwrap();
-    let beta_alias = links
-        .iter()
-        .find(|link| link["raw"] == "[[beta|Beta Note]]")
-        .unwrap();
-    let block_ref = links
-        .iter()
-        .find(|link| link["raw"] == "[[beta#^block-a]]")
-        .unwrap();
-    let same_note_anchor = links
-        .iter()
-        .find(|link| link["raw"] == "[[#Alpha]]")
-        .unwrap();
-    let same_note_block = links
-        .iter()
-        .find(|link| link["raw"] == "[[#^alpha-block]]")
-        .unwrap();
-    let missing_same_note_anchor = links
-        .iter()
-        .find(|link| link["raw"] == "[[#Missing Same Heading]]")
-        .unwrap();
-    let missing_same_note_block = links
-        .iter()
-        .find(|link| link["raw"] == "[[#^missing-same-block]]")
-        .unwrap();
-    let missing_anchor = links
-        .iter()
-        .find(|link| link["raw"] == "[[beta#Missing Heading]]")
-        .unwrap();
-    let missing_block = links
-        .iter()
-        .find(|link| link["raw"] == "[[beta#^missing-block]]")
-        .unwrap();
-    let ambiguous = links
-        .iter()
-        .find(|link| link["raw"] == "[[duplicate]]")
-        .unwrap();
-    let path_qualified_case = links
-        .iter()
-        .find(|link| link["raw"] == "[[Other/Duplicate]]")
-        .unwrap();
-    let attachment_embed = links
-        .iter()
-        .find(|link| link["raw"] == "![[Assets/diagram.png]]")
-        .unwrap();
-    let markdown_image = links
-        .iter()
-        .find(|link| link["raw"] == "Assets/pic.png")
-        .unwrap();
-    let property_target = links
-        .iter()
-        .find(|link| link["raw"] == "[[Front Target]]")
-        .unwrap();
-
-    assert_eq!(encoded_with_ext["target"], "Markdown Target.md");
-    assert_eq!(encoded_with_ext["resolved_path"], "Markdown Target.md");
-    assert_eq!(encoded_without_ext["target"], "Markdown Target");
-    assert_eq!(encoded_without_ext["resolved_path"], "Markdown Target.md");
-    assert_eq!(encoded_anchor["anchor"], "Encoded Heading");
-    assert_eq!(encoded_anchor["resolved_path"], "Markdown Target.md");
-    assert_eq!(beta_alias["label"], "Beta Note");
-    assert_eq!(beta_alias["resolved_path"], "beta.md");
-    assert_eq!(block_ref["block_ref"], "block-a");
-    assert_eq!(same_note_anchor["target"], "");
-    assert_eq!(same_note_anchor["anchor"], "Alpha");
-    assert_eq!(same_note_anchor["resolved_path"], "alpha.md");
-    assert_eq!(same_note_anchor["status"], "resolved");
-    assert_eq!(same_note_block["target"], "");
-    assert_eq!(same_note_block["block_ref"], "alpha-block");
-    assert_eq!(same_note_block["resolved_path"], "alpha.md");
-    assert_eq!(same_note_block["status"], "resolved");
-    assert_eq!(
-        missing_same_note_anchor["unresolved_reason"],
-        "anchor-missing"
-    );
-    assert_eq!(
-        missing_same_note_block["unresolved_reason"],
-        "block-ref-missing"
-    );
-    assert_eq!(missing_anchor["unresolved_reason"], "anchor-missing");
-    assert_eq!(missing_block["unresolved_reason"], "block-ref-missing");
-    assert_eq!(ambiguous["status"], "ambiguous");
-    assert_eq!(ambiguous["unresolved_reason"], "ambiguous");
-    assert_eq!(path_qualified_case["resolved_path"], "other/duplicate.md");
-    assert_eq!(path_qualified_case["status"], "resolved");
-    assert_eq!(attachment_embed["resolved_path"], "Assets/diagram.png");
-    assert_eq!(attachment_embed["status"], "resolved");
-    assert_eq!(markdown_image["kind"], "embed");
-    assert_eq!(markdown_image["target"], "Assets/pic.png");
-    assert_eq!(markdown_image["resolved_path"], "Assets/pic.png");
-    assert_eq!(markdown_image["status"], "resolved");
-    assert_eq!(property_target["raw"], "[[Front Target]]");
-    assert_eq!(
-        property_target["source_context"],
-        serde_json::json!({"area": "frontmatter", "property": "related"})
-    );
-    assert_eq!(property_target["resolved_path"], "Front Target.md");
-    assert!(links
-        .iter()
-        .any(|link| link["label"] == "Displayed in property"));
-    assert!(!links.iter().any(|link| link["target"] == "inline-example"));
-    assert!(!links.iter().any(|link| link["target"] == "fenced-example"));
 }
 
 #[test]
