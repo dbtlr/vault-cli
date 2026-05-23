@@ -10,6 +10,10 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+## v0.31.0 - 2026-05-23
+
+The link-health release. Three coordinated cuts ship together: the docs/links namespace cleanup retires `vault docs` and `vault links` in favor of `vault count`, `vault show`, and `vault validate --code 'link-*'`; alias-aware wikilink resolution lets a configured frontmatter field serve as a fallback link target; and the Gap 1 + Gap 4 cut splits `link-unresolved` into three specific codes (`link-target-missing`, `link-anchor-missing`, `link-block-missing`), adds glob matching to `--code`, and gives `vault repair plan` the ability to propose closest-match rewrites for broken targets with a confidence band carried in a new `footnotes` layer that `repair apply` ignores entirely. `vault repair apply` learns a new `rewrite_link` operation that preserves display text, anchors, and block-ref suffixes. Plan schema bumps to v5 (additive). On top of all this, `--help` output gets its own overhaul: a custom renderer with canned EXAMPLES, vault-derived LIVE EXAMPLES, conceptual prose sections, and pagination via `$PAGER`; `-h` stays a one-screen orientation summary.
+
 ### Breaking changes
 
 - **`vault docs` namespace removed** (`docs summary`, `docs inspect`). Replaced by `vault count` and `vault show`.
@@ -79,6 +83,11 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 - Three new validate finding codes for alias frontmatter drift: `frontmatter-alias-shadowed-by-stem` (an alias matches another doc's stem in fallback resolution), `frontmatter-alias-duplicate-across-docs` (two or more docs claim the same alias), `frontmatter-alias-malformed` (the alias field contains a non-scalar map or nested sequence value). All three are warnings, fire only when `links.alias_field` is configured, and respect `validate.ignore` patterns.
 - `vault validate --help` gains a `FINDING CODES` section listing all ten codes with one-line explanations.
 - `vault init` scaffold now emits a commented `links.alias_field` hint block explaining the opt-in feature.
+
+### Notes
+
+- **Internal dependency bumps** (no user-visible behavior change): `thiserror` 1.0 → 2.0, `pulldown-cmark` 0.10 → 0.13, `clap_mangen` 0.2 → 0.3. All three exercised against the full 713-test workspace before merge.
+- **Release CI:** `cargo-dist` upgraded 0.30.2 → 0.32.0, regenerating `release.yml` with Node.js 24-ready GitHub Action versions (`actions/checkout@v6`, `actions/upload-artifact@v7`, `actions/download-artifact@v8`). Addresses the 2026-06-02 deprecation deadline for Node.js 20 actions and the `attest-build-provenance@v3` → `attest@v4` migration.
 
 ## v0.29.0 - 2026-05-20
 
