@@ -23,7 +23,9 @@ vault validate --rule typed-note --path "notes/**/*.md" --format jsonl
 
 | Code | Severity | Source |
 |---|---|---|
-| `link-unresolved` | warning | Body or frontmatter link target not found. Carries `unresolved_reason`: `target-missing`, `anchor-missing`, `block-ref-missing`. |
+| `link-target-missing` | warning | Body or frontmatter link target not found in the vault. |
+| `link-anchor-missing` | warning | Link target document exists, but the referenced heading anchor is not found. |
+| `link-block-missing` | warning | Link target document exists, but the referenced block ID is not found. |
 | `link-ambiguous` | warning | Stem lookup matched more than one document. Carries `candidates`. |
 | `frontmatter-parse-failed` | error | YAML frontmatter could not be parsed. Carries `diagnostic`. |
 | `frontmatter-unclosed` | error | Frontmatter `---` opener with no closing `---`. |
@@ -69,10 +71,10 @@ vault validate --summary --code frontmatter-invalid-type --field created --forma
 | `--target` | Raw parsed link target string (exact match). |
 | `--reason` | Unresolved-link reason: `target-missing`, `anchor-missing`, `block-ref-missing`, `ambiguous`. |
 
-Comma-separated values within one filter are ORed (`--code link-unresolved,link-ambiguous`); different filters are ANDed.
+Comma-separated values within one filter are ORed (`--code link-target-missing,link-ambiguous`); different filters are ANDed. Glob patterns also work within `--code` (`--code 'link-*'` matches all four link codes).
 
 ```bash
-vault validate --code link-unresolved --reason target-missing --format jsonl
+vault validate --code link-target-missing --format jsonl
 vault validate --code frontmatter-disallowed-value --field status --summary --format json
 vault validate --severity error --format jsonl
 ```
@@ -91,9 +93,10 @@ vault validate --code frontmatter-invalid-type --field created --format jsonl
 ### Split link cleanup by failure mode
 
 ```bash
-vault validate --code link-unresolved --reason target-missing --format jsonl
-vault validate --code link-unresolved --reason anchor-missing,block-ref-missing --format jsonl
+vault validate --code link-target-missing --format jsonl
+vault validate --code link-anchor-missing,link-block-missing --format jsonl
 vault validate --code link-ambiguous --summary --format table
+vault validate --code 'link-*' --format jsonl
 ```
 
 ### Scope by path
@@ -117,7 +120,7 @@ vault repair plan --code frontmatter-disallowed-value --field status --out repai
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "vault_root": "/abs/path/to/vault",
   "source_filters": { "...": "..." },
   "summary": {
@@ -148,8 +151,9 @@ The supported repair actions are:
 - `remove_frontmatter` — remove a field entirely.
 - `add_frontmatter` — insert a missing scalar field.
 - `move_document` — move or rename a file, with automatic backlink rewriting on apply.
+- `rewrite_link` — rewrite a broken wikilink in the source document to a new target. Proposed automatically by the closest-match algorithm for `link-target-missing` findings; preserves display text, anchor, and block-ref suffixes.
 
-Repair rule `match` supports `code`, `rule`, `field`, and `actual_value`. Matches are exact and type-sensitive. A rule must declare exactly one action.
+Repair rule `match` supports `code`, `rule`, `field`, and `actual_value`. Matches are exact and type-sensitive. A rule must declare exactly one action (for configurable rules; `rewrite_link` is emitted by the closest-match planner, not from config rules).
 
 ## Repairable findings
 
@@ -161,12 +165,13 @@ The validate → plan → apply → verify loop closes for these finding classes
 | `frontmatter-required-field-missing` | `add_frontmatter` | Insert the missing field with a configured value. |
 | `frontmatter-forbidden-field` | `remove_frontmatter` | Remove the forbidden field. |
 | `document-misrouted` | `move_document` | Move the file to a configured destination (with backlink rewriting). |
+| `link-target-missing` | `rewrite_link` | Closest-match rewrite proposed automatically. Use `--confidence high` to keep only slug-normalized-identity matches. |
 
 Findings without a matching deterministic rule are reported as skipped fallout in the repair plan with `skip_reason: unsupported`.
 
 ## Repair apply
 
-`vault repair apply <plan>` applies frontmatter-only plans. Apply writes by default because the command is explicit; pass `--dry-run` to preview.
+`vault repair apply <plan>` applies repair plans. Apply writes by default because the command is explicit; pass `--dry-run` to preview.
 
 ```bash
 vault repair apply repair.json --dry-run --format json

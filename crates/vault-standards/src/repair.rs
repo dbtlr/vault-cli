@@ -1,8 +1,9 @@
+pub mod closest_match;
 pub mod destination;
 pub mod link_risk;
 pub mod warnings;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,13 @@ use vault_core::Severity;
 use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
 use crate::findings::{Finding, FindingBody};
 
-pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 4;
+pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfidenceFilter {
+    High,
+}
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct RepairPlanFilters {
@@ -23,6 +30,8 @@ pub struct RepairPlanFilters {
     pub path: Vec<String>,
     pub target: Vec<String>,
     pub reason: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub confidence: Option<ConfidenceFilter>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -78,6 +87,8 @@ pub struct RepairPlan {
     pub summary: RepairPlanSummary,
     pub changes: Vec<PlannedChange>,
     pub skipped_findings: Vec<SkippedFinding>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub footnotes: Vec<PlanFootnote>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -87,8 +98,45 @@ pub struct RepairPlanSummary {
     pub skipped: SkippedSummary,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Confidence {
+    High,
+    Medium,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FootnoteKind {
+    ClosestMatchSuggestion,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FootnoteDetails {
+    ClosestMatch(ClosestMatchDetails),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ClosestMatchDetails {
+    pub original_target: String,
+    pub normalized_target: String,
+    pub candidate_stem: String,
+    pub normalized_distance: usize,
+    pub slug_normalized_identity: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PlanFootnote {
+    pub change_id: String,
+    pub kind: FootnoteKind,
+    pub confidence: Confidence,
+    pub details: FootnoteDetails,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PlannedChange {
+    pub change_id: String,
     pub path: Utf8PathBuf,
     pub document_hash: String,
     pub finding_code: String,
@@ -110,6 +158,156 @@ pub struct PlannedChange {
     pub warnings: Vec<crate::repair::warnings::PlanWarning>,
 }
 
+fn derive_change_id(
+    path: &Utf8PathBuf,
+    finding_code: &str,
+    expected_old_value: Option<&Value>,
+    occurrence_index: u32,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(path.as_str().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(finding_code.as_bytes());
+    hasher.update(b"\0");
+    if let Some(v) = expected_old_value {
+        hasher.update(v.to_string().as_bytes());
+    }
+    hasher.update(b"\0");
+    hasher.update(occurrence_index.to_le_bytes());
+    let digest = hasher.finalize();
+    digest.iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
+const DEFAULT_MEDIUM_THRESHOLD: f64 = 0.7;
+
+enum ClosestMatchOutcome {
+    Change {
+        change: Box<PlannedChange>,
+        footnote: Box<PlanFootnote>,
+    },
+    TiedSkip {
+        skipped: Box<SkippedFinding>,
+    },
+    NoMatch,
+}
+
+fn handle_closest_match(
+    finding: &Finding,
+    stem_corpus: &[&str],
+    documents: &[vault_core::Document],
+    document_hashes: &BTreeMap<Utf8PathBuf, String>,
+    occurrence_counts: &mut BTreeMap<(Utf8PathBuf, String, String), u32>,
+    medium_threshold: f64,
+) -> ClosestMatchOutcome {
+    let FindingBody::LinkIssue { link } = &finding.body else {
+        return ClosestMatchOutcome::NoMatch;
+    };
+    let broken_target = link.target.as_str();
+
+    let outcome = closest_match::closest_match(broken_target, stem_corpus, medium_threshold);
+
+    match outcome {
+        closest_match::MatchOutcome::High { ref candidate_stem }
+        | closest_match::MatchOutcome::Medium {
+            ref candidate_stem, ..
+        } => {
+            let candidate_stem = candidate_stem.clone();
+            let Some(document_hash) = document_hashes.get(&finding.path).cloned() else {
+                return ClosestMatchOutcome::NoMatch;
+            };
+            let normalized_target = closest_match::normalize_for_match(broken_target);
+            let (confidence, normalized_distance, slug_normalized_identity) = match &outcome {
+                closest_match::MatchOutcome::High { .. } => (Confidence::High, 0, true),
+                closest_match::MatchOutcome::Medium {
+                    normalized_distance,
+                    ..
+                } => (Confidence::Medium, *normalized_distance, false),
+                _ => unreachable!(),
+            };
+
+            let expected_old_value = Some(Value::String(broken_target.to_string()));
+            let occ_key = (
+                finding.path.clone(),
+                finding.code.clone(),
+                expected_old_value
+                    .as_ref()
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+            );
+            let occurrence_index = *occurrence_counts
+                .entry(occ_key)
+                .and_modify(|n| *n += 1)
+                .or_insert(0);
+
+            let change_id = derive_change_id(
+                &finding.path,
+                &finding.code,
+                expected_old_value.as_ref(),
+                occurrence_index,
+            );
+
+            let change = PlannedChange {
+                change_id: change_id.clone(),
+                path: finding.path.clone(),
+                document_hash,
+                finding_code: finding.code.clone(),
+                finding_rule: None,
+                repair_rule: "built-in:closest-match-stem".to_string(),
+                operation: "rewrite_link".to_string(),
+                field: None,
+                expected_old_value,
+                new_value: Some(Value::String(candidate_stem.clone())),
+                destination: None,
+                link_risk: None,
+                warnings: vec![],
+            };
+
+            let footnote = PlanFootnote {
+                change_id,
+                kind: FootnoteKind::ClosestMatchSuggestion,
+                confidence,
+                details: FootnoteDetails::ClosestMatch(ClosestMatchDetails {
+                    original_target: broken_target.to_string(),
+                    normalized_target,
+                    candidate_stem,
+                    normalized_distance,
+                    slug_normalized_identity,
+                }),
+            };
+
+            ClosestMatchOutcome::Change {
+                change: Box::new(change),
+                footnote: Box::new(footnote),
+            }
+        }
+        closest_match::MatchOutcome::Tied { candidate_stems } => {
+            // Resolve tied stems back to doc paths via the documents slice.
+            // Multiple docs can share a stem (different directories) — include all unique.
+            // Use BTreeSet to dedupe by path: the algorithm can return duplicate stems
+            // (one entry per scored doc), and the flat_map would otherwise produce
+            // duplicate paths for each stem repetition.
+            let candidates: Vec<Utf8PathBuf> = candidate_stems
+                .iter()
+                .flat_map(|stem| {
+                    documents
+                        .iter()
+                        .filter(move |d| &d.stem == stem)
+                        .map(|d| d.path.clone())
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let mut skipped = skipped_finding(finding, SkipReason::Ambiguous, None);
+            skipped.candidates = candidates;
+            ClosestMatchOutcome::TiedSkip {
+                skipped: Box::new(skipped),
+            }
+        }
+        closest_match::MatchOutcome::NoMatch => ClosestMatchOutcome::NoMatch,
+    }
+}
+
 pub fn plan_repairs(
     vault_root: Utf8PathBuf,
     filters: RepairPlanFilters,
@@ -122,29 +320,83 @@ pub fn plan_repairs(
         .iter()
         .map(|d| (d.path.clone(), d.hash.clone()))
         .collect();
+    let stem_corpus: Vec<&str> = index.documents.iter().map(|d| d.stem.as_str()).collect();
     let mut changes = Vec::new();
     let mut skipped: Vec<SkippedFinding> = Vec::new();
+    let mut footnotes: Vec<PlanFootnote> = Vec::new();
+    let mut occurrence_counts: BTreeMap<(Utf8PathBuf, String, String), u32> = BTreeMap::new();
 
     for finding in &findings {
         match matching_repair_rule(finding, &config.rules) {
             Some((rule, action)) => {
-                match planned_change(finding, rule, &action, &document_hashes, &index.documents) {
+                let occ_key = (
+                    finding.path.clone(),
+                    finding.code.clone(),
+                    finding_actual_value(finding)
+                        .map(|v| v.to_string())
+                        .unwrap_or_default(),
+                );
+                let occurrence_index = *occurrence_counts
+                    .entry(occ_key)
+                    .and_modify(|n| *n += 1)
+                    .or_insert(0);
+                match planned_change(
+                    finding,
+                    rule,
+                    &action,
+                    &document_hashes,
+                    &index.documents,
+                    occurrence_index,
+                ) {
                     Ok(change) => changes.push(change),
                     Err((skip, reason)) => skipped.push(skipped_finding(finding, skip, reason)),
                 }
             }
             None => {
-                let skip = if matches!(
-                    &finding.body,
-                    FindingBody::LinkIssue { link } if link.status == vault_core::LinkStatus::Ambiguous
-                ) {
-                    SkipReason::Ambiguous
+                if finding.code == "link-target-missing" {
+                    match handle_closest_match(
+                        finding,
+                        &stem_corpus,
+                        &index.documents,
+                        &document_hashes,
+                        &mut occurrence_counts,
+                        DEFAULT_MEDIUM_THRESHOLD,
+                    ) {
+                        ClosestMatchOutcome::Change { change, footnote } => {
+                            changes.push(*change);
+                            footnotes.push(*footnote);
+                        }
+                        ClosestMatchOutcome::TiedSkip { skipped: tied_skip } => {
+                            skipped.push(*tied_skip);
+                        }
+                        ClosestMatchOutcome::NoMatch => {
+                            skipped.push(skipped_finding(finding, SkipReason::Unsupported, None));
+                        }
+                    }
                 } else {
-                    SkipReason::Unsupported
-                };
-                skipped.push(skipped_finding(finding, skip, None));
+                    let skip = if matches!(
+                        &finding.body,
+                        FindingBody::LinkIssue { link } if link.status == vault_core::LinkStatus::Ambiguous
+                    ) {
+                        SkipReason::Ambiguous
+                    } else {
+                        SkipReason::Unsupported
+                    };
+                    skipped.push(skipped_finding(finding, skip, None));
+                }
             }
         }
+    }
+
+    // Apply --confidence filter to closest-match proposals.
+    if let Some(ConfidenceFilter::High) = filters.confidence {
+        let medium_ids: BTreeSet<String> = footnotes
+            .iter()
+            .filter(|f| matches!(f.confidence, Confidence::Medium))
+            .map(|f| f.change_id.clone())
+            .collect();
+        changes.retain(|c| !medium_ids.contains(&c.change_id));
+        footnotes.retain(|f| !matches!(f.confidence, Confidence::Medium));
     }
 
     let skipped_summary = SkippedSummary {
@@ -178,6 +430,7 @@ pub fn plan_repairs(
         },
         changes,
         skipped_findings: skipped,
+        footnotes,
     }
 }
 
@@ -219,6 +472,7 @@ fn planned_change(
     action: &RepairAction,
     document_hashes: &BTreeMap<Utf8PathBuf, String>,
     documents: &[vault_core::Document],
+    occurrence_index: u32,
 ) -> Result<PlannedChange, (SkipReason, Option<String>)> {
     let repair_rule = rule
         .name
@@ -228,8 +482,15 @@ fn planned_change(
         .get(&finding.path)
         .ok_or((SkipReason::MissingHash, None))?
         .clone();
+    let change_id = derive_change_id(
+        &finding.path,
+        &finding.code,
+        finding_actual_value(finding),
+        occurrence_index,
+    );
     Ok(match action {
         RepairAction::SetFrontmatter { field, value } => PlannedChange {
+            change_id: change_id.clone(),
             path: finding.path.clone(),
             document_hash,
             finding_code: finding.code.clone(),
@@ -244,6 +505,7 @@ fn planned_change(
             warnings: vec![],
         },
         RepairAction::RemoveFrontmatter { field } => PlannedChange {
+            change_id: change_id.clone(),
             path: finding.path.clone(),
             document_hash,
             finding_code: finding.code.clone(),
@@ -258,6 +520,7 @@ fn planned_change(
             warnings: vec![],
         },
         RepairAction::AddFrontmatter { field, value } => PlannedChange {
+            change_id: change_id.clone(),
             path: finding.path.clone(),
             document_hash,
             finding_code: finding.code.clone(),
@@ -300,6 +563,7 @@ fn planned_change(
             }
 
             PlannedChange {
+                change_id,
                 path: finding.path.clone(),
                 document_hash,
                 finding_code: finding.code.clone(),
@@ -530,16 +794,11 @@ mod tests {
             candidates: candidates.into_iter().map(Into::into).collect(),
             status: LinkStatus::Ambiguous,
         };
-        Finding {
-            code: "link-ambiguous".into(),
-            severity: Severity::Warning,
-            path: path.into(),
-            message: "ambiguous link target".into(),
-            body: FindingBody::LinkIssue { link },
-        }
+        Finding::from_link(path.into(), link)
     }
 
     fn finding_link_unresolved(path: &str, target: &str) -> Finding {
+        // Emits link-target-missing (post-split). Helper name kept for diff simplicity.
         let link = Link {
             source_path: path.into(),
             raw: format!("[[{target}]]"),
@@ -555,13 +814,7 @@ mod tests {
             candidates: vec![],
             status: LinkStatus::Unresolved,
         };
-        Finding {
-            code: "link-unresolved".into(),
-            severity: Severity::Warning,
-            path: path.into(),
-            message: "unresolved link target".into(),
-            body: FindingBody::LinkIssue { link },
-        }
+        Finding::from_link(path.into(), link)
     }
 
     fn make_rule(
@@ -641,6 +894,27 @@ mod tests {
 
     fn index_for(paths: &[&str]) -> vault_core::GraphIndex {
         let documents = paths.iter().map(|p| doc(p, &format!("hash-{p}"))).collect();
+        vault_core::GraphIndex {
+            root: vault_root(),
+            files: vec![],
+            ignored_files: vec![],
+            documents,
+        }
+    }
+
+    /// Build an index from (path, stem) pairs, using the path as the hash key.
+    /// Unlike `index_for`, the stem is specified explicitly rather than derived
+    /// from the filename — needed when we want docs in subdirectories where the
+    /// file stem differs from the vault-level stem we're testing against.
+    fn test_index_with_stems(pairs: &[(&str, &str)]) -> vault_core::GraphIndex {
+        let documents = pairs
+            .iter()
+            .map(|(path, stem)| {
+                let mut d = doc(path, &format!("hash-{path}"));
+                d.stem = stem.to_string();
+                d
+            })
+            .collect();
         vault_core::GraphIndex {
             root: vault_root(),
             files: vec![],
@@ -859,5 +1133,315 @@ mod tests {
         assert_eq!(plan.summary.skipped.unsupported, 1);
         assert_eq!(plan.summary.skipped.ambiguous, 1);
         assert_eq!(plan.summary.skipped.missing_hash, 0);
+    }
+
+    #[test]
+    fn plan_v5_serde_round_trip_with_footnote() {
+        let plan = RepairPlan {
+            schema_version: 5,
+            vault_root: "/tmp/v".into(),
+            source_filters: RepairPlanFilters::default(),
+            summary: RepairPlanSummary {
+                findings: 1,
+                planned_changes: 1,
+                skipped: SkippedSummary {
+                    unsupported: 0,
+                    ambiguous: 0,
+                    missing_hash: 0,
+                    precondition_failed: 0,
+                    total: 0,
+                },
+            },
+            changes: vec![PlannedChange {
+                change_id: "abc12345".into(),
+                path: "doc.md".into(),
+                document_hash: "h".into(),
+                finding_code: "link-target-missing".into(),
+                finding_rule: None,
+                repair_rule: "built-in:closest-match-stem".into(),
+                operation: "rewrite_link".into(),
+                field: None,
+                expected_old_value: Some(Value::String("Norn Brand".into())),
+                new_value: Some(Value::String("norn-brand".into())),
+                destination: None,
+                link_risk: None,
+                warnings: vec![],
+            }],
+            skipped_findings: vec![],
+            footnotes: vec![PlanFootnote {
+                change_id: "abc12345".into(),
+                kind: FootnoteKind::ClosestMatchSuggestion,
+                confidence: Confidence::High,
+                details: FootnoteDetails::ClosestMatch(ClosestMatchDetails {
+                    original_target: "Norn Brand".into(),
+                    normalized_target: "norn-brand".into(),
+                    candidate_stem: "norn-brand".into(),
+                    normalized_distance: 0,
+                    slug_normalized_identity: true,
+                }),
+            }],
+        };
+
+        let json = serde_json::to_string(&plan).unwrap();
+        let round_tripped: RepairPlan = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_tripped.schema_version, 5);
+        assert_eq!(round_tripped.changes.len(), 1);
+        assert_eq!(round_tripped.changes[0].change_id, "abc12345");
+        assert_eq!(round_tripped.footnotes.len(), 1);
+        assert!(matches!(
+            round_tripped.footnotes[0].confidence,
+            Confidence::High
+        ));
+    }
+
+    #[test]
+    fn closest_match_proposes_high_confidence_rewrite_on_target_missing() {
+        // A doc links to [[Norn Brand]], but the resolution is target-missing.
+        // The vault has norn-brand.md — slug-normalize identity → High.
+        // source.md must also appear in the index so its document hash is found.
+        let finding = finding_link_unresolved("source.md", "Norn Brand");
+        let index =
+            test_index_with_stems(&[("source.md", "source"), ("norn-brand.md", "norn-brand")]);
+
+        let plan = plan_repairs(
+            "/tmp/v".into(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &RepairConfig::default(),
+            &index,
+        );
+
+        assert_eq!(plan.changes.len(), 1, "expected exactly one PlannedChange");
+        let change = &plan.changes[0];
+        assert_eq!(change.operation, "rewrite_link");
+        assert_eq!(change.finding_code, "link-target-missing");
+        assert_eq!(
+            change.expected_old_value,
+            Some(Value::String("Norn Brand".into()))
+        );
+        assert_eq!(change.new_value, Some(Value::String("norn-brand".into())));
+
+        assert_eq!(plan.footnotes.len(), 1, "expected exactly one PlanFootnote");
+        let footnote = &plan.footnotes[0];
+        assert_eq!(footnote.change_id, change.change_id);
+        assert!(matches!(
+            footnote.kind,
+            FootnoteKind::ClosestMatchSuggestion
+        ));
+        assert!(matches!(footnote.confidence, Confidence::High));
+        match &footnote.details {
+            FootnoteDetails::ClosestMatch(d) => {
+                assert_eq!(d.original_target, "Norn Brand");
+                assert_eq!(d.candidate_stem, "norn-brand");
+                assert!(d.slug_normalized_identity);
+                assert_eq!(d.normalized_distance, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn closest_match_proposes_medium_confidence_rewrite_on_target_missing() {
+        // Broken target "norn-brnd" vs stem "norn-brand": 1-char edit on a
+        // 10-char string → ratio 0.9 → Medium (above 0.7 threshold, below
+        // post-normalize identity).
+        let finding = finding_link_unresolved("source.md", "norn-brnd");
+        let index =
+            test_index_with_stems(&[("source.md", "source"), ("norn-brand.md", "norn-brand")]);
+
+        let plan = plan_repairs(
+            "/tmp/v".into(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &RepairConfig::default(),
+            &index,
+        );
+
+        assert_eq!(plan.changes.len(), 1, "expected exactly one PlannedChange");
+        let change = &plan.changes[0];
+        assert_eq!(change.operation, "rewrite_link");
+        assert_eq!(
+            change.expected_old_value,
+            Some(Value::String("norn-brnd".into()))
+        );
+        assert_eq!(change.new_value, Some(Value::String("norn-brand".into())));
+
+        assert_eq!(plan.footnotes.len(), 1, "expected exactly one PlanFootnote");
+        let footnote = &plan.footnotes[0];
+        assert_eq!(footnote.change_id, change.change_id);
+        assert!(matches!(
+            footnote.kind,
+            FootnoteKind::ClosestMatchSuggestion
+        ));
+        assert!(matches!(footnote.confidence, Confidence::Medium));
+        match &footnote.details {
+            FootnoteDetails::ClosestMatch(d) => {
+                assert_eq!(d.original_target, "norn-brnd");
+                assert_eq!(d.candidate_stem, "norn-brand");
+                assert!(!d.slug_normalized_identity);
+                assert_eq!(d.normalized_distance, 1);
+            }
+        }
+    }
+
+    #[test]
+    fn closest_match_skips_with_ambiguous_when_candidates_tied() {
+        // Two stems normalize-identical to "norn-brand" → Tied → skipped.
+        // source.md also needs a hash entry (even though it won't be used for
+        // tied outcomes — the tied branch doesn't reach the hash lookup).
+        let finding = finding_link_unresolved("source.md", "Norn Brand");
+        let index = test_index_with_stems(&[
+            ("source.md", "source"),
+            ("notes/norn-brand.md", "norn-brand"),
+            ("archive/Norn-Brand.md", "Norn-Brand"),
+        ]);
+
+        let plan = plan_repairs(
+            "/tmp/v".into(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &RepairConfig::default(),
+            &index,
+        );
+
+        assert_eq!(plan.changes.len(), 0);
+        assert_eq!(plan.footnotes.len(), 0);
+        assert_eq!(plan.skipped_findings.len(), 1);
+        let skipped = &plan.skipped_findings[0];
+        assert_eq!(skipped.skip_reason, SkipReason::Ambiguous);
+        assert_eq!(skipped.candidates.len(), 2);
+        // Candidates should be the actual doc paths (subdirs preserved), not synthesized.
+        assert!(skipped
+            .candidates
+            .iter()
+            .any(|p| p.as_str() == "notes/norn-brand.md"));
+        assert!(skipped
+            .candidates
+            .iter()
+            .any(|p| p.as_str() == "archive/Norn-Brand.md"));
+    }
+
+    #[test]
+    fn closest_match_unsupported_when_no_candidate_above_threshold() {
+        let finding = finding_link_unresolved("source.md", "xyzzy-zzz-far");
+        let index =
+            test_index_with_stems(&[("source.md", "source"), ("norn-brand.md", "norn-brand")]);
+
+        let plan = plan_repairs(
+            "/tmp/v".into(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &RepairConfig::default(),
+            &index,
+        );
+
+        assert_eq!(plan.changes.len(), 0);
+        assert_eq!(plan.footnotes.len(), 0);
+        assert_eq!(plan.skipped_findings.len(), 1);
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::Unsupported
+        );
+    }
+
+    #[test]
+    fn confidence_high_filter_drops_medium_proposals() {
+        // Two findings: one obviously typo'd (medium-band), one normalize-identity (high).
+        let high_finding = finding_link_unresolved("a.md", "Norn Brand");
+        let medium_finding = finding_link_unresolved("b.md", "norn-brnd"); // 1-char edit
+        let index = test_index_with_stems(&[
+            ("a.md", "a"),
+            ("b.md", "b"),
+            ("norn-brand.md", "norn-brand"),
+        ]);
+
+        let filters = RepairPlanFilters {
+            confidence: Some(ConfidenceFilter::High),
+            ..Default::default()
+        };
+        let plan = plan_repairs(
+            "/tmp/v".into(),
+            filters,
+            vec![high_finding, medium_finding],
+            &RepairConfig::default(),
+            &index,
+        );
+
+        // Only the high-confidence proposal survives.
+        assert_eq!(
+            plan.changes.len(),
+            1,
+            "expected only high-confidence change"
+        );
+        assert_eq!(
+            plan.footnotes.len(),
+            1,
+            "expected only high-confidence footnote"
+        );
+        assert!(matches!(plan.footnotes[0].confidence, Confidence::High));
+    }
+
+    #[test]
+    fn confidence_filter_default_keeps_both_bands() {
+        let high_finding = finding_link_unresolved("a.md", "Norn Brand");
+        let medium_finding = finding_link_unresolved("b.md", "norn-brnd");
+        let index = test_index_with_stems(&[
+            ("a.md", "a"),
+            ("b.md", "b"),
+            ("norn-brand.md", "norn-brand"),
+        ]);
+
+        // Default filters: no confidence filter set.
+        let plan = plan_repairs(
+            "/tmp/v".into(),
+            RepairPlanFilters::default(),
+            vec![high_finding, medium_finding],
+            &RepairConfig::default(),
+            &index,
+        );
+
+        assert_eq!(plan.changes.len(), 2);
+        assert_eq!(plan.footnotes.len(), 2);
+    }
+
+    #[test]
+    fn closest_match_tied_candidates_deduped_by_path() {
+        // Two docs share stem "context" → tie when target is "concept" (1 edit).
+        // Algorithm returns candidate_stems = ["context", "context"] (one per
+        // scored doc); the resolver must dedupe by path so the SkippedFinding
+        // doesn't emit duplicate paths to the operator.
+        let finding = finding_link_unresolved("source.md", "concept");
+        let index = test_index_with_stems(&[
+            ("a/context.md", "context"),
+            ("b/context.md", "context"),
+            ("source.md", "source"),
+        ]);
+
+        let plan = plan_repairs(
+            "/tmp/v".into(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &RepairConfig::default(),
+            &index,
+        );
+
+        assert_eq!(plan.skipped_findings.len(), 1);
+        let skipped = &plan.skipped_findings[0];
+        assert_eq!(skipped.skip_reason, SkipReason::Ambiguous);
+        // Two distinct doc paths, not four.
+        assert_eq!(
+            skipped.candidates.len(),
+            2,
+            "candidates should be deduped by path; got {:?}",
+            skipped.candidates
+        );
+        // Both unique paths present.
+        assert!(skipped
+            .candidates
+            .iter()
+            .any(|p| p.as_str() == "a/context.md"));
+        assert!(skipped
+            .candidates
+            .iter()
+            .any(|p| p.as_str() == "b/context.md"));
     }
 }

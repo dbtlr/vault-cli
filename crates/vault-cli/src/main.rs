@@ -312,6 +312,9 @@ fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
         path: normalized_filter_values(&args.triage.path),
         target: normalized_filter_values(&args.triage.target),
         reason: normalized_filter_values(&args.triage.reason),
+        confidence: args.confidence.map(|c| match c {
+            crate::cli::ConfidenceArg::High => vault_standards::ConfidenceFilter::High,
+        }),
     }
 }
 

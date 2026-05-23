@@ -29,7 +29,7 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
             ),
             (
                 "vault repair plan --out plan.json",
-                "generate a frontmatter repair plan",
+                "generate a repair plan",
             ),
         ],
         "vault find" => &[
@@ -90,19 +90,16 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "errors only; skip warnings",
             ),
             (
-                "vault validate --code link-unresolved,link-ambiguous",
+                "vault validate --code 'link-*'",
                 "broken + ambiguous links (replaces `vault links unresolved`)",
             ),
             (
-                "vault validate --code link-unresolved,link-ambiguous --format paths",
+                "vault validate --code 'link-*' --format paths",
                 "unique source paths only; pipe-friendly",
             ),
         ],
         "vault repair plan" => &[
-            (
-                "vault repair plan --out plan.json",
-                "write a frontmatter repair plan",
-            ),
+            ("vault repair plan --out plan.json", "write a repair plan"),
             (
                 "vault repair plan --format json",
                 "preview the plan on stdout",
@@ -208,11 +205,11 @@ pub fn conceptual_sections_for(cmd_path: &str) -> Vec<(String, String)> {
         "vault validate" => &[
             (
                 "How validation works",
-                "Validate reads `.vault/config.yaml` for the rules that shape your vault: required frontmatter fields, allowed values, expected types, and path scoping. Each rule produces findings with a stable code and a severity (`error`, `warning`, `info`).\n\nFindings cover three surfaces. Frontmatter findings come from schema rules — codes like `frontmatter-required-field-missing` and `frontmatter-disallowed-value`. Link findings come from graph facts — `link-unresolved` and `link-ambiguous`. Document diagnostics come from parse — malformed frontmatter, encoding issues. Validate never writes files.\n\nExit code is `1` when any finding has severity `error`, `0` otherwise. Pipelines gate on this exit code.\n\nTriage filters combine with AND across types and OR within a type. `--severity error --code frontmatter-required-field-missing` returns errors that match that code. `--code link-unresolved --code link-ambiguous` returns either. `--path 'notes/**'` scopes to a path glob; `--field`, `--rule`, `--target`, and `--reason` narrow further.",
+                "Validate reads `.vault/config.yaml` for the rules that shape your vault: required frontmatter fields, allowed values, expected types, and path scoping. Each rule produces findings with a stable code and a severity (`error`, `warning`, `info`).\n\nFindings cover three surfaces. Frontmatter findings come from schema rules — codes like `frontmatter-required-field-missing` and `frontmatter-disallowed-value`. Link findings come from graph facts — `link-target-missing`, `link-anchor-missing`, `link-block-missing`, and `link-ambiguous`. Document diagnostics come from parse — malformed frontmatter, encoding issues. Validate never writes files.\n\nExit code is `1` when any finding has severity `error`, `0` otherwise. Pipelines gate on this exit code.\n\nTriage filters combine with AND across types and OR within a type. `--severity error --code frontmatter-required-field-missing` returns errors that match that code. `--code 'link-*'` returns the whole family. `--path 'notes/**'` scopes to a path glob; `--field`, `--rule`, `--target`, and `--reason` narrow further.",
             ),
             (
                 "Finding codes",
-                "Codes identify validation findings. Filter with --code <code>.\n\nlink-unresolved             A link target, anchor, or block-ref is missing.\nlink-ambiguous              A wikilink resolves to multiple candidates.\nfrontmatter-required-field-missing\n                            A required frontmatter field is absent.\nfrontmatter-disallowed-value\n                            A field's value is not in the configured set.\nfrontmatter-invalid-type    A field's value doesn't match its declared type.\nfrontmatter-forbidden-field A field that the rule forbids is present.\nfrontmatter-alias-shadowed-by-stem\n                            An alias matches another doc's stem; the alias is dead because stem resolution wins.\nfrontmatter-alias-duplicate-across-docs\n                            Two or more docs claim the same alias; wikilinks resolving via that alias will be ambiguous.\nfrontmatter-alias-malformed The alias field contains a non-scalar value.\ndocument-misrouted          A doc is in a directory the rule's path selector excludes.",
+                "Codes identify validation findings. Filter with --code <code>. Glob patterns supported (--code 'link-*').\n\nlink-target-missing         A wikilink target doesn't exist in the vault.\nlink-anchor-missing         The target exists but the #anchor isn't present.\nlink-block-missing          The target exists but the ^block-ref isn't present.\nlink-ambiguous              A wikilink resolves to multiple candidates.\nfrontmatter-required-field-missing\n                            A required frontmatter field is absent.\nfrontmatter-disallowed-value\n                            A field's value is not in the configured set.\nfrontmatter-invalid-type    A field's value doesn't match its declared type.\nfrontmatter-forbidden-field A field that the rule forbids is present.\nfrontmatter-alias-shadowed-by-stem\n                            An alias matches another doc's stem; the alias is dead because stem resolution wins.\nfrontmatter-alias-duplicate-across-docs\n                            Two or more docs claim the same alias; wikilinks resolving via that alias will be ambiguous.\nfrontmatter-alias-malformed The alias field contains a non-scalar value.\ndocument-misrouted          A doc is in a directory the rule's path selector excludes.",
             ),
         ],
         "vault repair plan" => &[(
@@ -331,7 +328,9 @@ mod tests {
             .map(|(_, b)| b.clone())
             .expect("Finding codes section present");
         for code in [
-            "link-unresolved",
+            "link-target-missing",
+            "link-anchor-missing",
+            "link-block-missing",
             "link-ambiguous",
             "frontmatter-required-field-missing",
             "frontmatter-disallowed-value",

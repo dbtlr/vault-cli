@@ -74,7 +74,7 @@ files:
     - "**/*.tmp"
 ```
 
-Ignored targets stay out of the graph entirely. If an indexed document links to an ignored file, that link is reported as `link-unresolved` rather than silently hidden.
+Ignored targets stay out of the graph entirely. If an indexed document links to an ignored file, that link is reported as `link-target-missing` rather than silently hidden.
 
 ## validate.ignore
 

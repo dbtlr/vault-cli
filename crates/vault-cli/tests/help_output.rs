@@ -261,7 +261,9 @@ fn validate_help_renders_finding_codes_section_with_all_codes() {
         "expected FINDING CODES header in --help output; got:\n{stdout}"
     );
     for code in [
-        "link-unresolved",
+        "link-target-missing",
+        "link-anchor-missing",
+        "link-block-missing",
         "link-ambiguous",
         "frontmatter-required-field-missing",
         "frontmatter-disallowed-value",

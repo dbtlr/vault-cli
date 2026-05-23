@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 use vault_core::GraphIndex;
 use vault_standards::apply::{
-    apply_file_changes, apply_link_rewrites, apply_move, changes_by_path, validate_plan_for_apply,
-    ApplyError, LinkRewriteResult, MoveResult, RepairApplyWarning,
+    apply_file_changes, apply_link_rewrites, apply_move, apply_rewrite_link, changes_by_path,
+    validate_plan_for_apply, ApplyError, LinkRewriteResult, MoveResult, RepairApplyWarning,
 };
 use vault_standards::{Finding, PlannedChange, RepairPlan};
 
@@ -60,6 +60,67 @@ pub fn apply_repair_plan(
             if !dry_run {
                 fs::write(&absolute_path, updated)
                     .with_context(|| format!("write {absolute_path}"))?;
+            }
+        }
+    }
+
+    // Pass 1b: rewrite_link operations (broken wikilink target rewrites).
+    // Hash check uses the index snapshot (same as Pass 1 frontmatter check).
+    for change in plan
+        .changes
+        .iter()
+        .filter(|c| c.operation == "rewrite_link")
+    {
+        let current_hash = current_hashes.get(&change.path).ok_or_else(|| {
+            anyhow::anyhow!(ApplyError::UnknownPath {
+                path: change.path.clone(),
+            })
+        })?;
+        if current_hash != &change.document_hash {
+            return Err(anyhow::anyhow!(ApplyError::StaleDocumentHash {
+                path: change.path.clone(),
+                expected: change.document_hash.clone(),
+                actual: current_hash.clone(),
+            }));
+        }
+
+        if dry_run {
+            // Record what would be rewritten without touching the file.
+            if let (Some(from), Some(to)) = (
+                change.expected_old_value.as_ref().and_then(|v| v.as_str()),
+                change.new_value.as_ref().and_then(|v| v.as_str()),
+            ) {
+                report.rewritten_links.push(LinkRewriteResult {
+                    file: change.path.clone(),
+                    from: from.to_string(),
+                    to: to.to_string(),
+                });
+                if !report.changed_files.contains(&change.path) {
+                    report.changed_files.push(change.path.clone());
+                }
+            }
+            continue;
+        }
+
+        let absolute_path = cwd.join(&change.path);
+        let content =
+            fs::read_to_string(&absolute_path).with_context(|| format!("read {absolute_path}"))?;
+        let updated = apply_rewrite_link(&content, change)?;
+        if updated != content {
+            fs::write(&absolute_path, &updated)
+                .with_context(|| format!("write {absolute_path}"))?;
+            if !report.changed_files.contains(&change.path) {
+                report.changed_files.push(change.path.clone());
+            }
+            if let (Some(from), Some(to)) = (
+                change.expected_old_value.as_ref().and_then(|v| v.as_str()),
+                change.new_value.as_ref().and_then(|v| v.as_str()),
+            ) {
+                report.rewritten_links.push(LinkRewriteResult {
+                    file: change.path.clone(),
+                    from: from.to_string(),
+                    to: to.to_string(),
+                });
             }
         }
     }
@@ -120,7 +181,9 @@ pub fn apply_repair_plan(
         .collect();
 
     report.moved_files = moves;
-    report.rewritten_links = rewrites;
+    // Extend (not replace): Pass 1b may have already populated rewritten_links
+    // with rewrite_link results; Pass 3 appends move-induced backlink rewrites.
+    report.rewritten_links.extend(rewrites);
     report.warnings = warnings;
 
     Ok(report)

@@ -18,7 +18,7 @@ Use `vault` when you need to:
 - Validate a vault against configured rules (`required_frontmatter`, `field_types`, `allowed_values`, `allowed_paths`, etc.).
 - Audit unresolved or ambiguous links.
 - Surface frontmatter drift for review.
-- Produce an inspectable repair plan (`schema_version: 4`) and apply it explicitly.
+- Produce an inspectable repair plan (`schema_version: 5`) and apply it explicitly.
 
 Do not use `vault` when you need full-text or semantic search — its `find` command is exact literal substring + frontmatter + path glob.
 
@@ -78,7 +78,7 @@ Finding codes are stable. Renames are called out as breaking changes in the proj
 | `--target` | Raw parsed link target string (exact match). |
 | `--reason` | Unresolved-link reason. |
 
-Comma-separated values within one filter are ORed (`--code link-unresolved,link-ambiguous`); different filters are ANDed.
+Comma-separated values within one filter are ORed (`--code link-target-missing,link-ambiguous`), and glob patterns work (`--code 'link-*'`); different filters are ANDed.
 
 ## User-specific vault doctrine lives in .vault/config.yaml
 
@@ -105,7 +105,7 @@ Apply rejects:
 
 - Plans for a different vault root than the current invocation.
 - Stale document hashes (a file changed since the plan was created).
-- Unsupported schema versions (currently `4`).
+- Unsupported schema versions (currently `5`).
 - Conflicting field changes.
 - Expected-old-value mismatches.
 
@@ -113,16 +113,37 @@ Re-plan rather than retrying. There is no `--force` flag.
 
 ### Repair action shapes
 
-vault-cli supports four repair actions in `.vault/config.yaml`:
+vault-cli supports five repair actions:
 
 - `set_frontmatter` — replace an existing frontmatter field's value.
 - `remove_frontmatter` — remove a frontmatter field.
 - `add_frontmatter` — insert a missing frontmatter field.
 - `move_document` — relocate (or rename) a file to a new path, with automatic backlink rewriting.
+- `rewrite_link` — rewrite a broken wikilink in the source document to a new target. Preserves display text (`[[X|label]]`), anchor (`[[X#section]]`), and block-ref (`[[X^block-id]]`) suffixes. All matching occurrences in the source are rewritten.
 
-Agents should not invent destination paths or values for these actions. The repair rule supplies the literal value (`set_frontmatter`, `add_frontmatter`, `remove_frontmatter`) or the destination spec (`move_document`'s `to_directory` or `to_path`). Substitution placeholders (`{stem}`, `{filename}`, `{frontmatter.<field>}`) are resolved at plan time using the file's actual state — no agent judgment required.
+Agents should not invent destination paths or values for these actions. The repair rule (or closest-match algorithm for `rewrite_link`) supplies the target value at plan time — no agent judgment required.
 
 When a move action is in the plan, expect `repair apply` to write to multiple files: the moved file itself and every backlinking file that contains a rewritable link. The apply output's `moved_files` and `rewritten_links` enumerate everything that was touched.
+
+### Closest-match link rewrites
+
+For `link-target-missing` findings, `vault repair plan` proposes closest-match `rewrite_link` changes automatically:
+
+- **High-confidence** proposals: slug-normalized identity match (case, whitespace, hyphen/underscore variants). Safe to apply without review.
+- **Medium-confidence** proposals: small residual edit distance (Levenshtein ratio ≥ 0.7). Review recommended before applying.
+- **Ties** (multiple equally-close candidates): skipped with `SkipReason::Ambiguous`; the candidate list is populated for human review.
+
+Use `--confidence high` to filter the plan to only high-confidence proposals (drops medium proposals and their footnotes). Default emits all confidence bands.
+
+### Plan footnotes
+
+Repair plans (schema v5) carry a `footnotes` array alongside `changes`. Footnotes are read-only commentary — `repair apply` ignores them entirely; they exist for LLM/operator consumers to reason about proposal quality. Each footnote for a closest-match rewrite carries:
+
+- `change_id` — references the corresponding change.
+- `confidence` — `high` or `medium`.
+- `original_target`, `normalized_target`, `candidate_stem` — the raw and normalized forms.
+- `normalized_distance` — Levenshtein ratio (1.0 = exact slug match).
+- `slug_normalized_identity` — `true` when the match is case/whitespace/hyphen-only.
 
 ## Typical agent loop
 

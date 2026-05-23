@@ -19,6 +19,7 @@ path = "src/main.rs"
 [dependencies]
 anstyle = "1"
 anyhow.workspace = true
+globset = { workspace = true }
 camino.workspace = true
 chrono = { workspace = true }
 clap.workspace = true

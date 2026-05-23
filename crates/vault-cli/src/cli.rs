@@ -206,8 +206,8 @@ pub enum RepairSubcommand {
     Links(RepairLinksArgs),
     #[command(
         disable_help_flag = true,
-        about = "Apply a frontmatter-only repair plan",
-        long_about = "Apply a frontmatter-only repair plan.\n\nApply writes by default, executes deterministic changes, reports skipped fallout as context, preserves Markdown body content, and rejects unsupported schemas, stale hashes, expected-old-value mismatches, conflicting changes, and unsupported operations."
+        about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.",
+        long_about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.\n\nReads a JSON plan emitted by `vault repair plan` and applies each change. Mutates frontmatter (`set_frontmatter` / `remove_frontmatter` / `add_frontmatter` / `move_document`) and source-doc wikilinks (`rewrite_link`). Preserves the Markdown body except for `rewrite_link`, which updates matching wikilinks while preserving display text, anchor (`#section`), and block-ref (`^block-id`) suffixes. Plan changes are gated by precondition checks: the source-doc hash must match what the plan recorded, and `expected_old_value` must match the current frontmatter value. Apply writes by default; pass `--dry-run` to preview. Rejects unsupported schemas, stale hashes, expected-old-value mismatches, conflicting changes, and unsupported operations."
     )]
     Apply(RepairApplyArgs),
 }
@@ -295,6 +295,10 @@ pub struct RepairPlanArgs {
         help = "Write the JSON repair plan artifact to this path instead of stdout"
     )]
     pub out: Option<Utf8PathBuf>,
+    /// Filter closest-match proposals by confidence band.
+    /// Default: emit all bands. `high` drops Medium proposals (and their footnotes).
+    #[arg(long, value_enum)]
+    pub confidence: Option<ConfidenceArg>,
     #[command(flatten)]
     pub triage: ValidateTriageArgs,
 }
@@ -640,6 +644,12 @@ pub enum RepairOutputFormat {
     Json,
     Jsonl,
     Table,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+#[clap(rename_all = "snake_case")]
+pub enum ConfidenceArg {
+    High,
 }
 
 impl From<RepairOutputFormat> for OutputFormat {

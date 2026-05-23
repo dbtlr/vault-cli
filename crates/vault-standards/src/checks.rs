@@ -221,12 +221,8 @@ pub(crate) fn check_links(document: &Document) -> Vec<Finding> {
         .iter()
         .filter_map(|link| match link.status {
             LinkStatus::Resolved => None,
-            LinkStatus::Unresolved => Some(Finding::link_unresolved(
-                document.path.clone(),
-                link.clone(),
-            )),
-            LinkStatus::Ambiguous => {
-                Some(Finding::link_ambiguous(document.path.clone(), link.clone()))
+            LinkStatus::Unresolved | LinkStatus::Ambiguous => {
+                Some(Finding::from_link(document.path.clone(), link.clone()))
             }
         })
         .collect()

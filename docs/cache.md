@@ -59,7 +59,7 @@ Query commands implicitly refresh the cache before reading. Pass the global `--n
 ```bash
 vault cache index
 vault --no-cache-refresh validate --summary --format json
-vault --no-cache-refresh validate --code link-unresolved,link-ambiguous --format jsonl
+vault --no-cache-refresh validate --code 'link-*' --format jsonl
 ```
 
 ## What's cached

@@ -177,10 +177,10 @@ pub fn changes_by_path(
     let mut seen_fields = BTreeSet::new();
 
     for change in &plan.changes {
-        // move_document is handled by the orchestrator via apply_move /
-        // apply_link_rewrites — it is not a per-file frontmatter edit, so
-        // it's skipped here rather than rejected.
-        if change.operation == "move_document" {
+        // move_document and rewrite_link are handled by the orchestrator
+        // separately — they are not per-file frontmatter edits, so they
+        // are skipped here rather than rejected.
+        if change.operation == "move_document" || change.operation == "rewrite_link" {
             continue;
         }
         if !matches!(
@@ -538,6 +538,98 @@ pub fn apply_link_rewrites(
     Ok(results)
 }
 
+/// Apply a `rewrite_link` operation to source-doc content. Rewrites every
+/// wikilink in the source whose target equals `expected_old_value` to use
+/// `new_value`, preserving display text, anchor, and block-ref suffixes.
+///
+/// Caller is responsible for hash verification before invoking this.
+///
+/// # Known limitation
+///
+/// The parser does not skip code-fenced content. If the same target appears
+/// both in prose (flagged by validate) and inside a ``` ... ``` block (not
+/// flagged), apply will rewrite BOTH occurrences. Validate's link extractor
+/// skips code fences via `ignored_wikilink_ranges` in vault-links, but this
+/// rewrite path does not. Reuse of `vault_links::parse_wikilinks` here would
+/// require byte-span based rewriting; deferred to a follow-up.
+pub fn apply_rewrite_link(content: &str, change: &PlannedChange) -> Result<String, ApplyError> {
+    let old_target = change
+        .expected_old_value
+        .as_ref()
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ApplyError::UnsupportedOperation {
+            path: change.path.clone(),
+            operation: "rewrite_link without expected_old_value".to_string(),
+        })?;
+    let new_target = change
+        .new_value
+        .as_ref()
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ApplyError::MissingNewValue {
+            path: change.path.clone(),
+        })?;
+
+    let mut out = String::with_capacity(content.len());
+    let mut rest = content;
+    while let Some(start) = rest.find("[[") {
+        // Copy chunk before this candidate.
+        out.push_str(&rest[..start]);
+        let after_open = &rest[start + 2..];
+        let Some(close) = after_open.find("]]") else {
+            // Unclosed wikilink — copy the rest verbatim and stop.
+            out.push_str(&rest[start..]);
+            return Ok(out);
+        };
+        let inner = &after_open[..close];
+
+        // Parse inner = target [| label] with optional #anchor / ^block-ref on target.
+        let (target_with_modifiers, label) = match inner.split_once('|') {
+            Some((t, l)) => (t, Some(l)),
+            None => (inner, None),
+        };
+        // Split target from suffix (#anchor or ^block-ref).
+        let (bare_target, suffix) = split_target_suffix(target_with_modifiers);
+
+        if bare_target == old_target {
+            out.push_str("[[");
+            out.push_str(new_target);
+            if let Some(s) = suffix {
+                out.push_str(s);
+            }
+            if let Some(l) = label {
+                out.push('|');
+                out.push_str(l);
+            }
+            out.push_str("]]");
+        } else {
+            // Not our match — copy verbatim.
+            out.push_str("[[");
+            out.push_str(inner);
+            out.push_str("]]");
+        }
+
+        rest = &after_open[close + 2..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+fn split_target_suffix(s: &str) -> (&str, Option<&str>) {
+    // Suffix starts at the first '#' or '^', whichever comes first.
+    let hash = s.find('#');
+    let caret = s.find('^');
+    let split_at = match (hash, caret) {
+        (Some(h), Some(c)) => Some(h.min(c)),
+        (Some(h), None) => Some(h),
+        (None, Some(c)) => Some(c),
+        (None, None) => None,
+    };
+    match split_at {
+        Some(i) => (&s[..i], Some(&s[i..])),
+        None => (s, None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,6 +654,7 @@ mod tests {
             },
             changes: vec![],
             skipped_findings: vec![],
+            footnotes: vec![],
         }
     }
 
@@ -573,6 +666,7 @@ mod tests {
         new_value: Option<Value>,
     ) -> PlannedChange {
         PlannedChange {
+            change_id: "test-change-id".to_string(),
             path: path.into(),
             document_hash: hash.to_string(),
             finding_code: "frontmatter-disallowed-value".into(),
@@ -912,5 +1006,162 @@ mod tests {
         );
         let result = apply_change(content, &change).unwrap();
         assert!(result.contains("workspace: '[[demo]]'"));
+    }
+
+    #[test]
+    fn apply_rewrite_link_replaces_bare_wikilink() {
+        let original = "---\ntitle: x\n---\n\nSee [[Norn Brand]] for details.\n";
+        let change = PlannedChange {
+            change_id: "test".into(),
+            path: "doc.md".into(),
+            document_hash: "test-hash".into(),
+            finding_code: "link-target-missing".into(),
+            finding_rule: None,
+            repair_rule: "built-in:closest-match-stem".into(),
+            operation: "rewrite_link".into(),
+            field: None,
+            expected_old_value: Some(Value::String("Norn Brand".into())),
+            new_value: Some(Value::String("norn-brand".into())),
+            destination: None,
+            link_risk: None,
+            warnings: vec![],
+        };
+        let updated = apply_rewrite_link(original, &change).unwrap();
+        assert!(updated.contains("[[norn-brand]]"));
+        assert!(!updated.contains("[[Norn Brand]]"));
+    }
+
+    #[test]
+    fn apply_rewrite_link_preserves_display_text() {
+        let original = "Reference: [[Norn Brand|the brand spec]] here.\n";
+        let change = PlannedChange {
+            change_id: "test".into(),
+            path: "doc.md".into(),
+            document_hash: "test-hash".into(),
+            finding_code: "link-target-missing".into(),
+            finding_rule: None,
+            repair_rule: "built-in:closest-match-stem".into(),
+            operation: "rewrite_link".into(),
+            field: None,
+            expected_old_value: Some(Value::String("Norn Brand".into())),
+            new_value: Some(Value::String("norn-brand".into())),
+            destination: None,
+            link_risk: None,
+            warnings: vec![],
+        };
+        let updated = apply_rewrite_link(original, &change).unwrap();
+        assert!(updated.contains("[[norn-brand|the brand spec]]"));
+    }
+
+    #[test]
+    fn apply_rewrite_link_preserves_anchor() {
+        let original = "See [[Norn Brand#colors]].\n";
+        let change = PlannedChange {
+            change_id: "test".into(),
+            path: "doc.md".into(),
+            document_hash: "test-hash".into(),
+            finding_code: "link-target-missing".into(),
+            finding_rule: None,
+            repair_rule: "built-in:closest-match-stem".into(),
+            operation: "rewrite_link".into(),
+            field: None,
+            expected_old_value: Some(Value::String("Norn Brand".into())),
+            new_value: Some(Value::String("norn-brand".into())),
+            destination: None,
+            link_risk: None,
+            warnings: vec![],
+        };
+        let updated = apply_rewrite_link(original, &change).unwrap();
+        assert!(updated.contains("[[norn-brand#colors]]"));
+    }
+
+    #[test]
+    fn apply_rewrite_link_preserves_block_ref() {
+        let original = "See [[Norn Brand^block-id]].\n";
+        let change = PlannedChange {
+            change_id: "test".into(),
+            path: "doc.md".into(),
+            document_hash: "test-hash".into(),
+            finding_code: "link-target-missing".into(),
+            finding_rule: None,
+            repair_rule: "built-in:closest-match-stem".into(),
+            operation: "rewrite_link".into(),
+            field: None,
+            expected_old_value: Some(Value::String("Norn Brand".into())),
+            new_value: Some(Value::String("norn-brand".into())),
+            destination: None,
+            link_risk: None,
+            warnings: vec![],
+        };
+        let updated = apply_rewrite_link(original, &change).unwrap();
+        assert!(updated.contains("[[norn-brand^block-id]]"));
+    }
+
+    #[test]
+    fn apply_rewrite_link_replaces_all_occurrences() {
+        let original = "[[Norn Brand]] and [[Norn Brand]] again.\n";
+        let change = PlannedChange {
+            change_id: "test".into(),
+            path: "doc.md".into(),
+            document_hash: "test-hash".into(),
+            finding_code: "link-target-missing".into(),
+            finding_rule: None,
+            repair_rule: "built-in:closest-match-stem".into(),
+            operation: "rewrite_link".into(),
+            field: None,
+            expected_old_value: Some(Value::String("Norn Brand".into())),
+            new_value: Some(Value::String("norn-brand".into())),
+            destination: None,
+            link_risk: None,
+            warnings: vec![],
+        };
+        let updated = apply_rewrite_link(original, &change).unwrap();
+        assert_eq!(updated.matches("[[norn-brand]]").count(), 2);
+        assert!(!updated.contains("[[Norn Brand]]"));
+    }
+
+    #[test]
+    fn apply_rewrite_link_leaves_unmatched_wikilinks_alone() {
+        let original = "See [[Other Doc]] and [[Norn Brand]].\n";
+        let change = PlannedChange {
+            change_id: "test".into(),
+            path: "doc.md".into(),
+            document_hash: "test-hash".into(),
+            finding_code: "link-target-missing".into(),
+            finding_rule: None,
+            repair_rule: "built-in:closest-match-stem".into(),
+            operation: "rewrite_link".into(),
+            field: None,
+            expected_old_value: Some(Value::String("Norn Brand".into())),
+            new_value: Some(Value::String("norn-brand".into())),
+            destination: None,
+            link_risk: None,
+            warnings: vec![],
+        };
+        let updated = apply_rewrite_link(original, &change).unwrap();
+        assert!(updated.contains("[[Other Doc]]"));
+        assert!(updated.contains("[[norn-brand]]"));
+    }
+
+    #[test]
+    fn apply_rewrite_link_preserves_anchor_then_block_ref_combination() {
+        let original = "See [[Norn Brand#^block-id]] for details.\n";
+        let change = PlannedChange {
+            change_id: "test".into(),
+            path: "doc.md".into(),
+            document_hash: "test-hash".into(),
+            finding_code: "link-target-missing".into(),
+            finding_rule: None,
+            repair_rule: "built-in:closest-match-stem".into(),
+            operation: "rewrite_link".into(),
+            field: None,
+            expected_old_value: Some(Value::String("Norn Brand".into())),
+            new_value: Some(Value::String("norn-brand".into())),
+            destination: None,
+            link_risk: None,
+            warnings: vec![],
+        };
+        let updated = apply_rewrite_link(original, &change).unwrap();
+        assert!(updated.contains("[[norn-brand#^block-id]]"));
     }
 }

@@ -215,7 +215,7 @@ fn grouped_help_lists_new_surfaces() {
     assert!(!output.contains("paths"));
 
     let output = vault(&["repair", "apply", "--help"]);
-    assert!(output.contains("reports skipped fallout as context"));
+    assert!(output.contains("rewrite_link"));
     assert!(output.contains("stale hashes"));
     assert!(!output.contains("manual-decision"));
 }
@@ -354,7 +354,7 @@ fn repair_plan_generates_configured_frontmatter_change() {
     ]);
 
     let plan = serde_json::from_str::<Value>(&output).expect("repair plan should be JSON");
-    assert_eq!(plan["schema_version"], 4);
+    assert_eq!(plan["schema_version"], 5);
     assert_eq!(plan["summary"]["findings"], 1);
     assert_eq!(plan["summary"]["planned_changes"], 1);
     assert_eq!(plan["summary"]["skipped"]["total"], 0);
@@ -459,7 +459,10 @@ fn broad_repair_plan_with_skipped_findings_still_applies_changes() {
     assert_eq!(plan_json["summary"]["planned_changes"], 1);
     assert_eq!(plan_json["summary"]["skipped"]["total"], 1);
     assert_eq!(plan_json["summary"]["skipped"]["unsupported"], 1);
-    assert_eq!(plan_json["skipped_findings"][0]["code"], "link-unresolved");
+    assert_eq!(
+        plan_json["skipped_findings"][0]["code"],
+        "link-target-missing"
+    );
     assert_eq!(
         plan_json["skipped_findings"][0]["skip_reason"],
         "unsupported"
@@ -526,7 +529,7 @@ fn repair_plan_table_is_row_oriented() {
     assert!(output.contains("skipped/unsupported"));
     assert!(output.contains("task.md"));
     assert!(output.contains("set_frontmatter"));
-    assert!(output.contains("link-unresolved"));
+    assert!(output.contains("link-target-missing"));
     assert!(!output.contains("\"changes\""));
 
     fs::remove_dir_all(root).ok();
@@ -796,7 +799,7 @@ fn validate_jsonl_reports_graph_findings_and_diagnostics() {
 
     assert!(findings
         .iter()
-        .any(|finding| finding["code"] == "link-unresolved"
+        .any(|finding| finding["code"] == "link-target-missing"
             && finding["path"] == "alpha.md"
             && finding["link"]["raw"] == "[[missing]]"));
     assert!(findings
@@ -1051,7 +1054,9 @@ fn omitted_validate_summary_format_defaults_to_json_when_stdout_is_piped() {
 
     let summary = serde_json::from_str::<Value>(&output).expect("output should be JSON");
     assert_eq!(summary["findings"], 7);
-    assert_eq!(summary["codes"]["link-unresolved"], 5);
+    assert_eq!(summary["codes"]["link-target-missing"], 1);
+    assert_eq!(summary["codes"]["link-anchor-missing"], 2);
+    assert_eq!(summary["codes"]["link-block-missing"], 2);
 }
 
 #[test]
@@ -1069,7 +1074,7 @@ fn validate_summary_supports_table_format() {
     assert!(output.contains("metric"));
     assert!(output.contains("findings"));
     assert!(output.contains("codes"));
-    assert!(output.contains("link-unresolved"));
+    assert!(output.contains("link-target-missing"));
     assert!(output.contains("path_prefixes"));
 }
 
@@ -1173,7 +1178,7 @@ fn validate_filters_link_findings_by_target_and_reason() {
         "-C",
         root.to_str().unwrap(),
         "--code",
-        "link-unresolved,link-ambiguous",
+        "link-*",
         "--target",
         "duplicate",
         "--reason",
@@ -2404,7 +2409,7 @@ repair:
     let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
     let plan_json: Value = serde_json::from_str(&plan_text).expect("repair plan should be JSON");
 
-    assert_eq!(plan_json["schema_version"], 4);
+    assert_eq!(plan_json["schema_version"], 5);
     assert_eq!(plan_json["summary"]["planned_changes"], 1);
     let change = &plan_json["changes"][0];
     assert_eq!(change["operation"], "move_document");
@@ -2981,4 +2986,82 @@ fn config_validate_jsonl_no_ansi() {
         !stdout.contains("\x1b["),
         "config validate JSONL must not contain ANSI"
     );
+}
+
+#[test]
+fn repair_apply_rewrites_link_in_source_doc() {
+    let root = temp_cache_dir();
+    fs::create_dir_all(&root).expect("temp dir should be created");
+
+    // Source doc with a broken wikilink. The link target "Norn Brand"
+    // will be matched by closest-match to "norn-brand" (the stem of the
+    // second file below).
+    fs::write(
+        root.join("source.md"),
+        "---\ntitle: source\n---\n\nSee [[Norn Brand]] for details.\n",
+    )
+    .expect("source should write");
+    fs::write(
+        root.join("norn-brand.md"),
+        "---\ntitle: norn-brand\n---\n\nThe brand.\n",
+    )
+    .expect("norn-brand should write");
+
+    // Run repair plan scoped to link-target-missing findings.
+    let plan = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "repair",
+        "plan",
+        "--code",
+        "link-target-missing",
+    ]);
+    let plan_json = serde_json::from_str::<Value>(&plan).expect("repair plan should be JSON");
+    assert_eq!(
+        plan_json["changes"][0]["operation"], "rewrite_link",
+        "expected a rewrite_link change; got plan: {plan}"
+    );
+
+    let plan_path = root.join("repair.json");
+    fs::write(&plan_path, &plan).expect("plan should write");
+
+    let output = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "repair",
+        "apply",
+        plan_path.to_str().unwrap(),
+    ]);
+
+    let report = serde_json::from_str::<Value>(&output).expect("apply report should be JSON");
+    assert_eq!(report["dry_run"], false);
+    assert!(
+        report["changed_files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f == "source.md"),
+        "expected source.md in changed_files; got: {output}"
+    );
+    assert!(
+        report["rewritten_links"]
+            .as_array()
+            .map(|a| !a.is_empty())
+            .unwrap_or(false),
+        "expected rewritten_links to be populated; got: {output}"
+    );
+    assert_eq!(report["rewritten_links"][0]["from"], "Norn Brand");
+    assert_eq!(report["rewritten_links"][0]["to"], "norn-brand");
+
+    let updated = fs::read_to_string(root.join("source.md")).expect("source should read");
+    assert!(
+        updated.contains("[[norn-brand]]"),
+        "expected source to contain rewritten link, got: {updated}"
+    );
+    assert!(
+        !updated.contains("[[Norn Brand]]"),
+        "expected source to NOT contain original broken link, got: {updated}"
+    );
+
+    fs::remove_dir_all(root).ok();
 }

@@ -72,21 +72,47 @@ impl Finding {
         }
     }
 
-    pub fn link_unresolved(path: Utf8PathBuf, link: Link) -> Self {
-        let message = format!("unresolved link target: {}", link.target);
-        Self {
-            code: "link-unresolved".to_string(),
-            severity: Severity::Warning,
-            path,
-            message,
-            body: FindingBody::LinkIssue { link },
-        }
-    }
+    /// Construct a link-shaped finding by dispatching on the link's status
+    /// and unresolved_reason. Returns one of:
+    /// - `link-target-missing` for Unresolved + TargetMissing
+    /// - `link-anchor-missing` for Unresolved + AnchorMissing
+    /// - `link-block-missing` for Unresolved + BlockRefMissing
+    /// - `link-ambiguous` for Ambiguous status
+    ///
+    /// Falls back to `link-target-missing` for Unresolved with no reason set;
+    /// emitter is expected to populate reason but we don't panic if absent.
+    pub fn from_link(path: Utf8PathBuf, link: vault_core::Link) -> Self {
+        use vault_core::{LinkStatus, UnresolvedReason};
 
-    pub fn link_ambiguous(path: Utf8PathBuf, link: Link) -> Self {
-        let message = format!("ambiguous link target: {}", link.target);
+        let (code, message) = match (&link.status, &link.unresolved_reason) {
+            (LinkStatus::Ambiguous, _) => (
+                "link-ambiguous",
+                format!("ambiguous link target: {}", link.target),
+            ),
+            (LinkStatus::Unresolved, Some(UnresolvedReason::AnchorMissing)) => (
+                "link-anchor-missing",
+                format!(
+                    "link anchor not found in target: {}#{}",
+                    link.target,
+                    link.anchor.as_deref().unwrap_or("")
+                ),
+            ),
+            (LinkStatus::Unresolved, Some(UnresolvedReason::BlockRefMissing)) => (
+                "link-block-missing",
+                format!(
+                    "link block-ref not found in target: {}^{}",
+                    link.target,
+                    link.block_ref.as_deref().unwrap_or("")
+                ),
+            ),
+            _ => (
+                "link-target-missing",
+                format!("link target not found: {}", link.target),
+            ),
+        };
+
         Self {
-            code: "link-ambiguous".to_string(),
+            code: code.to_string(),
             severity: Severity::Warning,
             path,
             message,
@@ -257,5 +283,67 @@ impl Finding {
                 peer_doc_paths,
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod link_finding_tests {
+    use super::*;
+    use vault_core::{Link, LinkKind, LinkStatus, UnresolvedReason};
+
+    fn link_with(status: LinkStatus, reason: Option<UnresolvedReason>) -> Link {
+        Link {
+            source_path: "doc.md".into(),
+            raw: "[[Target]]".into(),
+            kind: LinkKind::Wikilink,
+            target: "Target".into(),
+            label: None,
+            anchor: None,
+            block_ref: None,
+            source_span: None,
+            source_context: None,
+            resolved_path: None,
+            unresolved_reason: reason,
+            candidates: vec![],
+            status,
+        }
+    }
+
+    #[test]
+    fn from_link_emits_target_missing_code() {
+        let link = link_with(
+            LinkStatus::Unresolved,
+            Some(UnresolvedReason::TargetMissing),
+        );
+        let finding = Finding::from_link("doc.md".into(), link);
+        assert_eq!(finding.code, "link-target-missing");
+        assert!(finding.message.contains("link target not found"));
+    }
+
+    #[test]
+    fn from_link_emits_anchor_missing_code() {
+        let link = link_with(
+            LinkStatus::Unresolved,
+            Some(UnresolvedReason::AnchorMissing),
+        );
+        let finding = Finding::from_link("doc.md".into(), link);
+        assert_eq!(finding.code, "link-anchor-missing");
+    }
+
+    #[test]
+    fn from_link_emits_block_missing_code() {
+        let link = link_with(
+            LinkStatus::Unresolved,
+            Some(UnresolvedReason::BlockRefMissing),
+        );
+        let finding = Finding::from_link("doc.md".into(), link);
+        assert_eq!(finding.code, "link-block-missing");
+    }
+
+    #[test]
+    fn from_link_emits_ambiguous_code() {
+        let link = link_with(LinkStatus::Ambiguous, Some(UnresolvedReason::Ambiguous));
+        let finding = Finding::from_link("doc.md".into(), link);
+        assert_eq!(finding.code, "link-ambiguous");
     }
 }

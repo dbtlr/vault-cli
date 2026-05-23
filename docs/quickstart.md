@@ -27,7 +27,7 @@ You should see a small inventory: `alpha.md`, `beta.md`, `broken-frontmatter.md`
 Walk unresolved links:
 
 ```bash
-vault -C fixtures/basic validate --code link-unresolved,link-ambiguous --format jsonl | head
+vault -C fixtures/basic validate --code 'link-*' --format jsonl | head
 ```
 
 The fixture intentionally includes a `[[missing]]` wikilink, an ambiguous `[[duplicate]]` reference, and missing-anchor cases — these surface here as JSONL rows.

@@ -13,16 +13,57 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 ### Breaking changes
 
 - **`vault docs` namespace removed** (`docs summary`, `docs inspect`). Replaced by `vault count` and `vault show`.
-- **`vault links` namespace removed** (`links backlinks`, `links unresolved`; `links list` was removed in v0.29). Use `vault show <doc> --col incoming_links` and `vault validate --code link-unresolved,link-ambiguous`.
+- **`vault links` namespace removed** (`links backlinks`, `links unresolved`; `links list` was removed in v0.29). Use `vault show <doc> --col incoming_links` and `vault validate --code 'link-*'`.
+- `link-unresolved` finding code retired. Replaced by `link-target-missing`,
+  `link-anchor-missing`, and `link-block-missing` — each maps 1:1 to the
+  existing `unresolved_reason` taxonomy and is now filterable via `--code`
+  directly. Scripts filtering on `--code link-unresolved` should migrate to
+  `--code 'link-*'` (now globbable) or list the three codes explicitly.
 
 ### Changed
 
-- Unresolved-link inventory now respects `.vault/config.yaml`'s `validate.ignore` patterns by default. The old `vault links unresolved` walked every indexed document; the migration path `vault validate --code link-unresolved,link-ambiguous` respects the same ignore config that `vault validate` already honored. Vaults with ignored paths will see fewer finding rows than before.
+- Unresolved-link inventory now respects `.vault/config.yaml`'s `validate.ignore` patterns by default. The old `vault links unresolved` walked every indexed document; the migration path `vault validate --code 'link-*'` respects the same ignore config that `vault validate` already honored. Vaults with ignored paths will see fewer finding rows than before.
 - **BREAKING:** `vault --help` and `vault -h` (and the same flags on every subcommand) now render through a custom layout instead of clap's default. Two forms with different jobs: `-h` is a one-screen orientation summary; `--help` is the deep reference with hanging-indent flag prose and pagination via `$PAGER`. Pager mirrors `vault find` (`less -FRX` default, honored `$PAGER`, TTY+height gate). Set `PAGER=cat` or pipe through `cat` to bypass. `GLOBAL OPTIONS` is shown in full on every subcommand. Phase 1 ships the structural skeleton; canned examples, live examples, and conceptual sections layer on in later phases.
 - Cache identity now tracks `links.alias_field`. Changing the config (enabling, disabling, or renaming the field) triggers a silent cache rebuild on the next vault-cli invocation.
 
 ### Added
 
+- `--code` filter accepts glob patterns: `--code 'link-*'` matches the four
+  link finding codes; `--code 'frontmatter-alias-*'` matches the alias family.
+  Exact-string matching unchanged when the value contains no glob meta.
+- **`vault repair plan` proposes closest-match link rewrites** for
+  `link-target-missing` findings. Slug-normalize identity (case, whitespace,
+  hyphen-vs-underscore variants) emits `high`-confidence proposals; small
+  residual edit distance (Levenshtein ratio ≥ 0.7) emits `medium`-confidence
+  proposals. Multi-candidate ties skip with `SkipReason::Ambiguous` and
+  populate the candidate list — the algorithm surfaces ambiguity rather than
+  guessing through it. Atlas dogfood: 559 findings → 100 high + 24 medium
+  proposals, 1 legitimate tie, 434 unsupported.
+- **`footnotes` array on repair plan output.** Read-only commentary that
+  carries per-change confidence + structured details (`original_target`,
+  `normalized_target`, `candidate_stem`, `normalized_distance`,
+  `slug_normalized_identity`). `repair apply` ignores footnotes entirely —
+  the plan stays a purely executable contract. LLM/operator consumers read
+  footnotes to reason about which proposals to trust.
+- **`vault repair plan --confidence high`** filters the plan to only
+  high-confidence proposals (drops medium proposals and their footnotes).
+  Default emits all bands per the dump-everything principle.
+- **`vault repair apply` learns the `rewrite_link` operation.** Mutates
+  matching wikilinks in source docs; preserves display text (`[[X|label]]`),
+  anchor (`[[X#section]]`), and block-ref (`[[X^block-id]]`) suffixes. All
+  matching occurrences in the source are rewritten. Hash check enforced
+  before write; `--dry-run` honors the check but skips the write. Known
+  limitation: the rewrite parser does not skip code-fenced content; if the
+  same target appears both in prose and inside `\`\`\` ... \`\`\``, both will
+  be rewritten.
+
+### Changed
+
+- **`repair-plan-schema` bumped from `4` to `5`.** Additive: `footnotes`
+  array on `RepairPlan`, `change_id` field on each `PlannedChange`
+  (deterministic SHA-256 of path + finding-code + expected-old-value +
+  occurrence-index, first 16 hex chars). `repair apply` rejects plans with
+  `schema_version != 5` — re-run `repair plan` to regenerate.
 - **`vault count`** — native grouped counting. `--by <field>` groups by a frontmatter field; without it, emits total only. Shares the full filter flag surface with `vault find` (`--text`, `--eq`, `--not-eq`, `--in`, `--not-in`, `--has`, `--missing`, `--before`, `--after`, `--on`, `--path`). Replaces `vault docs summary --count-by`.
 - **`vault show <doc>...`** — unified single-doc detail. Accepts vault-relative paths, case-insensitive stems, and wikilink-shaped inputs (brackets stripped before resolution). Default fields: path, frontmatter, headings, outgoing_links, unresolved_links, incoming_links. `--body` adds content; `--col` narrows; multi-target supported. Replaces `vault docs inspect` and `vault links backlinks`.
 - vault-cli: `--help` now includes canned EXAMPLES on most commands. Examples are hand-authored, vault-independent, and concentrated on multi-shape commands (`find`, `validate`, `repair plan`, top-level `vault`) where the flag block alone leaves invocation patterns unclear. `-h` short form unchanged.

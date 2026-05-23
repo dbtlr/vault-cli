@@ -1,8 +1,9 @@
-//! Regression tests locking in validate behavior for link-unresolved findings.
+//! Regression tests locking in validate behavior for the link-* finding family.
 //!
 //! ## Root cause (Phase 4 investigation, 2026-05-22)
 //!
-//! Investigated parity between `validate --code link-unresolved,link-ambiguous` and
+//! Investigated parity between `validate --code 'link-*'` (formerly
+//! `--code link-unresolved,link-ambiguous`, retired in Phase 1) and
 //! the (deleted in v0.30) `vault links unresolved`.
 //!
 //! The key behavioral difference was **path-filter divergence**:
@@ -76,16 +77,16 @@ fn synth_vault_with_ignore() -> TempDir {
     tmp
 }
 
-/// `validate --code link-unresolved` respects `validate.ignore`:
+/// `validate --code link-target-missing` respects `validate.ignore`:
 /// only the 2 occurrences in `active/a.md` are emitted; `Archive/old.md` is skipped.
 #[test]
-fn validate_respects_validate_ignore_for_link_unresolved() {
+fn validate_respects_validate_ignore_for_link_target_missing() {
     let tmp = synth_vault_with_ignore();
     let mut cmd = Command::new(vault_bin());
     cmd.args(["--cwd"]).arg(tmp.path().join("vault")).args([
         "validate",
         "--code",
-        "link-unresolved",
+        "link-target-missing",
         "--format",
         "jsonl",
     ]);
@@ -134,7 +135,7 @@ fn validate_emits_per_occurrence_not_per_unique_pair() {
     cmd.args(["--cwd"]).arg(tmp.path().join("vault")).args([
         "validate",
         "--code",
-        "link-unresolved",
+        "link-target-missing",
         "--format",
         "jsonl",
     ]);

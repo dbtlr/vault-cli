@@ -8,6 +8,31 @@ use vault_standards::{Finding, FindingBody};
 use crate::cli::{RepairPlanArgs, ValidateArgs};
 
 #[derive(Debug)]
+enum CodeMatcher {
+    Exact(String),
+    Glob(globset::GlobMatcher),
+}
+
+impl CodeMatcher {
+    fn parse(value: &str) -> Result<Self> {
+        if value.contains(['*', '?', '[']) {
+            let glob = globset::Glob::new(value)
+                .map_err(|e| anyhow::anyhow!("invalid code glob '{value}': {e}"))?;
+            Ok(Self::Glob(glob.compile_matcher()))
+        } else {
+            Ok(Self::Exact(value.to_string()))
+        }
+    }
+
+    fn matches(&self, code: &str) -> bool {
+        match self {
+            Self::Exact(s) => s == code,
+            Self::Glob(g) => g.is_match(code),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct ValidateFilterOptions<'a> {
     pub codes: &'a [String],
     pub severities: &'a [String],
@@ -48,7 +73,7 @@ impl<'a> From<&'a RepairPlanArgs> for ValidateFilterOptions<'a> {
 
 #[derive(Debug)]
 struct ParsedValidateFilters {
-    codes: BTreeSet<String>,
+    codes: Vec<CodeMatcher>,
     severities: BTreeSet<String>,
     fields: BTreeSet<String>,
     rules: BTreeSet<String>,
@@ -69,7 +94,7 @@ pub fn filter_findings(
 }
 
 fn finding_matches(finding: &Finding, filters: &ParsedValidateFilters) -> bool {
-    set_matches(&filters.codes, &finding.code)
+    code_matches(&filters.codes, &finding.code)
         && set_matches(&filters.severities, severity_key(finding))
         && paths_match(finding, &filters.paths)
         && optional_set_matches(&filters.fields, finding_field(finding))
@@ -78,10 +103,14 @@ fn finding_matches(finding: &Finding, filters: &ParsedValidateFilters) -> bool {
         && optional_set_matches(&filters.reasons, finding_reason(finding))
 }
 
+fn code_matches(matchers: &[CodeMatcher], code: &str) -> bool {
+    matchers.is_empty() || matchers.iter().any(|m| m.matches(code))
+}
+
 impl ParsedValidateFilters {
     fn parse(options: &ValidateFilterOptions<'_>) -> Result<Self> {
         Ok(Self {
-            codes: parse_values(options.codes, "code")?,
+            codes: parse_code_matchers(options.codes)?,
             severities: parse_values(options.severities, "severity")?,
             fields: parse_values(options.fields, "field")?,
             rules: parse_values(options.rules, "rule")?,
@@ -90,6 +119,19 @@ impl ParsedValidateFilters {
             reasons: parse_values(options.reasons, "reason")?,
         })
     }
+}
+
+fn parse_code_matchers(values: &[String]) -> Result<Vec<CodeMatcher>> {
+    let mut parsed = Vec::new();
+    for value in values {
+        for item in value.split(',').map(str::trim) {
+            if item.is_empty() {
+                bail!("invalid code filter, expected non-empty comma-separated values");
+            }
+            parsed.push(CodeMatcher::parse(item)?);
+        }
+    }
+    Ok(parsed)
 }
 
 fn parse_values(values: &[String], label: &str) -> Result<BTreeSet<String>> {
@@ -184,4 +226,98 @@ fn finding_reason(finding: &Finding) -> Option<&'static str> {
     };
 
     Some(display::unresolved_reason_str(reason))
+}
+
+#[cfg(test)]
+mod glob_match_tests {
+    use super::*;
+    use vault_core::{Link, LinkKind, LinkStatus, Severity, UnresolvedReason};
+    use vault_standards::{Finding, FindingBody};
+
+    fn link_finding(code: &str) -> Finding {
+        Finding {
+            code: code.to_string(),
+            severity: Severity::Warning,
+            path: "doc.md".into(),
+            message: String::new(),
+            body: FindingBody::LinkIssue {
+                link: Link {
+                    source_path: "doc.md".into(),
+                    raw: "[[x]]".into(),
+                    kind: LinkKind::Wikilink,
+                    target: "x".into(),
+                    label: None,
+                    anchor: None,
+                    block_ref: None,
+                    source_span: None,
+                    source_context: None,
+                    resolved_path: None,
+                    unresolved_reason: Some(UnresolvedReason::TargetMissing),
+                    candidates: vec![],
+                    status: LinkStatus::Unresolved,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn glob_star_matches_link_family() {
+        let codes = vec!["link-*".to_string()];
+        let opts = ValidateFilterOptions {
+            codes: &codes,
+            severities: &[],
+            fields: &[],
+            rules: &[],
+            paths: &[],
+            targets: &[],
+            reasons: &[],
+        };
+        let findings = vec![
+            link_finding("link-target-missing"),
+            link_finding("link-anchor-missing"),
+            link_finding("link-block-missing"),
+            link_finding("link-ambiguous"),
+            link_finding("frontmatter-required-field-missing"),
+        ];
+        let out = filter_findings(findings, &opts).unwrap();
+        assert_eq!(out.len(), 4);
+        assert!(out.iter().all(|f| f.code.starts_with("link-")));
+    }
+
+    #[test]
+    fn exact_string_match_still_works() {
+        let codes = vec!["link-target-missing".to_string()];
+        let opts = ValidateFilterOptions {
+            codes: &codes,
+            severities: &[],
+            fields: &[],
+            rules: &[],
+            paths: &[],
+            targets: &[],
+            reasons: &[],
+        };
+        let findings = vec![
+            link_finding("link-target-missing"),
+            link_finding("link-anchor-missing"),
+        ];
+        let out = filter_findings(findings, &opts).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].code, "link-target-missing");
+    }
+
+    #[test]
+    fn invalid_glob_returns_arg_error() {
+        let codes = vec!["link-[invalid".to_string()];
+        let opts = ValidateFilterOptions {
+            codes: &codes,
+            severities: &[],
+            fields: &[],
+            rules: &[],
+            paths: &[],
+            targets: &[],
+            reasons: &[],
+        };
+        let result = filter_findings(vec![], &opts);
+        assert!(result.is_err());
+    }
 }
