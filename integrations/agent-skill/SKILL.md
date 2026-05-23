@@ -35,9 +35,10 @@ When in doubt, use `-C <path>`.
 
 None of these write to the vault:
 
-- `vault docs list / summary / inspect`
+- `vault find --all` (document inventory)
+- `vault count` / `vault count --by FIELD`
+- `vault show <doc>`
 - `vault files`
-- `vault links list / unresolved / backlinks`
 - `vault find`
 - `vault validate` (with or without `--summary` or filters)
 - `vault repair plan` (produces an artifact; does not modify the vault)
@@ -161,7 +162,7 @@ The cache is disposable — missing or corrupted caches rebuild silently. Don't 
 
 ## Common pitfalls
 
-- **Don't filter by un-indexed fields.** `vault docs list --filter` matches frontmatter scalar or list values only. For body text matching, use `vault find --text "..."`.
+- **Don't filter by un-indexed fields.** `vault find --eq FIELD:VALUE` matches frontmatter scalar or list values only. For body text matching, use `vault find --text "..."`.
 - **Honor schema versions.** Repair plans declare `schema_version`. Apply rejects mismatched versions; re-plan instead of editing the artifact.
 - **Don't auto-pick ambiguous link candidates.** `link-ambiguous` findings carry a `candidates` list, but the CLI does not resolve them. Surface the ambiguity to the human or apply a deterministic disambiguation rule documented in the vault's config.
 - **Use `--out` for plan artifacts.** `vault repair plan --out repair.json` writes the plan directly. Shell redirection (`> repair.json`) works but is more prone to partial-write footguns.

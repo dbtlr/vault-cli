@@ -301,16 +301,7 @@ mod tests {
 
     fn sample_args() -> FindArgs {
         FindArgs {
-            text: None,
-            eq: vec![],
-            r#in: vec![],
-            not_in: vec![],
-            has: vec![],
-            missing: vec![],
-            before: vec![],
-            after: vec![],
-            on: vec![],
-            path: vec![],
+            filters: crate::filter_args::FilterArgs::default(),
             sort: None,
             desc: false,
             limit: 10,
@@ -319,7 +310,6 @@ mod tests {
             format: None,
             col: vec![],
             no_pager: false,
-            not_eq: vec![],
             all: false,
         }
     }

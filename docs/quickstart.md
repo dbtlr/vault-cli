@@ -19,7 +19,7 @@ cd vault-cli
 List the fixture's documents:
 
 ```bash
-vault -C fixtures/basic docs list --format table
+vault -C fixtures/basic find --all --format records
 ```
 
 You should see a small inventory: `alpha.md`, `beta.md`, `broken-frontmatter.md`, `duplicate.md`, plus a few items under `folder/` and `other/`.
@@ -27,7 +27,7 @@ You should see a small inventory: `alpha.md`, `beta.md`, `broken-frontmatter.md`
 Walk unresolved links:
 
 ```bash
-vault -C fixtures/basic links unresolved --format jsonl | head
+vault -C fixtures/basic validate --code link-unresolved,link-ambiguous --format jsonl | head
 ```
 
 The fixture intentionally includes a `[[missing]]` wikilink, an ambiguous `[[duplicate]]` reference, and missing-anchor cases — these surface here as JSONL rows.
@@ -45,7 +45,7 @@ You'll see grouped finding counts: unresolved-link counts, ambiguous-link counts
 Pick a Markdown vault you own — an Obsidian vault, a notes directory, a docs site source — and run:
 
 ```bash
-vault -C /path/to/vault docs list --format paths | head
+vault -C /path/to/vault find --all --format paths | head
 vault -C /path/to/vault validate --summary --format table
 ```
 

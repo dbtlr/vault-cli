@@ -46,18 +46,18 @@ For a typical drift-healing task:
 
 For a read-only inspection task (no mutation):
 
-1. `vault docs list --format json` or `vault docs summary --count-by <field> --format json`.
+1. `vault find --all --format json` or `vault count --by <field> --format json`.
 2. `vault validate --summary --format json` to spot drift.
-3. `vault docs inspect <target> --format json` for one-document detail.
+3. `vault show <target> --format json` for one-document detail.
 
 ## Read-only commands
 
 These commands never write to the vault. An agent can run them with confidence:
 
-- `vault docs list / summary / inspect`
+- `vault find`
+- `vault count`
+- `vault show`
 - `vault files`
-- `vault links list / unresolved / backlinks`
-- `vault search`
 - `vault validate` (with or without `--summary`, with or without filters)
 - `vault repair plan` (produces an artifact; does not modify the vault)
 - `vault repair links` (planning report only)
@@ -137,7 +137,7 @@ Two rules an agent must follow:
 
 ## Common pitfalls
 
-- **Don't filter by un-indexed fields.** `vault docs list --filter` matches frontmatter scalar or list values only. There is no full-text filter; use `vault search --text` for that.
+- **Don't filter by un-indexed fields.** `vault find` predicates match frontmatter scalar or list values only for field-equality flags; `--text` is for full-text substring search.
 - **Honor schema versions.** Repair plans have `schema_version: 4` as of v0.28. Older plans are rejected by apply.
 - **Don't auto-pick ambiguous link candidates.** `link-ambiguous` findings carry a `candidates` list, but the CLI does not automatically resolve them. An agent should surface the ambiguity to the human or apply a deterministic disambiguation rule documented in the vault's config.
 - **Don't redirect to a file when `--out` exists.** `vault repair plan --out repair.json` is the file-first form; shell redirection works too but `--out` makes the intent explicit and avoids partial-write footguns.

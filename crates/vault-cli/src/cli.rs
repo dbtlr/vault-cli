@@ -68,8 +68,6 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    #[command(disable_help_flag = true, about = "Parsed Markdown documents")]
-    Docs(DocsCommand),
     #[command(
         disable_help_flag = true,
         about = "Emit inventoried vault files",
@@ -81,10 +79,19 @@ pub enum Command {
         about = "Find documents in the vault — full-text + metadata filters with sort/limit/paging"
     )]
     Find(FindArgs),
+    #[command(
+        disable_help_flag = true,
+        about = "Count documents in the vault — grouped or total — with the find filter surface"
+    )]
+    Count(CountArgs),
+    #[command(
+        disable_help_flag = true,
+        about = "Show one or more documents — frontmatter, headings, outgoing/incoming/unresolved links",
+        long_about = "Show one or more documents in detail.\n\nEach target may be a vault-relative path, a unique case-insensitive document stem, or a wikilink-shaped string (with or without brackets, with or without anchor / block-ref / pipe-alias suffix). Ambiguous targets emit one record per resolved candidate. --body adds full body content; --col narrows the default field set."
+    )]
+    Show(ShowArgs),
     #[command(disable_help_flag = true, about = "Scaffold .vault/config.yaml")]
     Init(InitArgs),
-    #[command(disable_help_flag = true, about = "Link facts across the vault")]
-    Links(LinksCommand),
     #[command(
         disable_help_flag = true,
         about = "Plan and apply deterministic vault repairs"
@@ -174,47 +181,6 @@ pub struct CacheStatusArgs {
 pub enum CacheOutputFormat {
     Text,
     Json,
-}
-
-#[derive(Debug, Parser)]
-#[command(disable_help_flag = true)]
-pub struct DocsCommand {
-    #[command(subcommand)]
-    pub command: DocsSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum DocsSubcommand {
-    #[command(disable_help_flag = true, about = "Emit grouped document counts")]
-    Summary(DocsSummaryArgs),
-    #[command(
-        disable_help_flag = true,
-        about = "Emit one document plus incoming, outgoing, and unresolved outgoing links"
-    )]
-    Inspect(InspectArgs),
-}
-
-#[derive(Debug, Parser)]
-#[command(disable_help_flag = true)]
-pub struct LinksCommand {
-    #[command(subcommand)]
-    pub command: LinksSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum LinksSubcommand {
-    #[command(
-        disable_help_flag = true,
-        about = "Emit unresolved and ambiguous link facts",
-        long_about = "Emit unresolved and ambiguous link facts.\n\nRows include target-missing, anchor-missing, block-ref-missing, and ambiguous reasons. Ambiguous rows include candidate document paths.\n\n--format paths emits unique source paths."
-    )]
-    Unresolved(GraphArgs),
-    #[command(
-        disable_help_flag = true,
-        about = "Emit incoming links for an exact path or unique stem",
-        long_about = "Emit incoming links for an exact vault-relative file path or unique document stem.\n\nExact paths may target Markdown documents or non-Markdown files. Stem matching only applies to Markdown documents and is case-insensitive.\n\n--format paths emits unique source paths."
-    )]
-    Backlinks(TargetGraphArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -370,49 +336,18 @@ pub struct GraphArgs {
     pub format: Option<OutputFormat>,
 }
 
-#[derive(Debug, Parser)]
-pub struct TargetGraphArgs {
-    #[arg(
-        help = "Exact vault-relative path or unique document stem. Stem matching is case-insensitive"
-    )]
-    pub target: String,
-    #[arg(long, value_enum, help = "Stdout format")]
-    pub format: Option<OutputFormat>,
-}
-
-#[derive(Debug, Parser)]
-pub struct InspectArgs {
-    #[arg(
-        help = "Exact vault-relative path or unique document stem. Stem matching is case-insensitive"
-    )]
-    pub target: String,
-    #[arg(long, value_enum, default_value_t = OutputFormat::Json, help = "Stdout format")]
-    pub format: OutputFormat,
-}
-
-#[derive(Debug, Parser)]
-pub struct DocsSummaryArgs {
-    #[arg(
-        long = "count-by",
-        help = "Frontmatter field to group document counts by"
-    )]
-    pub count_by: String,
-    #[command(flatten)]
-    pub filters: FrontmatterFilterArgs,
-    #[arg(long, value_enum, help = "Stdout format")]
-    pub format: Option<OutputFormat>,
-}
-
-#[derive(Args, Debug)]
-pub struct FindArgs {
-    // ── Predicate operators ─────────────────────────────────────────────
+/// Shared filter-predicate flags used by `vault find` (and, soon, `vault count`).
+///
+/// Kept in `cli.rs` so the build script (`build.rs`) can include this file
+/// without intra-crate deps — `FilterArgs` only derives `clap::Args`.
+/// The translation logic (`build_document_query`) lives in `filter_args.rs`.
+#[derive(Args, Debug, Default)]
+pub struct FilterArgs {
     /// Full-text body substring. Case-insensitive. Empty string is a no-op.
     #[arg(long, value_name = "NEEDLE", help_heading = "Filter options")]
     pub text: Option<String>,
 
-    /// Frontmatter equality predicate `field:value`. JSON-typed (e.g.
-    /// `--eq published:true` for bool, `--eq priority:5` for number).
-    /// Repeat for multiple predicates; ALL-of across repeats.
+    /// Frontmatter equality predicate `field:value`. JSON-typed.
     #[arg(
         long = "eq",
         value_name = "FIELD:VALUE",
@@ -420,8 +355,7 @@ pub struct FindArgs {
     )]
     pub eq: Vec<String>,
 
-    /// Frontmatter `field` is NOT equal to `value`. Negation of `--eq`.
-    /// For array-shaped fields, matches when no element equals the value.
+    /// Frontmatter `field` is NOT equal to `value`.
     #[arg(
         long = "not-eq",
         value_name = "FIELD:VALUE",
@@ -430,8 +364,6 @@ pub struct FindArgs {
     pub not_eq: Vec<String>,
 
     /// Frontmatter `field` is one of the comma-separated values (ANY-of).
-    /// E.g. `--in status:backlog,active`. Repeat for multiple fields;
-    /// ALL-of across repeats.
     #[arg(
         long = "in",
         value_name = "FIELD:V1,V2,...",
@@ -447,11 +379,11 @@ pub struct FindArgs {
     )]
     pub not_in: Vec<String>,
 
-    /// Frontmatter `field` is present (non-null). Repeat for multiple fields.
+    /// Frontmatter `field` is present (non-null).
     #[arg(long = "has", value_name = "FIELD", help_heading = "Filter options")]
     pub has: Vec<String>,
 
-    /// Frontmatter `field` is absent or null. Repeat for multiple fields.
+    /// Frontmatter `field` is absent or null.
     #[arg(
         long = "missing",
         value_name = "FIELD",
@@ -460,7 +392,6 @@ pub struct FindArgs {
     pub missing: Vec<String>,
 
     /// Frontmatter `field` (a date) is before `DATE`. ISO 8601 expected.
-    /// E.g. `--before created:2026-05-01`.
     #[arg(
         long = "before",
         value_name = "FIELD:DATE",
@@ -484,9 +415,16 @@ pub struct FindArgs {
     )]
     pub on: Vec<String>,
 
-    /// Path glob pattern. Repeat for multiple patterns (ANY-of).
+    /// Path glob pattern.
     #[arg(long = "path", value_name = "GLOB", help_heading = "Filter options")]
     pub path: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct FindArgs {
+    // ── Filter predicates ──────────────────────────────────────────────
+    #[command(flatten)]
+    pub filters: FilterArgs,
 
     /// Return every document — escape hatch when no predicate is specified.
     /// Without --all and without any predicate, `vault find` prints its help
@@ -552,6 +490,62 @@ pub enum FindFormat {
     Records,
     Json,
     Jsonl,
+}
+
+#[derive(Args, Debug)]
+pub struct CountArgs {
+    /// Frontmatter field to group document counts by. Without --by,
+    /// emits only the total.
+    #[arg(long = "by", value_name = "FIELD", help_heading = "Count options")]
+    pub by: Option<String>,
+
+    #[command(flatten)]
+    pub filters: FilterArgs,
+
+    /// Output format. Default text (records-block).
+    #[arg(long, value_enum, default_value_t = CountFormat::Text, help_heading = "Output")]
+    pub format: CountFormat,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CountFormat {
+    Text,
+    Json,
+}
+
+#[derive(Args, Debug)]
+pub struct ShowArgs {
+    /// One or more doc targets. Each accepts path, stem, or wikilink-shaped
+    /// input (with or without [[]]). Anchor / block-ref / pipe-alias
+    /// suffixes are stripped before resolution.
+    #[arg(required = true, num_args = 1.., value_name = "DOC")]
+    pub targets: Vec<String>,
+
+    /// Include full body content in each record.
+    #[arg(long, help_heading = "Output")]
+    pub body: bool,
+
+    /// Comma-separated list of fields to include. Subtractive narrowing.
+    /// Without --col, every default field is emitted. Accepts: path,
+    /// frontmatter, headings, outgoing_links, unresolved_links,
+    /// incoming_links, body (the last only meaningful with --body).
+    #[arg(
+        long,
+        value_name = "FIELD1,FIELD2,...",
+        value_delimiter = ',',
+        help_heading = "Output"
+    )]
+    pub col: Vec<String>,
+
+    /// Output format. Default text (records-block per doc).
+    #[arg(long, value_enum, default_value_t = ShowFormat::Text, help_heading = "Output")]
+    pub format: ShowFormat,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShowFormat {
+    Text,
+    Json,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -713,4 +707,99 @@ pub struct ConfigEditArgs {
 pub struct InitArgs {
     #[arg(long, help = "Overwrite an existing .vault/config.yaml")]
     pub force: bool,
+}
+
+#[cfg(test)]
+mod count_cli_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn count_parses_with_by_flag() {
+        let cli = Cli::try_parse_from(["vault", "count", "--by", "status"]).unwrap();
+        match cli.command {
+            Command::Count(args) => {
+                assert_eq!(args.by.as_deref(), Some("status"));
+            }
+            _ => panic!("expected Count variant"),
+        }
+    }
+
+    #[test]
+    fn count_parses_without_by() {
+        let cli = Cli::try_parse_from(["vault", "count"]).unwrap();
+        assert!(matches!(cli.command, Command::Count(_)));
+    }
+
+    #[test]
+    fn count_inherits_filter_flags() {
+        let cli =
+            Cli::try_parse_from(["vault", "count", "--eq", "type:note", "--by", "status"]).unwrap();
+        match cli.command {
+            Command::Count(args) => {
+                assert_eq!(args.filters.eq, vec!["type:note".to_string()]);
+                assert_eq!(args.by.as_deref(), Some("status"));
+            }
+            _ => panic!("expected Count variant"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod show_cli_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn show_requires_at_least_one_target() {
+        assert!(Cli::try_parse_from(["vault", "show"]).is_err());
+    }
+
+    #[test]
+    fn show_parses_single_target() {
+        let cli = Cli::try_parse_from(["vault", "show", "Notes.md"]).unwrap();
+        match cli.command {
+            Command::Show(args) => assert_eq!(args.targets, vec!["Notes.md".to_string()]),
+            _ => panic!("expected Show variant"),
+        }
+    }
+
+    #[test]
+    fn show_parses_multiple_targets() {
+        let cli = Cli::try_parse_from(["vault", "show", "a.md", "b.md", "c.md"]).unwrap();
+        match cli.command {
+            Command::Show(args) => assert_eq!(args.targets.len(), 3),
+            _ => panic!("expected Show variant"),
+        }
+    }
+
+    #[test]
+    fn show_parses_body_flag() {
+        let cli = Cli::try_parse_from(["vault", "show", "a.md", "--body"]).unwrap();
+        match cli.command {
+            Command::Show(args) => assert!(args.body),
+            _ => panic!("expected Show variant"),
+        }
+    }
+
+    #[test]
+    fn show_parses_col_narrowing() {
+        let cli =
+            Cli::try_parse_from(["vault", "show", "a.md", "--col", "incoming_links"]).unwrap();
+        match cli.command {
+            Command::Show(args) => {
+                assert_eq!(args.col, vec!["incoming_links".to_string()]);
+            }
+            _ => panic!("expected Show variant"),
+        }
+    }
+
+    #[test]
+    fn show_format_defaults_text() {
+        let cli = Cli::try_parse_from(["vault", "show", "a.md"]).unwrap();
+        match cli.command {
+            Command::Show(args) => assert_eq!(args.format, ShowFormat::Text),
+            _ => panic!("expected Show variant"),
+        }
+    }
 }

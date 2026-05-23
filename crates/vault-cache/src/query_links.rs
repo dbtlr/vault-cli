@@ -1,57 +1,11 @@
-//! Link queries — `Cache::links_unresolved` and `Cache::backlinks_to`.
-//! Share row-decoding logic but with different WHERE clauses.
+//! Link row decoder — shared helper for `query_show` and future link queries.
 
-use camino::{Utf8Path, Utf8PathBuf};
-use rusqlite::params_from_iter;
-use rusqlite::types::Value as SqlValue;
+use camino::Utf8PathBuf;
 use vault_core::{
     Link, LinkKind, LinkSourceArea, LinkSourceContext, LinkStatus, SourceSpan, UnresolvedReason,
 };
 
-use crate::error::CacheError;
-
-impl crate::Cache {
-    /// Every link with status != Resolved. Used by `vault links unresolved`.
-    pub fn links_unresolved(&self) -> Result<Vec<Link>, CacheError> {
-        query_links(
-            &self.conn,
-            "WHERE status <> ?",
-            vec![SqlValue::Text("resolved".into())],
-        )
-    }
-
-    /// Every link with resolved_path == path. Used by `vault links backlinks`.
-    pub fn backlinks_to(&self, path: &Utf8Path) -> Result<Vec<Link>, CacheError> {
-        query_links(
-            &self.conn,
-            "WHERE resolved_path = ?",
-            vec![SqlValue::Text(path.as_str().to_string())],
-        )
-    }
-}
-
-fn query_links(
-    conn: &rusqlite::Connection,
-    where_clause: &str,
-    binds: Vec<SqlValue>,
-) -> Result<Vec<Link>, CacheError> {
-    let sql = format!(
-        "SELECT source_path, raw, kind, target_raw, resolved_path, anchor, block_ref, label, \
-                source_span_start, source_span_end, source_span_line, source_span_column, \
-                source_context, source_context_property, status, unresolved_reason, candidates_json \
-         FROM links {} ORDER BY source_path, rowid",
-        where_clause
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_from_iter(binds.iter()), decode_link_row)?;
-    let mut links = Vec::new();
-    for row in rows {
-        links.push(row?);
-    }
-    Ok(links)
-}
-
-fn decode_link_row(row: &rusqlite::Row) -> rusqlite::Result<Link> {
+pub(crate) fn decode_link_row(row: &rusqlite::Row) -> rusqlite::Result<Link> {
     let source_path: String = row.get(0)?;
     let raw: String = row.get(1)?;
     let kind_str: String = row.get(2)?;

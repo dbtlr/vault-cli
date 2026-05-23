@@ -422,49 +422,6 @@ fn files_returns_full_inventory_including_markdown() {
     assert!(paths.contains(&"doc.md"));
 }
 
-fn synth_link_vault() -> (TempDir, Utf8PathBuf) {
-    let tmp = TempDir::new().unwrap();
-    let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
-        .unwrap()
-        .join("vault");
-    std::fs::create_dir(root.as_std_path()).unwrap();
-    std::fs::write(
-        root.join("a.md").as_std_path(),
-        "---\n---\n[to b](b.md) [to nowhere](missing.md)\n",
-    )
-    .unwrap();
-    std::fs::write(root.join("b.md").as_std_path(), "---\n---\n[to a](a.md)\n").unwrap();
-    (tmp, root)
-}
-
-#[test]
-fn links_unresolved_filters_by_status() {
-    let (_tmp, root) = synth_link_vault();
-    let mut cache = Cache::open(&root).unwrap();
-    cache.rebuild(&root).unwrap();
-
-    let unresolved = cache.links_unresolved().unwrap();
-
-    assert_eq!(unresolved.len(), 1);
-    assert_eq!(unresolved[0].target, "missing.md");
-}
-
-#[test]
-fn backlinks_to_returns_incoming_resolved_links() {
-    let (_tmp, root) = synth_link_vault();
-    let mut cache = Cache::open(&root).unwrap();
-    cache.rebuild(&root).unwrap();
-
-    let incoming = cache.backlinks_to(camino::Utf8Path::new("a.md")).unwrap();
-
-    assert_eq!(incoming.len(), 1);
-    assert_eq!(incoming[0].source_path.as_str(), "b.md");
-    assert_eq!(
-        incoming[0].resolved_path.as_deref().map(|p| p.as_str()),
-        Some("a.md")
-    );
-}
-
 #[test]
 fn has_diagnostic_errors_false_for_clean_vault() {
     let (_tmp, root) = synth_vault();

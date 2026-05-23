@@ -110,9 +110,7 @@ fn vault_help_documents_global_cwd() {
     assert!(output.contains("-C, --cwd"));
     assert!(output.contains("--config"));
     assert!(output.contains("--verbose"));
-    assert!(output.contains("docs"));
     assert!(output.contains("files"));
-    assert!(output.contains("links"));
     assert!(output.contains("repair"));
     assert!(output.contains("cache"));
 }
@@ -127,23 +125,75 @@ fn graph_umbrella_is_removed() {
 fn links_list_is_removed() {
     let error = vault_error(&["links", "list"]);
     assert!(
-        error.contains("unrecognized subcommand 'list'"),
+        error.contains("unrecognized subcommand 'list'")
+            || error.contains("unrecognized subcommand 'links'")
+            || error.contains("unexpected argument 'list'"),
         "expected unrecognized-subcommand error for `vault links list`; got: {error}"
     );
 }
 
 #[test]
+fn docs_namespace_is_removed() {
+    let error = vault_error(&["docs", "--help"]);
+    assert!(
+        error.contains("unrecognized subcommand 'docs'"),
+        "expected unrecognized-subcommand error for `vault docs`; got: {error}"
+    );
+}
+
+#[test]
+fn docs_summary_is_removed() {
+    let error = vault_error(&["docs", "summary"]);
+    assert!(
+        error.contains("unrecognized subcommand 'docs'")
+            || error.contains("unrecognized subcommand 'summary'"),
+        "expected unrecognized-subcommand error for `vault docs summary`; got: {error}"
+    );
+}
+
+#[test]
+fn docs_inspect_is_removed() {
+    let error = vault_error(&["docs", "inspect", "any"]);
+    assert!(
+        error.contains("unrecognized subcommand 'docs'")
+            || error.contains("unrecognized subcommand 'inspect'"),
+        "expected unrecognized-subcommand error for `vault docs inspect`; got: {error}"
+    );
+}
+
+#[test]
+fn links_namespace_is_removed() {
+    let error = vault_error(&["links", "--help"]);
+    assert!(
+        error.contains("unrecognized subcommand 'links'"),
+        "expected unrecognized-subcommand error for `vault links`; got: {error}"
+    );
+}
+
+#[test]
+fn links_unresolved_is_removed() {
+    let error = vault_error(&["links", "unresolved"]);
+    assert!(
+        error.contains("unrecognized subcommand 'links'")
+            || error.contains("unrecognized subcommand 'unresolved'")
+            || error.contains("unexpected argument 'unresolved'"),
+        "expected unrecognized-subcommand error for `vault links unresolved`; got: {error}"
+    );
+}
+
+#[test]
+fn links_backlinks_is_removed() {
+    let error = vault_error(&["links", "backlinks", "any"]);
+    assert!(
+        error.contains("unrecognized subcommand 'links'")
+            || error.contains("unrecognized subcommand 'backlinks'")
+            || error.contains("unexpected argument 'backlinks'"),
+        "expected unrecognized-subcommand error for `vault links backlinks`; got: {error}"
+    );
+}
+
+#[test]
 fn grouped_help_lists_new_surfaces() {
-    let output = vault(&["docs", "--help"]);
-    assert!(output.contains("Parsed Markdown documents"));
-    assert!(output.contains("summary"));
-    assert!(output.contains("inspect"));
-
-    let output = vault(&["links", "--help"]);
-    assert!(output.contains("Link facts across the vault"));
-    assert!(output.contains("unresolved"));
-    assert!(output.contains("backlinks"));
-
     let output = vault(&["cache", "--help"]);
     assert!(output.contains("Manage the SQLite-backed vault graph cache"));
     assert!(output.contains("index"));
@@ -717,38 +767,6 @@ fn repair_config_rejects_ambiguous_actions() {
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
-}
-
-#[test]
-fn docs_summary_help_documents_count_by() {
-    let output = vault(&["docs", "summary", "--help"]);
-    assert!(output.contains("--count-by"));
-}
-
-#[test]
-fn docs_inspect_help_lists_format_options() {
-    // The custom help renderer surfaces enum possible values inline. clap's
-    // "[default: json]" annotation is not rendered; default-value extraction
-    // is a follow-up (TODO: add `default_value` to FlagEntry + render).
-    let output = vault(&["docs", "inspect", "--help"]);
-    assert!(output.contains("--format"));
-    assert!(output.contains("json"));
-}
-
-#[test]
-fn graph_unresolved_help_documents_reasons() {
-    let output = vault(&["links", "unresolved", "--help"]);
-    assert!(output.contains("target-missing"));
-    assert!(output.contains("anchor-missing"));
-    assert!(output.contains("block-ref-missing"));
-    assert!(output.contains("ambiguous"));
-}
-
-#[test]
-fn graph_backlinks_help_documents_file_targets() {
-    let output = vault(&["links", "backlinks", "--help"]);
-    assert!(output.contains("non-Markdown files"));
-    assert!(output.contains("Stem matching only applies to Markdown documents"));
 }
 
 #[test]
@@ -1702,27 +1720,6 @@ fn validate_reports_forbidden_frontmatter_and_path_violations() {
 }
 
 #[test]
-fn docs_summary_counts_frontmatter_values() {
-    let root = fixture_root();
-    let output = vault(&[
-        "docs",
-        "summary",
-        "-C",
-        root.to_str().unwrap(),
-        "--count-by",
-        "title",
-        "--format",
-        "json",
-    ]);
-
-    let summary = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    assert_eq!(summary["count_by"], "title");
-    assert_eq!(summary["total"], 10);
-    assert_eq!(summary["counts"]["Alpha"], 1);
-    assert_eq!(summary["counts"]["Frontmatter Source"], 1);
-}
-
-#[test]
 fn graph_files_jsonl_contract() {
     let root = fixture_root();
     let output = vault(&["files", "-C", root.to_str().unwrap(), "--format", "jsonl"]);
@@ -1739,239 +1736,6 @@ fn graph_files_jsonl_contract() {
     assert!(files.iter().any(|file| file["path"] == "alpha.md"
         && file["stem"] == "alpha"
         && file["extension"] == "md"));
-}
-
-#[test]
-fn graph_unresolved_json_contract() {
-    let root = fixture_root();
-    let output = vault(&[
-        "links",
-        "unresolved",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "json",
-    ]);
-
-    let links = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    assert_eq!(links.as_array().unwrap().len(), 6);
-    assert_eq!(links[0]["raw"], "[[missing]]");
-    assert_eq!(links[0]["source_span"]["line"], 10);
-    assert_eq!(links[0]["unresolved_reason"], "target-missing");
-    assert_eq!(links[0]["status"], "unresolved");
-    assert_eq!(links[1]["raw"], "[[#Missing Same Heading]]");
-    assert_eq!(links[1]["unresolved_reason"], "anchor-missing");
-    assert_eq!(links[2]["raw"], "[[#^missing-same-block]]");
-    assert_eq!(links[2]["unresolved_reason"], "block-ref-missing");
-    assert_eq!(links[3]["raw"], "[[beta#Missing Heading]]");
-    assert_eq!(links[3]["unresolved_reason"], "anchor-missing");
-    assert_eq!(links[4]["raw"], "[[beta#^missing-block]]");
-    assert_eq!(links[4]["unresolved_reason"], "block-ref-missing");
-    assert_eq!(links[5]["raw"], "[[duplicate]]");
-    assert_eq!(links[5]["source_span"]["line"], 26);
-    assert_eq!(links[5]["status"], "ambiguous");
-    assert_eq!(links[5]["unresolved_reason"], "ambiguous");
-}
-
-#[test]
-fn graph_backlinks_jsonl_contract() {
-    let root = fixture_root();
-    let output = vault(&[
-        "links",
-        "backlinks",
-        "beta",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    let links = output
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
-        .collect::<Vec<_>>();
-    assert_eq!(links.len(), 5);
-    assert_eq!(links[0]["raw"], "[[beta|Beta Note]]");
-    assert_eq!(links[0]["label"], "Beta Note");
-    assert_eq!(links[1]["raw"], "[[beta#^block-a]]");
-    assert_eq!(links[1]["block_ref"], "block-a");
-    assert_eq!(links[2]["unresolved_reason"], "anchor-missing");
-    assert_eq!(links[3]["unresolved_reason"], "block-ref-missing");
-    assert_eq!(links[4]["source_context"]["area"], "frontmatter");
-    assert_eq!(links[4]["source_context"]["property"], "related_list");
-}
-
-#[test]
-fn graph_backlinks_accepts_exact_path() {
-    let root = fixture_root();
-    let output = vault(&[
-        "links",
-        "backlinks",
-        "folder/delta.md",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    let link = serde_json::from_str::<Value>(output.trim()).expect("output should be JSON");
-    assert_eq!(link["kind"], "markdown");
-    assert_eq!(link["anchor"], "Delta-Heading");
-    assert_eq!(link["source_span"]["line"], 20);
-}
-
-#[test]
-fn graph_backlinks_accepts_file_path() {
-    let root = fixture_root();
-    let output = vault(&[
-        "links",
-        "backlinks",
-        "Assets/pic.png",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    let link = serde_json::from_str::<Value>(output.trim()).expect("output should be JSON");
-    assert_eq!(link["kind"], "embed");
-    assert_eq!(link["raw"], "Assets/pic.png");
-    assert_eq!(link["resolved_path"], "Assets/pic.png");
-}
-
-#[test]
-fn graph_backlinks_accepts_case_insensitive_stem() {
-    let root = fixture_root();
-    let output = vault(&[
-        "links",
-        "backlinks",
-        "BETA",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    let links = output
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).expect("line should be JSON"))
-        .collect::<Vec<_>>();
-    assert_eq!(links.len(), 5);
-    assert_eq!(links[0]["resolved_path"], "beta.md");
-}
-
-#[test]
-fn graph_inspect_accepts_case_insensitive_stem() {
-    let root = fixture_root();
-    let output = vault(&[
-        "docs",
-        "inspect",
-        "ALPHA",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    assert_eq!(value["document"]["path"], "alpha.md");
-}
-
-#[test]
-fn graph_backlinks_rejects_ambiguous_stem() {
-    let root = fixture_root();
-    let stderr = vault_error(&[
-        "links",
-        "backlinks",
-        "duplicate",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    assert!(stderr.contains("ambiguous document stem: duplicate"));
-    assert!(stderr.contains("duplicate.md"));
-    assert!(stderr.contains("other/duplicate.md"));
-}
-
-#[test]
-fn graph_inspect_json_contract() {
-    let root = fixture_root();
-    let output = vault(&[
-        "docs",
-        "inspect",
-        "alpha.md",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "json",
-    ]);
-
-    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    assert_eq!(value["document"]["path"], "alpha.md");
-    assert_eq!(value["document"]["frontmatter"]["title"], "Alpha");
-    assert_eq!(value["incoming_links"].as_array().unwrap().len(), 6);
-    assert!(value["incoming_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| link["raw"] == "[[#Alpha]]" && link["status"] == "resolved"));
-    assert!(value["incoming_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| link["source_path"] == "beta.md"));
-    assert_eq!(value["outgoing_links"].as_array().unwrap().len(), 18);
-    assert_eq!(
-        value["unresolved_outgoing_links"].as_array().unwrap().len(),
-        6
-    );
-    assert_eq!(value["unresolved_outgoing_links"][0]["target"], "missing");
-    assert_eq!(
-        value["unresolved_outgoing_links"][1]["unresolved_reason"],
-        "anchor-missing"
-    );
-    assert_eq!(
-        value["unresolved_outgoing_links"][2]["unresolved_reason"],
-        "block-ref-missing"
-    );
-    assert_eq!(
-        value["unresolved_outgoing_links"][3]["unresolved_reason"],
-        "anchor-missing"
-    );
-    assert_eq!(
-        value["unresolved_outgoing_links"][4]["unresolved_reason"],
-        "block-ref-missing"
-    );
-    assert_eq!(value["unresolved_outgoing_links"][5]["target"], "duplicate");
-    assert_eq!(
-        value["unresolved_outgoing_links"][5]["unresolved_reason"],
-        "ambiguous"
-    );
-}
-
-#[test]
-fn graph_inspect_accepts_unique_stem() {
-    let root = fixture_root();
-    let output = vault(&[
-        "docs",
-        "inspect",
-        "beta",
-        "-C",
-        root.to_str().unwrap(),
-        "--format",
-        "jsonl",
-    ]);
-
-    let value = serde_json::from_str::<Value>(&output).expect("output should be JSON");
-    assert_eq!(value["document"]["path"], "beta.md");
-    assert_eq!(value["incoming_links"].as_array().unwrap().len(), 5);
-    assert_eq!(value["outgoing_links"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        value["outgoing_links"][0]["resolved_path"],
-        serde_json::json!("alpha.md")
-    );
 }
 
 #[test]

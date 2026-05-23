@@ -12,14 +12,18 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 
 ### Breaking changes
 
-- **`vault links list` removed.** No documented user story. `vault links unresolved` and `vault links backlinks` are unchanged.
+- **`vault docs` namespace removed** (`docs summary`, `docs inspect`). Replaced by `vault count` and `vault show`.
+- **`vault links` namespace removed** (`links backlinks`, `links unresolved`; `links list` was removed in v0.29). Use `vault show <doc> --col incoming_links` and `vault validate --code link-unresolved,link-ambiguous`.
 
 ### Changed
 
+- Unresolved-link inventory now respects `.vault/config.yaml`'s `validate.ignore` patterns by default. The old `vault links unresolved` walked every indexed document; the migration path `vault validate --code link-unresolved,link-ambiguous` respects the same ignore config that `vault validate` already honored. Vaults with ignored paths will see fewer finding rows than before.
 - **BREAKING:** `vault --help` and `vault -h` (and the same flags on every subcommand) now render through a custom layout instead of clap's default. Two forms with different jobs: `-h` is a one-screen orientation summary; `--help` is the deep reference with hanging-indent flag prose and pagination via `$PAGER`. Pager mirrors `vault find` (`less -FRX` default, honored `$PAGER`, TTY+height gate). Set `PAGER=cat` or pipe through `cat` to bypass. `GLOBAL OPTIONS` is shown in full on every subcommand. Phase 1 ships the structural skeleton; canned examples, live examples, and conceptual sections layer on in later phases.
 
 ### Added
 
+- **`vault count`** — native grouped counting. `--by <field>` groups by a frontmatter field; without it, emits total only. Shares the full filter flag surface with `vault find` (`--text`, `--eq`, `--not-eq`, `--in`, `--not-in`, `--has`, `--missing`, `--before`, `--after`, `--on`, `--path`). Replaces `vault docs summary --count-by`.
+- **`vault show <doc>...`** — unified single-doc detail. Accepts vault-relative paths, case-insensitive stems, and wikilink-shaped inputs (brackets stripped before resolution). Default fields: path, frontmatter, headings, outgoing_links, unresolved_links, incoming_links. `--body` adds content; `--col` narrows; multi-target supported. Replaces `vault docs inspect` and `vault links backlinks`.
 - vault-cli: `--help` now includes canned EXAMPLES on most commands. Examples are hand-authored, vault-independent, and concentrated on multi-shape commands (`find`, `validate`, `repair plan`, top-level `vault`) where the flag block alone leaves invocation patterns unclear. `-h` short form unchanged.
 - `vault find --help` now emits a `LIVE EXAMPLES` block with a real, runnable
   query generated from your vault's cached index. The block appears only when

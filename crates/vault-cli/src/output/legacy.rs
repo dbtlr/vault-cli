@@ -10,11 +10,10 @@ use camino::Utf8PathBuf;
 use serde::Serialize;
 use serde_json::Value;
 use vault_core::display;
-use vault_core::{Link, VaultFile};
+use vault_core::VaultFile;
 use vault_standards::{Finding, FindingBody, RepairPlan, Summary};
 
 use crate::cli::OutputFormat;
-use crate::filter::DocsSummaryReport;
 use crate::link_repair::LinkRepairReport;
 use crate::repair_apply::RepairApplyReport;
 
@@ -64,24 +63,6 @@ pub fn write_item_output<T: Serialize>(item: &T, format: OutputFormat) -> Result
     Ok(())
 }
 
-pub fn write_document_summary(summary: &DocsSummaryReport, format: OutputFormat) -> Result<()> {
-    match format {
-        OutputFormat::Json | OutputFormat::Jsonl => write_item_output(summary, format),
-        OutputFormat::Paths => write_item_output(summary, OutputFormat::Json),
-        OutputFormat::Table => {
-            let rows = summary
-                .counts
-                .iter()
-                .map(|(value, count)| vec![value.clone(), count.to_string()])
-                .collect::<Vec<_>>();
-            let title = vec![vec!["total".to_string(), summary.total.to_string()]];
-            write_table(&["metric", "count"], &title)?;
-            write_blank_line()?;
-            write_table(&[summary.count_by.as_str(), "count"], &rows)
-        }
-    }
-}
-
 pub fn write_files(files: &[&VaultFile], format: OutputFormat) -> Result<()> {
     match format {
         OutputFormat::Json | OutputFormat::Jsonl => write_output(files, format),
@@ -98,37 +79,6 @@ pub fn write_files(files: &[&VaultFile], format: OutputFormat) -> Result<()> {
                 })
                 .collect::<Vec<_>>();
             write_table(&["path", "ext", "hash"], &rows)
-        }
-    }
-}
-
-pub fn write_links(links: &[&Link], format: OutputFormat) -> Result<()> {
-    match format {
-        OutputFormat::Json | OutputFormat::Jsonl => write_output(links, format),
-        OutputFormat::Paths => {
-            let paths = links
-                .iter()
-                .map(|link| link.source_path.clone())
-                .collect::<BTreeSet<_>>();
-            write_paths(paths.iter())
-        }
-        OutputFormat::Table => {
-            let rows = links
-                .iter()
-                .map(|link| {
-                    vec![
-                        link.source_path.to_string(),
-                        display::link_kind_str(&link.kind).to_string(),
-                        link.target.clone(),
-                        display::link_status_str(&link.status).to_string(),
-                        link.resolved_path
-                            .as_ref()
-                            .map(ToString::to_string)
-                            .unwrap_or_default(),
-                    ]
-                })
-                .collect::<Vec<_>>();
-            write_table(&["source", "kind", "target", "status", "resolved"], &rows)
         }
     }
 }

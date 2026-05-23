@@ -31,10 +31,6 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "vault repair plan --out plan.json",
                 "generate a frontmatter repair plan",
             ),
-            (
-                "vault links unresolved --format paths",
-                "list docs with broken outgoing links",
-            ),
         ],
         "vault find" => &[
             (
@@ -54,6 +50,32 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "two types, newest first",
             ),
         ],
+        "vault count" => &[
+            ("vault count", "total document count in the vault"),
+            (
+                "vault count --eq type:note --by status",
+                "notes only, grouped by status",
+            ),
+            (
+                "vault count --path 'Workspaces/**/tasks/*.md' --by status",
+                "one project's tasks, grouped by status",
+            ),
+        ],
+        "vault show" => &[
+            ("vault show foo", "show one doc by case-insensitive stem"),
+            (
+                "vault show '[[foo]]'",
+                "wikilink input; anchor/alias suffixes stripped",
+            ),
+            (
+                "vault show foo --col incoming_links",
+                "backlinks only (the absorbed `links backlinks` job)",
+            ),
+            (
+                "vault show a.md b.md c.md",
+                "multiple targets, one record per doc",
+            ),
+        ],
         "vault validate" => &[
             (
                 "vault validate",
@@ -66,6 +88,14 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
             (
                 "vault validate --severity error",
                 "errors only; skip warnings",
+            ),
+            (
+                "vault validate --code link-unresolved,link-ambiguous",
+                "broken + ambiguous links (replaces `vault links unresolved`)",
+            ),
+            (
+                "vault validate --code link-unresolved,link-ambiguous --format paths",
+                "unique source paths only; pipe-friendly",
             ),
         ],
         "vault repair plan" => &[
@@ -96,21 +126,6 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "apply then re-validate",
             ),
         ],
-        "vault links unresolved" => &[
-            (
-                "vault links unresolved",
-                "every doc with unresolved or ambiguous links",
-            ),
-            (
-                "vault links unresolved --format paths",
-                "just paths; pipe-friendly",
-            ),
-            (
-                "vault links unresolved --format json",
-                "machine-readable findings",
-            ),
-        ],
-
         // ── Default tier: 1-2 examples each ─────────────────────────────────
         "vault init" => &[(
             "vault init",
@@ -123,20 +138,6 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "machine-readable config for pipelines",
             ),
         ],
-        "vault links backlinks" => &[
-            (
-                "vault links backlinks path/to/doc.md",
-                "incoming links for an exact path",
-            ),
-            (
-                "vault links backlinks my-note",
-                "stem match; case-insensitive when unique",
-            ),
-        ],
-        "vault docs inspect" => &[(
-            "vault docs inspect path/to/doc.md",
-            "one doc plus incoming, outgoing, unresolved",
-        )],
         "vault cache rebuild" => &[(
             "vault cache rebuild",
             "delete and rebuild the cache from scratch",
@@ -181,7 +182,7 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
         )],
 
         // Thin commands without arms (intentionally empty — flag block self-explains):
-        // vault docs summary, vault cache clear, vault config validate,
+        // vault cache clear, vault config validate,
         // vault config migrate, vault config edit
         _ => &[],
     };

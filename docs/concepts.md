@@ -21,17 +21,19 @@ Graph construction is read-only and stateless. The same vault produces the same 
 
 ## Document inventory
 
-`vault docs list` is the inventory query. It supports three filter dimensions:
+`vault find` is the inventory and search query. Predicates:
 
 - `--path "<glob>"` — vault-relative path glob (path-segment semantics; see [Glob matching](#glob-matching) below).
-- `--filter field:value` — frontmatter scalar or list equality. Comma-separated values within one filter are ORed (`status:draft,review`).
+- `--eq field:value` / `--not-eq field:value` — frontmatter equality / inequality.
+- `--in field:v1,v2` / `--not-in field:v1,v2` — set membership.
 - `--has <field>` / `--missing <field>` — frontmatter field presence.
+- `--text <substring>` — case-insensitive body text substring.
 
-Repeated filters of different kinds are ANDed; comma-separated values within one filter are ORed.
+All predicates are ANDed. Pass `--all` with no other predicates to return every document.
 
-`vault docs summary --count-by <field>` produces grouped counts for a single frontmatter field. Use it to size a queue before listing.
+`vault count --by <field>` produces grouped counts for a single frontmatter field. Without `--by`, emits the total. Use it to size a queue before listing.
 
-`vault docs inspect <path-or-stem>` returns one document's parsed shape including frontmatter, headings, and outbound links.
+`vault show <path-or-stem>` returns one document's detail: frontmatter, headings, outgoing links, unresolved links, and incoming links.
 
 ## Frontmatter
 
@@ -61,7 +63,7 @@ Wikilinks inside inline code (`` `[[example]]` ``) and fenced code blocks are no
 - **Exact paths** are case-sensitive.
 - **Unique stem lookup** is case-insensitive and applies only to Markdown documents.
 - **Ambiguous stems** (two documents with the same case-insensitive stem) report as `link-ambiguous` findings with all candidate paths.
-- **Backlink queries by exact attachment path** are supported via `vault links backlinks <path>`.
+- **Backlink queries by exact attachment path** are supported via `vault show <path> --col incoming_links`.
 
 ## Validation vs repair
 

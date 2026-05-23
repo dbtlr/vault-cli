@@ -14,17 +14,17 @@ use crate::cli::FindArgs;
 /// result set. Sort, limit, format, and --col are output modifiers, not
 /// predicates; running with only those would dump the whole vault.
 fn has_predicate(args: &FindArgs) -> bool {
-    args.text.as_deref().is_some_and(|t| !t.is_empty())
-        || !args.eq.is_empty()
-        || !args.not_eq.is_empty()
-        || !args.r#in.is_empty()
-        || !args.not_in.is_empty()
-        || !args.has.is_empty()
-        || !args.missing.is_empty()
-        || !args.before.is_empty()
-        || !args.after.is_empty()
-        || !args.on.is_empty()
-        || !args.path.is_empty()
+    args.filters.text.as_deref().is_some_and(|t| !t.is_empty())
+        || !args.filters.eq.is_empty()
+        || !args.filters.not_eq.is_empty()
+        || !args.filters.r#in.is_empty()
+        || !args.filters.not_in.is_empty()
+        || !args.filters.has.is_empty()
+        || !args.filters.missing.is_empty()
+        || !args.filters.before.is_empty()
+        || !args.filters.after.is_empty()
+        || !args.filters.on.is_empty()
+        || !args.filters.path.is_empty()
 }
 
 /// Print `vault find --help` to stderr. Used as the "missing predicate" gate.

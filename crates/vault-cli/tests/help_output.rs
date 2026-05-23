@@ -136,18 +136,6 @@ fn repair_links_short_help() {
 }
 
 #[test]
-fn links_unresolved_short_help() {
-    let out = vault_help(&["links", "unresolved", "-h"]);
-    assert_short_help_shape(&out, "vault links unresolved");
-}
-
-#[test]
-fn links_backlinks_short_help() {
-    let out = vault_help(&["links", "backlinks", "-h"]);
-    assert_short_help_shape(&out, "vault links backlinks");
-}
-
-#[test]
 fn config_show_short_help() {
     let out = vault_help(&["config", "show", "-h"]);
     assert_short_help_shape(&out, "vault config show");
@@ -193,18 +181,6 @@ fn cache_clear_short_help() {
 fn cache_status_short_help() {
     let out = vault_help(&["cache", "status", "-h"]);
     assert_short_help_shape(&out, "vault cache status");
-}
-
-#[test]
-fn docs_summary_short_help() {
-    let out = vault_help(&["docs", "summary", "-h"]);
-    assert_short_help_shape(&out, "vault docs summary");
-}
-
-#[test]
-fn docs_inspect_short_help() {
-    let out = vault_help(&["docs", "inspect", "-h"]);
-    assert_short_help_shape(&out, "vault docs inspect");
 }
 
 #[test]
@@ -290,12 +266,6 @@ fn repair_apply_long_help_has_examples() {
 }
 
 #[test]
-fn links_unresolved_long_help_has_examples() {
-    let out = vault_help(&["links", "unresolved", "--help"]);
-    assert!(out.contains("EXAMPLES\n"));
-}
-
-#[test]
 fn root_short_help_has_no_examples_section() {
     // The short form (-h) must never include EXAMPLES per spec §1.
     let out = vault_help(&["-h"]);
@@ -336,4 +306,16 @@ fn examples_command_lines_start_with_vault() {
             "example command lines must start with 'vault '; got: {line:?}"
         );
     }
+}
+
+#[test]
+fn count_short_help() {
+    let out = vault_help(&["count", "-h"]);
+    assert!(out.contains("Count documents in the vault"));
+}
+
+#[test]
+fn show_short_help() {
+    let out = vault_help(&["show", "-h"]);
+    assert!(out.contains("Show one or more documents"));
 }

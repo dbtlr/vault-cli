@@ -27,6 +27,7 @@ mod query_diagnostics;
 mod query_documents;
 mod query_files;
 mod query_links;
+mod query_show;
 mod reader;
 mod schema;
 mod status;
@@ -34,6 +35,7 @@ mod writer;
 
 pub use change_detection::{detect, ChangeDetectOptions, FileChange};
 pub use identity::cache_dir_for;
+pub use query_show::{DocumentDeep, IncomingLink};
 pub use status::CacheStatus;
 pub use writer::{IndexOptions, IndexReport};
 

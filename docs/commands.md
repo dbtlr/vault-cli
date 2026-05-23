@@ -17,25 +17,43 @@ Every command accepts the global flags below and a per-command `--format` where 
 
 When `--config` is omitted, `vault` discovers `<cwd>/.vault/config.yaml` if it exists; missing discovered config is fine and uses defaults.
 
-## docs
+## find
 
-Document inventory and inspection.
-
-| Command | Description | Deep link |
-|---|---|---|
-| `vault docs list` | List documents with optional path / filter / has / missing filters. | [configuration.md](configuration.md) |
-| `vault docs summary --count-by <field>` | Grouped document counts for one frontmatter field. | [concepts.md](concepts.md) |
-| `vault docs inspect <path-or-stem>` | Emit one document's parsed shape (frontmatter, headings, outbound links). | [concepts.md](concepts.md) |
-
-Examples:
+Document search across paths, frontmatter, and body text. Requires at least one predicate or `--all`.
 
 ```bash
-vault docs list --format table
-vault docs list --filter status:draft --format jsonl
-vault docs list --path "notes/**/*.md" --has tags --format paths
-vault docs summary --count-by status --format json
-vault docs inspect "My Note" --format json
+vault find --all --format records
+vault find --eq status:draft --format jsonl
+vault find --path "notes/**/*.md" --has tags --format paths
+vault find --text "literal substring" --format paths
 ```
+
+Predicates: `--text`, `--eq`, `--not-eq`, `--in`, `--not-in`, `--has`, `--missing`, `--before`, `--after`, `--on`, `--path`. All predicates are ANDed; comma-separated values within `--in`/`--not-in` are ORed.
+
+## count
+
+Grouped document counts for a frontmatter field. Shares the full filter flag surface with `vault find`.
+
+```bash
+vault count --by status --format json
+vault count --by type --eq status:draft --format text
+vault count --format json
+```
+
+Without `--by`, emits the total document count only.
+
+## show
+
+Single-document detail: frontmatter, headings, outgoing links, unresolved links, incoming links. Accepts vault-relative paths, case-insensitive stems, and wikilink-shaped inputs.
+
+```bash
+vault show "My Note" --format json
+vault show "notes/my-note.md" --format json
+vault show "My Note" --col incoming_links --format jsonl
+vault show "My Note" --body --format json
+```
+
+`--col` narrows the output fields; `--body` adds document body content. Multiple targets are accepted.
 
 ## files
 
@@ -44,41 +62,6 @@ Non-Markdown file inventory (and Markdown when you want the file-level view rath
 ```bash
 vault files --format jsonl
 ```
-
-## links
-
-Link graph queries.
-
-| Command | Description |
-|---|---|
-| `vault links list` | Every link the graph contains. |
-| `vault links unresolved` | Links that did not resolve to a target. |
-| `vault links backlinks <path-or-stem-or-file>` | Incoming links to a target. |
-
-Examples:
-
-```bash
-vault links list --format jsonl
-vault links unresolved --format jsonl
-vault links backlinks "My Note" --format json
-vault links backlinks "assets/diagram.png" --format paths
-```
-
-`--format paths` emits one unique source path per row.
-
-## search
-
-Document search across paths, frontmatter, and body text.
-
-```bash
-vault search --text "literal substring" --format paths
-vault search --filter status:draft --format jsonl
-vault search --path "notes/**/*.md" --has tags --text "drift" --format json
-```
-
-Repeated `--text` values are ANDed. Repeated `--filter` are ANDed; comma-separated values within one filter are ORed.
-
-Search is exact literal substring + frontmatter + path glob. There is no regex, fuzzy, or semantic search.
 
 ## validate
 
@@ -153,7 +136,7 @@ Cache management subcommands. See [cache.md](cache.md) for full documentation.
 | `vault cache clear` | Delete the cache; next command rebuilds. |
 | `vault cache status` | Report cache path, size, doc/link/file counts, schema version. |
 
-Query commands (`vault validate`, `vault docs`, `vault files`, `vault links`, `vault repair`) refresh the cache implicitly before reading. Pass the global `--no-cache-refresh` flag to skip that step.
+Query commands (`vault validate`, `vault find`, `vault count`, `vault show`, `vault files`, `vault repair`) refresh the cache implicitly before reading. Pass the global `--no-cache-refresh` flag to skip that step.
 
 ## Hidden subcommands
 

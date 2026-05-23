@@ -3,7 +3,9 @@ mod cli;
 mod completions;
 mod config;
 mod config_loader;
+mod count;
 mod filter;
+mod filter_args;
 mod find;
 mod help;
 mod init;
@@ -12,6 +14,7 @@ mod link_repair;
 mod output;
 mod query;
 mod repair_apply;
+mod show;
 mod target;
 mod validate_filter;
 
@@ -19,28 +22,20 @@ use std::{fs, process};
 
 use anyhow::{bail, Result};
 use clap::Parser;
-use vault_core::{GraphIndex, LinkStatus};
+use vault_core::GraphIndex;
 use vault_graph::{concise_diagnostics, has_errors};
 use vault_standards::{plan_repairs, summarize, validate, RepairPlanFilters};
 
 use crate::cli::{
-    CacheSubcommand, Cli, Command, ConfigSubcommand, DocsSubcommand, LinksSubcommand,
-    RepairOutputFormat, RepairSubcommand,
+    CacheSubcommand, Cli, Command, ConfigSubcommand, RepairOutputFormat, RepairSubcommand,
 };
 use crate::config_loader::{effective_cwd, load_config, resolve_path};
-use crate::filter::{
-    filter_documents, index_frontmatter_keys, summarize_documents, DocumentFilterOptions,
-};
 use crate::link_repair::plan_link_repairs;
 use crate::output::legacy::{
-    is_broken_pipe, resolve_format, write_document_summary, write_files, write_findings,
-    write_item_output, write_link_repair_report, write_links, write_repair_apply_report,
-    write_repair_plan, write_validate_summary,
+    is_broken_pipe, resolve_format, write_files, write_findings, write_link_repair_report,
+    write_repair_apply_report, write_repair_plan, write_validate_summary,
 };
 use crate::repair_apply::{apply_repair_plan, with_verification};
-use crate::target::{
-    backlinks, inspect_document, resolve_backlink_target_path, resolve_target_path,
-};
 use crate::validate_filter::{filter_findings, ValidateFilterOptions};
 
 fn main() {
@@ -83,31 +78,6 @@ fn run(cli: Cli) -> Result<i32> {
     let config_path = config;
 
     match command {
-        Command::Docs(docs) => match docs.command {
-            DocsSubcommand::Summary(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
-                trim_diagnostics(&mut index, verbose);
-                let options = DocumentFilterOptions {
-                    filters: &args.filters.filters,
-                    paths: &args.filters.paths,
-                    has: &args.filters.has,
-                    missing: &args.filters.missing,
-                };
-                let known_fields = index_frontmatter_keys(&index);
-                let documents = filter_documents(&index, &options)?;
-                let summary = summarize_documents(&documents, &args.count_by, &known_fields);
-                write_document_summary(&summary, resolve_format(args.format))?;
-                Ok(exit_code_for(&index))
-            }
-            DocsSubcommand::Inspect(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
-                trim_diagnostics(&mut index, verbose);
-                let target_path = resolve_target_path(&index, &args.target)?;
-                let output = inspect_document(&index, &target_path)?;
-                write_item_output(&output, args.format)?;
-                Ok(exit_code_for(&index))
-            }
-        },
         Command::Files(args) => {
             let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
             trim_diagnostics(&mut index, verbose);
@@ -115,28 +85,6 @@ fn run(cli: Cli) -> Result<i32> {
             write_files(&files, resolve_format(args.format))?;
             Ok(exit_code_for(&index))
         }
-        Command::Links(links_command) => match links_command.command {
-            LinksSubcommand::Unresolved(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
-                trim_diagnostics(&mut index, verbose);
-                let links: Vec<_> = index
-                    .documents
-                    .iter()
-                    .flat_map(|d| d.links.iter())
-                    .filter(|l| l.status != LinkStatus::Resolved)
-                    .collect();
-                write_links(&links, resolve_format(args.format))?;
-                Ok(exit_code_for(&index))
-            }
-            LinksSubcommand::Backlinks(args) => {
-                let mut index = build_index_for(&cwd, config_path.as_ref(), no_cache_refresh)?;
-                trim_diagnostics(&mut index, verbose);
-                let target_path = resolve_backlink_target_path(&index, &args.target)?;
-                let links = backlinks(&index, &target_path);
-                write_links(&links, resolve_format(args.format))?;
-                Ok(exit_code_for(&index))
-            }
-        },
         Command::Repair(repair_command) => match repair_command.command {
             RepairSubcommand::Plan(args) => {
                 let loaded_config = load_config(&cwd, config_path.as_ref())?;
@@ -251,7 +199,49 @@ fn run(cli: Cli) -> Result<i32> {
             }
             Ok(exit_code_for(&index))
         }
+        Command::Show(args) => {
+            let cache = crate::cache::open_for_query(&cwd, no_cache_refresh)?;
+            let report = show::run(&cache, &args)?;
+
+            let stdout_text = match args.format {
+                cli::ShowFormat::Json => show::render::render_json_with_col(&report, &args.col),
+                cli::ShowFormat::Text => show::render::render_text_with_col(&report, &args.col),
+            };
+            print!("{}", stdout_text);
+            if !stdout_text.ends_with('\n') {
+                println!();
+            }
+
+            let stderr = std::io::stderr();
+            let mut stderr_lock = stderr.lock();
+            show::render::warn_unknown_cols(&args.col, &mut stderr_lock)?;
+
+            let mut any_error = false;
+            for note in &report.notes {
+                eprintln!("{}", note);
+                if note.starts_with("error:") {
+                    any_error = true;
+                }
+            }
+            if any_error {
+                std::process::exit(1);
+            }
+            Ok(0)
+        }
         Command::Find(args) => find::run(args, &cwd, no_cache_refresh, color),
+        Command::Count(args) => {
+            let cache = crate::cache::open_for_query(&cwd, no_cache_refresh)?;
+            let out = count::run(&cache, &args)?;
+            let text = match args.format {
+                cli::CountFormat::Json => count::render::render_json(&out),
+                cli::CountFormat::Text => count::render::render_text(&out),
+            };
+            print!("{}", text);
+            if !text.ends_with('\n') {
+                println!();
+            }
+            Ok(0)
+        }
         Command::Init(args) => init::run(&cwd, &args),
         Command::Completions(_) => {
             unreachable!("completions are handled before vault targeting")

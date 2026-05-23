@@ -46,9 +46,9 @@ For manual binary downloads, the safer download-then-run installer form, and ver
 Clone the repo, then run three commands against the bundled fixture vault:
 
 ```bash
-vault -C fixtures/basic docs list --format table
+vault -C fixtures/basic find --all --format records
 vault -C fixtures/basic validate --summary
-vault -C fixtures/basic links unresolved --format jsonl | head
+vault -C fixtures/basic validate --code link-unresolved,link-ambiguous --format jsonl | head
 ```
 
 You should see a small inventory of Markdown documents, a finding summary that includes a handful of intentional drift cases, and a JSONL stream of unresolved links from the fixture.
@@ -57,7 +57,7 @@ Run the same shape against your own vault:
 
 ```bash
 vault -C /path/to/vault validate --summary
-vault -C /path/to/vault docs list --format paths | head
+vault -C /path/to/vault find --all --format paths | head
 ```
 
 For a deeper walkthrough including scoped rules and a first repair plan, see [docs/quickstart.md](docs/quickstart.md).
@@ -66,16 +66,16 @@ For a deeper walkthrough including scoped rules and a first repair plan, see [do
 
 | Workflow | Command shape | Docs |
 |---|---|---|
-| Inventory documents | `vault docs list --format table` | [commands.md](docs/commands.md) |
-| Inspect one document | `vault docs inspect <path-or-stem>` | [commands.md](docs/commands.md) |
-| Walk links | `vault links unresolved / backlinks` | [commands.md](docs/commands.md) |
+| Inventory documents | `vault find --all --format records` | [commands.md](docs/commands.md) |
+| Inspect one document | `vault show <path-or-stem>` | [commands.md](docs/commands.md) |
+| Walk unresolved links | `vault validate --code link-unresolved,link-ambiguous` | [commands.md](docs/commands.md) |
 | Validate against rules | `vault validate --summary` | [validation.md](docs/validation.md) |
 | Plan a repair | `vault repair plan --out repair.json` | [validation.md](docs/validation.md) |
 | Apply a repair | `vault repair apply repair.json --verify` | [validation.md](docs/validation.md) |
 | Plan link/path moves | `vault repair links --target <path>` | [validation.md](docs/validation.md) |
 | Find | `vault find --text "..." --eq k:v` | [commands.md](docs/commands.md) |
 
-Every command accepts `--format table|json|jsonl|paths` where applicable. JSON and JSONL contracts are stable across point releases; table output is for humans and may evolve.
+Commands accept `--format json|jsonl` (stable contracts) plus format-specific human-readable options (`records`, `text`, `paths`). JSON and JSONL contracts are stable across point releases; human-readable formats may evolve.
 
 ## For agents and automation
 
