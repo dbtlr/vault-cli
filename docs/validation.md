@@ -168,12 +168,18 @@ Findings without a matching deterministic rule are reported as skipped fallout i
 
 ## Repair apply
 
-`vault repair apply <plan>` applies repair plans. Apply writes by default because the command is explicit; pass `--dry-run` to preview.
+`vault repair apply [<plan>]` applies repair plans. Apply writes by default because the command is explicit; pass `--dry-run` to preview.
+
+The positional is optional: omit it (or pass `-`) to read the plan from stdin. The pipeline form composes plan generation and apply in one shot:
 
 ```bash
-vault repair apply repair.json --dry-run --format json
-vault repair apply repair.json --verify --format json
+vault repair apply repair.json --dry-run
+vault repair plan --format json | vault repair apply --dry-run
+vault repair apply repair.json --verify
+vault repair apply repair.json --out report.json
 ```
+
+Output formats: `--format report` (TTY default; human summary), `--format json` (pipe default; full envelope), `--format paths` (sorted dedup of changed files). `--out <PATH>` writes the JSON report to file independently of `--format`. `--format jsonl` and `--format table` were removed in v0.32; both are rejected with migration messages.
 
 Apply rejects:
 
@@ -182,6 +188,8 @@ Apply rejects:
 - Stale document hashes (the document changed since the plan was created).
 - Conflicting field changes within one apply run.
 - Expected-old-value mismatches.
+
+The orchestrator is atomic-at-batch-level: any precondition failure aborts the whole apply before any partial writes (stderr error, exit 1, no report rendered).
 
 Frontmatter apply preserves Markdown body content byte-for-byte. YAML lines untouched by a repair are preserved exactly (comments, quote style, key ordering). YAML lines touched by a repair preserve the original quote style when the new value is representable in that style; otherwise apply upgrades to the minimum sufficient style and never downgrades.
 

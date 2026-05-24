@@ -10,7 +10,6 @@ use serde_json::Value;
 
 use crate::cli::OutputFormat;
 use crate::link_repair::LinkRepairReport;
-use crate::repair_apply::RepairApplyReport;
 
 pub fn write_item_output<T: Serialize>(item: &T, format: OutputFormat) -> Result<()> {
     let stdout = io::stdout();
@@ -99,42 +98,6 @@ pub fn write_link_repair_report(report: &LinkRepairReport, format: OutputFormat)
                 write_table(&["target_risk", "value"], &rows)?;
             }
             Ok(())
-        }
-    }
-}
-
-pub fn write_repair_apply_report(report: &RepairApplyReport, format: OutputFormat) -> Result<()> {
-    match format {
-        OutputFormat::Json | OutputFormat::Jsonl => write_item_output(report, format),
-        OutputFormat::Paths => bail!("paths format is not supported for repair apply reports"),
-        OutputFormat::Table => {
-            let mut rows = vec![
-                vec!["dry_run".to_string(), report.dry_run.to_string()],
-                vec![
-                    "applied_changes".to_string(),
-                    report.applied_changes.to_string(),
-                ],
-                vec![
-                    "changed_files".to_string(),
-                    report
-                        .changed_files
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(","),
-                ],
-                vec![
-                    "skipped/total".to_string(),
-                    report.plan_context.skipped.total.to_string(),
-                ],
-            ];
-            if let Some(verification) = &report.verification {
-                rows.push(vec![
-                    "remaining_findings".to_string(),
-                    verification.remaining_findings.to_string(),
-                ]);
-            }
-            write_table(&["metric", "value"], &rows)
         }
     }
 }

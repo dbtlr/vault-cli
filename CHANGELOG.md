@@ -27,6 +27,9 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
   - `summary.skipped.precondition_failed` → `summary.skipped.by_reason["precondition-failed"]`
   - Zero-count buckets are omitted from `by_reason` (use `.get("<code>").unwrap_or(&0)` for safe access).
 - **`repair_plan_schema_version` bumped 5 → 6** covering all of the above.
+- **`vault repair apply --format jsonl` and `--format table` removed.** Use `--format report` (TTY summary) or `--format json` (full envelope). Both retired values are rejected with explicit migration messages.
+- **`vault repair plan --out` and `--format` are now orthogonal streams.** Previously `--out` short-circuited stdout entirely (any `--format` was silently ignored when `--out` was set). New behavior: `--out` always writes JSON to the file; `--format` independently governs stdout. When only `--out` is set, stdout stays silent (matches the prior default). When both are set, both streams are honored.
+- **`vault repair apply <PLAN>` positional is now optional.** When absent or `-`, the plan is read from stdin. Enables the pipeline form `vault repair plan --format json | vault repair apply`.
 
 ### Added
 
@@ -36,11 +39,16 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 - `vault repair plan --format report` (new TTY default) produces a decision-support summary with counts, confidence breakdown, skipped tally, top-5 affected files, and filter-aware apply guidance.
 - `reason_code` field on each `skipped_findings[]` entry in JSON output, derived from `SkipReason::code()`.
 - `skip_reason` array in JSON `source_filters` echoes the operator's `--skip-reason` input.
+- `vault repair apply --out <PATH>` — write the JSON apply report to file.
+- `vault repair apply` reads the plan from stdin when no positional or `-` is given. Pipeline form: `vault repair plan --format json | vault repair apply` is now supported.
+- `vault repair apply --format report` (new TTY default) — human summary composed from `output::primitives`.
+- `vault repair apply --format paths` — sorted dedup of changed files, one per line.
 
 ### Changed
 
 - `vault validate --format paths` continues to emit unique sorted paths of documents that have findings.
 - `vault repair plan` piped default flips from JSON-via-default-clap-value to TTY-detected: report when stdout is a terminal, JSON when piped.
+- `vault repair apply` TTY output reshaped from key-value metric table to summary (count line + severity tally + by-operation tally + optional warnings sub-block + footer). Same data, new shape.
 
 ### Fixed
 

@@ -228,7 +228,7 @@ fn grouped_help_lists_new_surfaces() {
 
     let output = vault(&["repair", "apply", "--help"]);
     assert!(output.contains("rewrite_link"));
-    assert!(output.contains("stale hashes"));
+    assert!(output.contains("precondition checks"));
     assert!(!output.contains("manual-decision"));
 }
 

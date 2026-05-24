@@ -94,12 +94,27 @@ Output formats:
 
 Apply a repair plan. Writes by default; pass `--dry-run` to preview.
 
+Plan ingress: positional path, `-` for stdin, or omit the positional to read from stdin. The pipeline form `vault repair plan --format json | vault repair apply` composes plan generation and apply in one shot.
+
 ```bash
-vault repair apply repair.json --dry-run --format json
-vault repair apply repair.json --verify --format json
+vault repair apply repair.json
+vault repair apply repair.json --dry-run
+vault repair plan --format json | vault repair apply --dry-run
+vault repair apply repair.json --verify
+vault repair apply repair.json --out report.json
 ```
 
-Apply rejects mismatched vault roots, stale document hashes, unsupported schema versions, conflicting field changes, and expected-old-value mismatches.
+Output formats:
+
+- `--format report` (TTY default) — human summary: count line, severity tally, by-operation breakdown, optional warnings sub-block, footer with totals and next-step hint.
+- `--format json` (pipe default) — full `RepairApplyReport` envelope (`schema_version`, `dry_run`, `changed_files`, `applied_changes`, `moved_files`, `rewritten_links`, `warnings`, `plan_context`, optional `verification`).
+- `--format paths` — sorted dedup of `changed_files`, one per line. Empty (zero bytes) when no files changed.
+
+`--out <PATH>` writes the JSON report to file independently of `--format`; stdout stays silent when `--out` is set without `--format`. When both are set, both streams are honored.
+
+(Note: `--format jsonl` and `--format table` were removed in v0.32; both are rejected with migration messages.)
+
+Apply rejects mismatched vault roots, stale document hashes, unsupported schema versions, conflicting field changes, and expected-old-value mismatches. The orchestrator is atomic-at-batch-level: any precondition failure aborts the whole apply before any partial writes (stderr error, exit 1, no report rendered).
 
 ## repair links
 

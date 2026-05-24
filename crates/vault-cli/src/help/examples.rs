@@ -118,13 +118,18 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
             ),
         ],
         "vault repair apply" => &[
+            ("vault repair apply plan.json", "apply a plan from file"),
+            (
+                "vault repair plan --format json | vault repair apply",
+                "pipe a plan straight from plan to apply",
+            ),
             (
                 "vault repair apply plan.json --dry-run",
                 "preview changes without writing",
             ),
             (
-                "vault repair apply plan.json",
-                "apply a previously-generated plan",
+                "vault repair apply plan.json --out report.json",
+                "write the JSON apply report to file; stdout stays silent",
             ),
             (
                 "vault repair apply plan.json --verify",

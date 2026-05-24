@@ -43,7 +43,7 @@ None of these write to the vault:
 - `vault repair plan` (produces an artifact; does not modify the vault)
 - `vault repair links` (planning report only)
 
-Only `vault repair apply` writes to the vault. It requires an explicit plan argument.
+Only `vault repair apply` writes to the vault. The plan argument is optional — omit it (or pass `-`) to read the plan from stdin.
 
 ## Validation summary first, raw findings second
 
@@ -61,7 +61,9 @@ The same filter set works for raw output and summaries.
 
 Use `--format json` for one-shot agent dispatch (single JSON document). Use `--format jsonl` for streaming queues (one JSON object per line). Records output is for humans and may evolve between point releases — never parse it.
 
-> **Note for `vault repair plan`:** The repair plan format set is separate from validate. Use `--format json` (machine, full envelope), `--format report` (human-readable summary, TTY default), or `--format paths` (one affected path per line, for `xargs`-style pipelines). `--format jsonl` is not supported for repair plan.
+> **Note for `vault repair plan` and `vault repair apply`:** The repair format set is separate from validate. Use `--format json` (machine, full envelope — canonical for agent consumers; default when stdout is a pipe), `--format report` (human-readable summary, TTY default), or `--format paths` (one path per line, for `xargs`-style pipelines). `--format jsonl` is not supported for repair commands.
+>
+> `--out <PATH>` writes the JSON report/plan to a file unconditionally (always JSON). `--format` controls stdout independently — both can be set simultaneously without conflict. When `--out` is set without `--format`, stdout is silent.
 
 Findings come back wrapped as `{"total": N, "findings": [...]}`; iterate `.findings` for individual entries.
 
@@ -103,6 +105,12 @@ Mutation is always two steps. Never write to the vault outside `vault repair app
 2. Inspect `repair.json`. Read `summary.planned_changes` count and `summary.skipped.by_reason` map for skip tallies.
 3. `vault -C /path/to/vault repair apply repair.json --dry-run --format json` — confirms the plan applies cleanly.
 4. `vault -C /path/to/vault repair apply repair.json --verify --format json` — writes and re-validates.
+
+**Single-line pipeline form** (avoids `--out` round-trips):
+```bash
+vault -C /path/to/vault repair plan --format json | vault -C /path/to/vault repair apply [--dry-run]
+```
+`vault repair apply -` and `vault repair apply` (no positional argument) both read the plan from stdin.
 
 Apply rejects:
 
@@ -173,11 +181,14 @@ vault -C /path/to/vault repair plan \
 # 4. Review
 # (read repair.json; surface skipped_findings to the human if non-empty)
 
-# 5. Dry-run
+# 5. Dry-run (--format json = full RepairApplyReport envelope)
 vault -C /path/to/vault repair apply repair.json --dry-run --format json
 
 # 6. Apply with verification
 vault -C /path/to/vault repair apply repair.json --verify --format json
+
+# Alternative: single-line pipeline (skips the repair.json file entirely)
+vault -C /path/to/vault repair plan --format json | vault -C /path/to/vault repair apply --verify
 ```
 
 ## Cache
@@ -194,7 +205,7 @@ The cache is disposable — missing or corrupted caches rebuild silently. Don't 
 - **Honor schema versions.** Repair plans declare `schema_version`. Apply rejects mismatched versions; re-plan instead of editing the artifact.
 - **Don't auto-pick ambiguous link candidates.** `link-ambiguous` findings carry a `candidates` list, but the CLI does not resolve them. Surface the ambiguity to the human or apply a deterministic disambiguation rule documented in the vault's config.
 - **Use `--out` for plan artifacts.** `vault repair plan --out repair.json` writes the plan directly. Shell redirection (`> repair.json`) works but is more prone to partial-write footguns.
-- **Don't parse records output.** Records are for humans. For `vault validate`, pass `--format json` or `--format jsonl` from an agent context. For `vault repair plan`, pass `--format json` (full envelope) or `--format paths` (path list).
+- **Don't parse records output.** Records are for humans. For `vault validate`, pass `--format json` or `--format jsonl` from an agent context. For `vault repair plan` and `vault repair apply`, pass `--format json` (full envelope) or `--format paths` (changed-files list).
 - **Run `--summary` first.** It's cheaper than a full finding stream and tells you whether a more expensive query is worth running.
 
 ## Shell completions

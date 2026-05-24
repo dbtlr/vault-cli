@@ -40,7 +40,7 @@ For a typical drift-healing task:
 2. **Triage.** Filter by `--code`, `--field`, `--rule`, `--path` to scope the queue. Re-run `--summary` to confirm the filter's size.
 3. **Plan.** `vault repair plan --out repair.json` (with the same filters). Read the plan's `changes` and `skipped_findings`.
 4. **Review.** Confirm `changes` are intended; surface `skipped_findings` to the human or follow `next_actions`.
-5. **Dry-run.** `vault repair apply repair.json --dry-run --format json` — confirms the plan is applyable without writing.
+5. **Dry-run.** `vault repair apply repair.json --dry-run --format json` — confirms the plan is applyable without writing. (Or pipe directly: `vault repair plan --format json | vault repair apply --dry-run --format json`.)
 6. **Apply.** `vault repair apply repair.json --verify --format json` — writes and re-validates.
 7. **Verify.** Inspect the apply report's `plan_context` and the post-apply validation summary.
 
@@ -61,7 +61,7 @@ These commands never write to the vault. An agent can run them with confidence:
 - `vault repair plan` (produces an artifact; does not modify the vault)
 - `vault repair links` (planning report only)
 
-Only `vault repair apply` writes to the vault. It requires an explicit plan argument.
+Only `vault repair apply` writes to the vault. The plan is provided via a positional file path, via `-`, or via stdin (the pipeline form `vault repair plan --format json | vault repair apply` composes plan + apply in one shot).
 
 ## Output sketches
 
