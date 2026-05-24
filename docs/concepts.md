@@ -75,7 +75,7 @@ The product loop is four stages:
 
 Validation is read-only and does not guess repairs. Repair planning is read-only and produces only inspectable artifacts. Repair apply is the only writing surface, and it requires an explicit plan input. There is no hidden write path.
 
-Repair plans are schema-versioned (`schema_version: 5` as of v0.31). Apply rejects unsupported schema versions, plans for a different vault root, stale document hashes, conflicting field changes, and expected-old-value mismatches.
+Repair plans are schema-versioned (`schema_version: 6` as of v0.32). Apply rejects unsupported schema versions, plans for a different vault root, stale document hashes, conflicting field changes, and expected-old-value mismatches.
 
 For the full repair model and supported actions, see [validation.md](validation.md).
 

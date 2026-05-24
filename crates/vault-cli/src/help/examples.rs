@@ -102,7 +102,15 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
             ("vault repair plan --out plan.json", "write a repair plan"),
             (
                 "vault repair plan --format json",
-                "preview the plan on stdout",
+                "machine-readable plan for piping to repair apply",
+            ),
+            (
+                "vault repair plan --format paths",
+                "affected paths only; pipe to xargs",
+            ),
+            (
+                "vault repair plan --skip-reason ambiguous-target",
+                "show only ambiguous-target skips",
             ),
             (
                 "vault repair plan --severity error",
@@ -210,7 +218,7 @@ pub fn conceptual_sections_for(cmd_path: &str) -> Vec<(String, String)> {
         ],
         "vault repair plan" => &[(
             "The plan/apply boundary",
-            "Repair runs in two halves. Plan reads validate findings and emits a JSON artifact describing every change it would make. Plan never writes to vault documents. Apply consumes that artifact and writes the changes; preconditions are checked before any file is touched.\n\nPlan classifies each finding as supported or skipped. Supported findings produce a `PlannedChange` — the path, the field, the new value, and the source document's hash recorded at plan time. Skipped findings carry a reason: `unsupported`, `ambiguous`, `missing_hash`, or `precondition_failed`.\n\nA planned change:\n\n{\n  \"path\": \"notes/welcome.md\",\n  \"field\": \"kind\",\n  \"new_value\": \"note\",\n  \"document_hash\": \"a3f2…\"\n}\n\nA skipped finding records the reason:\n\n{\n  \"path\": \"drafts/x.md\",\n  \"code\": \"link-ambiguous\",\n  \"skip_reason\": \"ambiguous\"\n}\n\nThe plan captures a vault snapshot. Each change records the document's hash at plan time; apply refuses to write if that hash has changed. Re-run plan after editing files between plan and apply.\n\nTriage filters here are the same as on `validate` — pass `--severity error` to plan only error-level findings. Filters that excluded a finding from validate also exclude it from plan.",
+            "Repair runs in two halves. Plan reads validate findings and emits a JSON artifact describing every change it would make. Plan never writes to vault documents. Apply consumes that artifact and writes the changes; preconditions are checked before any file is touched.\n\nPlan classifies each finding as supported or skipped. Supported findings produce a `PlannedChange` — the path, the field, the new value, and the source document's hash recorded at plan time. Skipped findings carry a reason code (stable kebab-case string): `missing-default`, `link-decision-needed`, `no-rule-matched`, `alias-shadowed`, `graph-diagnostic`, `ambiguous-target`, `missing-hash`, or `precondition-failed`. Filter skipped findings with `--skip-reason <PATTERN>`; glob patterns accepted.\n\nA planned change:\n\n{\n  \"path\": \"notes/welcome.md\",\n  \"field\": \"kind\",\n  \"new_value\": \"note\",\n  \"document_hash\": \"a3f2…\"\n}\n\nA skipped finding records the reason:\n\n{\n  \"path\": \"drafts/x.md\",\n  \"code\": \"link-ambiguous\",\n  \"skip_reason\": \"ambiguous_target\",\n  \"reason_code\": \"ambiguous-target\"\n}\n\nThe summary's `skipped` section uses a `by_reason` map: `{ \"ambiguous-target\": 3, \"no-rule-matched\": 12 }`. Zero-count buckets are omitted.\n\nOutput formats: `--format report` (human summary, TTY default), `--format json` (full envelope, pipe default), `--format paths` (one affected path per line, deduplicated).\n\nThe plan captures a vault snapshot. Each change records the document's hash at plan time; apply refuses to write if that hash has changed. Re-run plan after editing files between plan and apply.\n\nTriage filters here are the same as on `validate` — pass `--severity error` to plan only error-level findings. Filters that excluded a finding from validate also exclude it from plan.",
         )],
         "vault repair apply" => &[(
             "How apply writes",

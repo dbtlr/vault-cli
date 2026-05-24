@@ -13,6 +13,7 @@ mod init_scan;
 mod link_repair;
 mod output;
 mod query;
+mod repair;
 mod repair_apply;
 mod show;
 mod target;
@@ -21,20 +22,19 @@ mod validate_filter;
 
 use std::{fs, process};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::Parser;
 use vault_core::GraphIndex;
 use vault_graph::{concise_diagnostics, has_errors};
-use vault_standards::{plan_repairs, validate_with_alias_field, RepairPlanFilters};
+use vault_standards::{plan_repairs, validate_with_alias_field, RepairPlanFilters, SkippedSummary};
 
 use crate::cli::{
-    CacheSubcommand, Cli, Command, ConfigSubcommand, RepairOutputFormat, RepairSubcommand,
+    CacheSubcommand, Cli, Command, ConfigSubcommand, RepairPlanFormat, RepairSubcommand,
 };
 use crate::config_loader::{effective_cwd, load_config, resolve_path};
 use crate::link_repair::plan_link_repairs;
-use crate::output::legacy::{
-    is_broken_pipe, write_link_repair_report, write_repair_apply_report, write_repair_plan,
-};
+use crate::output::legacy::{is_broken_pipe, write_link_repair_report, write_repair_apply_report};
+use crate::repair::skip_reasons::code_matches_any;
 use crate::repair_apply::{apply_repair_plan, with_verification};
 use crate::validate_filter::{filter_findings, ValidateFilterOptions};
 
@@ -94,26 +94,47 @@ fn run(cli: Cli) -> Result<i32> {
                 );
                 let filters = ValidateFilterOptions::from(&args);
                 let findings = filter_findings(findings, &filters)?;
-                let plan = plan_repairs(
+                let mut plan = plan_repairs(
                     cwd.clone(),
                     repair_plan_filters(&args),
                     findings,
                     &loaded_config.repair,
                     &index,
                 );
+                if !args.skip_reason.is_empty() {
+                    plan.skipped_findings
+                        .retain(|f| code_matches_any(f.skip_reason.code(), &args.skip_reason));
+                    plan.summary.skipped = SkippedSummary::from_skipped(&plan.skipped_findings);
+                }
                 if let Some(out) = &args.out {
-                    if args.format != RepairOutputFormat::Json {
-                        let message = "repair plan --out writes JSON artifacts; \
-                            omit --out for table output";
-                        bail!(message);
-                    }
+                    // --out always writes a JSON artifact regardless of --format
                     let out_path = resolve_path(&cwd, out);
                     let plan_text = serde_json::to_string_pretty(&plan)?;
                     fs::write(&out_path, format!("{plan_text}\n")).map_err(|error| {
                         anyhow::anyhow!("failed to write repair plan {out_path}: {error}")
                     })?;
                 } else {
-                    write_repair_plan(&plan, args.format.into())?;
+                    use std::io::IsTerminal;
+                    use std::io::Write;
+                    let format = args.format.unwrap_or_else(|| {
+                        if std::io::stdout().is_terminal() {
+                            RepairPlanFormat::Report
+                        } else {
+                            RepairPlanFormat::Json
+                        }
+                    });
+                    match format {
+                        RepairPlanFormat::Report => repair::render::write_report(&plan, &args)?,
+                        RepairPlanFormat::Json => {
+                            // Pretty-printed JSON with trailing newline — matches write_item_output behavior
+                            let json = serde_json::to_string_pretty(&plan)?;
+                            let stdout = std::io::stdout();
+                            let mut stdout = stdout.lock();
+                            stdout.write_all(json.as_bytes())?;
+                            stdout.write_all(b"\n")?;
+                        }
+                        RepairPlanFormat::Paths => repair::render::write_paths(&plan)?,
+                    }
                 }
                 Ok(exit_code_for(&index))
             }
@@ -323,6 +344,7 @@ fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
         path: normalized_filter_values(&args.triage.path),
         target: normalized_filter_values(&args.triage.target),
         reason: normalized_filter_values(&args.triage.reason),
+        skip_reason: normalized_filter_values(&args.skip_reason),
         confidence: args.confidence.map(|c| match c {
             crate::cli::ConfidenceArg::High => vault_standards::ConfidenceFilter::High,
         }),

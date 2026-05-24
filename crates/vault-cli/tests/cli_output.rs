@@ -216,12 +216,15 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("links"));
 
     let output = vault(&["repair", "plan", "--help"]);
-    // Our custom renderer replaces clap's "[possible values: ...]" with
-    // "Possible values: json, jsonl, table".
-    assert!(output.contains("Possible values: json, jsonl, table"));
-    assert!(output.contains("skipped, unsupported, and ambiguous findings"));
+    // RepairPlanFormat uses a custom value_parser; clap no longer auto-lists possible values.
+    // Verify the format flag and key help text are present.
+    assert!(output.contains("--format"));
+    assert!(output.contains("report when TTY, json when piped"));
+    assert!(output.contains("skipped findings as non-blocking planning fallout"));
     assert!(output.contains("--out"));
-    assert!(!output.contains("paths"));
+    // jsonl and table were removed from repair plan; they should not appear in help
+    assert!(!output.contains("jsonl"));
+    assert!(!output.contains("Possible values: json, jsonl, table"));
 
     let output = vault(&["repair", "apply", "--help"]);
     assert!(output.contains("rewrite_link"));
@@ -363,11 +366,14 @@ fn repair_plan_generates_configured_frontmatter_change() {
     ]);
 
     let plan = serde_json::from_str::<Value>(&output).expect("repair plan should be JSON");
-    assert_eq!(plan["schema_version"], 5);
+    assert_eq!(plan["schema_version"], 6);
     assert_eq!(plan["summary"]["findings"], 1);
     assert_eq!(plan["summary"]["planned_changes"], 1);
     assert_eq!(plan["summary"]["skipped"]["total"], 0);
-    assert_eq!(plan["summary"]["skipped"]["unsupported"], 0);
+    assert!(plan["summary"]["skipped"]["by_reason"]
+        .as_object()
+        .unwrap()
+        .is_empty());
     assert_eq!(
         plan["source_filters"]["code"],
         serde_json::json!([
@@ -421,6 +427,7 @@ fn repair_plan_out_writes_json_artifact_without_stdout() {
     assert_eq!(plan["summary"]["planned_changes"], 1);
     assert_eq!(plan["changes"][0]["path"], "task.md");
 
+    // --format table is now rejected at parse time with a migration message
     let error = vault_error(&[
         "-C",
         root.to_str().unwrap(),
@@ -433,8 +440,14 @@ fn repair_plan_out_writes_json_artifact_without_stdout() {
         "--out",
         plan_path.to_str().unwrap(),
     ]);
-    assert!(error.contains("repair plan --out writes JSON artifacts"));
-    assert!(error.contains("omit --out for table output"));
+    assert!(
+        error.contains("invalid value 'table'"),
+        "expected invalid value rejection, got: {error}"
+    );
+    assert!(
+        error.contains("--format report") || error.contains("use --format report"),
+        "expected migration hint, got: {error}"
+    );
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -467,14 +480,17 @@ fn broad_repair_plan_with_skipped_findings_still_applies_changes() {
     let plan_json = serde_json::from_str::<Value>(&plan).expect("repair plan should be JSON");
     assert_eq!(plan_json["summary"]["planned_changes"], 1);
     assert_eq!(plan_json["summary"]["skipped"]["total"], 1);
-    assert_eq!(plan_json["summary"]["skipped"]["unsupported"], 1);
+    assert_eq!(
+        plan_json["summary"]["skipped"]["by_reason"]["link-decision-needed"],
+        1
+    );
     assert_eq!(
         plan_json["skipped_findings"][0]["code"],
         "link-target-missing"
     );
     assert_eq!(
         plan_json["skipped_findings"][0]["skip_reason"],
-        "unsupported"
+        "link_decision_needed"
     );
     assert!(plan_json["skipped_findings"][0]["next_actions"]
         .as_array()
@@ -499,51 +515,18 @@ fn broad_repair_plan_with_skipped_findings_still_applies_changes() {
     assert_eq!(report["applied_changes"], 1);
     assert_eq!(report["changed_files"][0], "task.md");
     assert_eq!(report["plan_context"]["skipped"]["total"], 1);
-    assert_eq!(report["plan_context"]["skipped"]["unsupported"], 1);
-    assert_eq!(report["plan_context"]["skipped"]["ambiguous"], 0);
+    assert_eq!(
+        report["plan_context"]["skipped"]["by_reason"]["link-decision-needed"],
+        1
+    );
+    assert!(report["plan_context"]["skipped"]["by_reason"]["ambiguous-target"].is_null());
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
 }
 
-#[test]
-fn repair_plan_table_is_row_oriented() {
-    let root = temp_cache_dir();
-    let config_path = root.with_extension("yaml");
-    fs::write(
-        &config_path,
-        "validate:\n  rules:\n    - name: task-status\n      match:\n        frontmatter:\n          type: task\n      allowed_values:\n        status:\n          - backlog\nrepair:\n  rules:\n    - name: map-someday-status\n      match:\n        code: frontmatter-disallowed-value\n        field: status\n        actual_value: someday\n      set_frontmatter:\n        field: status\n        value: backlog\n",
-    )
-    .expect("config should write");
-    fs::create_dir_all(&root).expect("temp dir should be created");
-    fs::write(
-        root.join("task.md"),
-        "---\ntype: task\nstatus: someday\n---\n# Task\n\n[[missing]]\n",
-    )
-    .expect("task should write");
-
-    let output = vault(&[
-        "-C",
-        root.to_str().unwrap(),
-        "--config",
-        config_path.to_str().unwrap(),
-        "repair",
-        "plan",
-        "--format",
-        "table",
-    ]);
-
-    assert!(output.contains("planned_changes"));
-    assert!(output.contains("skipped/total"));
-    assert!(output.contains("skipped/unsupported"));
-    assert!(output.contains("task.md"));
-    assert!(output.contains("set_frontmatter"));
-    assert!(output.contains("link-target-missing"));
-    assert!(!output.contains("\"changes\""));
-
-    fs::remove_dir_all(root).ok();
-    fs::remove_file(config_path).ok();
-}
+// repair_plan_table_is_row_oriented: removed in Task 7 — --format table was removed from
+// vault repair plan. Rejection behavior is covered by repair_plan_format_rejection.rs.
 
 #[test]
 fn repair_apply_writes_frontmatter_plan_and_verifies() {
@@ -592,8 +575,10 @@ fn repair_apply_writes_frontmatter_plan_and_verifies() {
     assert_eq!(report["applied_changes"], 1);
     assert_eq!(report["changed_files"][0], "task.md");
     assert_eq!(report["plan_context"]["skipped"]["total"], 0);
-    assert_eq!(report["plan_context"]["skipped"]["unsupported"], 0);
-    assert_eq!(report["plan_context"]["skipped"]["ambiguous"], 0);
+    assert!(report["plan_context"]["skipped"]["by_reason"]
+        .as_object()
+        .unwrap()
+        .is_empty());
     assert_eq!(report["verification"]["remaining_findings"], 0);
 
     let updated = fs::read_to_string(root.join("task.md")).expect("task should read");
@@ -2398,7 +2383,7 @@ repair:
     let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
     let plan_json: Value = serde_json::from_str(&plan_text).expect("repair plan should be JSON");
 
-    assert_eq!(plan_json["schema_version"], 5);
+    assert_eq!(plan_json["schema_version"], 6);
     assert_eq!(plan_json["summary"]["planned_changes"], 1);
     let change = &plan_json["changes"][0];
     assert_eq!(change["operation"], "move_document");

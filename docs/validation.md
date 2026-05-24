@@ -120,28 +120,25 @@ vault repair plan --code frontmatter-disallowed-value --field status --out repai
 
 ```json
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "vault_root": "/abs/path/to/vault",
   "source_filters": { "...": "..." },
   "summary": {
     "findings": 42,
     "planned_changes": 18,
     "skipped": {
-      "unsupported": 20,
-      "ambiguous": 3,
-      "missing_hash": 0,
-      "precondition_failed": 1,
+      "by_reason": { "no-rule-matched": 20, "ambiguous-target": 3, "precondition-failed": 1 },
       "total": 24
     }
   },
   "changes": [ { "...": "..." } ],
-  "skipped_findings": [ { "...": "...", "skip_reason": "unsupported" } ]
+  "skipped_findings": [ { "...": "...", "skip_reason": "no_rule_matched", "reason_code": "no-rule-matched" } ]
 }
 ```
 
 Each planned change carries the target path, document hash precondition, finding context, operation, optional field (omitted for `move_document` changes), expected old value when available, new value when applicable, and — for moves — `destination`, `link_risk`, and any `warnings`.
 
-Skipped findings carry `skip_reason` (`unsupported`, `ambiguous`, `missing_hash`, `precondition_failed`), a free-form `reason`, candidates for ambiguous links, and suggested next actions. Fix the repairability problem, then rerun `repair plan`.
+Skipped findings carry `skip_reason` (one of: `missing_default`, `link_decision_needed`, `no_rule_matched`, `alias_shadowed`, `graph_diagnostic`, `ambiguous_target`, `missing_hash`, `precondition_failed`) plus a stable kebab-case `reason_code` field (`missing-default`, `link-decision-needed`, etc.) — agents typically want `reason_code`. Also carries a free-form `reason`, candidates for ambiguous links, and suggested next actions. Fix the repairability problem, then rerun `repair plan`.
 
 ### Supported actions
 
@@ -167,7 +164,7 @@ The validate → plan → apply → verify loop closes for these finding classes
 | `document-misrouted` | `move_document` | Move the file to a configured destination (with backlink rewriting). |
 | `link-target-missing` | `rewrite_link` | Closest-match rewrite proposed automatically. Use `--confidence high` to keep only slug-normalized-identity matches. |
 
-Findings without a matching deterministic rule are reported as skipped fallout in the repair plan with `skip_reason: unsupported`.
+Findings without a matching deterministic rule are reported as skipped fallout in the repair plan with `skip_reason: no_rule_matched`.
 
 ## Repair apply
 
@@ -200,10 +197,7 @@ Apply output includes `plan_context` so broad plans remain explainable after app
 {
   "plan_context": {
     "skipped": {
-      "unsupported": 1,
-      "ambiguous": 0,
-      "missing_hash": 0,
-      "precondition_failed": 0,
+      "by_reason": { "no-rule-matched": 1 },
       "total": 1
     }
   }

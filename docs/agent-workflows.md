@@ -88,16 +88,16 @@ Only `vault repair apply` writes to the vault. It requires an explicit plan argu
 
 ```json
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "vault_root": "/abs/path/to/vault",
   "source_filters": { "code": "frontmatter-disallowed-value", "field": "status" },
   "summary": {
     "findings": 4,
     "planned_changes": 3,
-    "skipped": { "unsupported": 1, "ambiguous": 0, "missing_hash": 0, "precondition_failed": 0, "total": 1 }
+    "skipped": { "by_reason": { "no-rule-matched": 1 }, "total": 1 }
   },
   "changes": [ /* ... */ ],
-  "skipped_findings": [ /* with skip_reason */ ]
+  "skipped_findings": [ /* with skip_reason + reason_code */ ]
 }
 ```
 
@@ -109,7 +109,7 @@ Only `vault repair apply` writes to the vault. It requires an explicit plan argu
   "files_changed": 3,
   "verify": { "total": 0 },
   "plan_context": {
-    "skipped": { "unsupported": 1, "ambiguous": 0, "missing_hash": 0, "precondition_failed": 0, "total": 1 }
+    "skipped": { "by_reason": { "no-rule-matched": 1 }, "total": 1 }
   }
 }
 ```
@@ -137,7 +137,7 @@ Two rules an agent must follow:
 ## Common pitfalls
 
 - **Don't filter by un-indexed fields.** `vault find` predicates match frontmatter scalar or list values only for field-equality flags; `--text` is for full-text substring search.
-- **Honor schema versions.** Repair plans have `schema_version: 5` as of v0.31. Older plans are rejected by apply.
+- **Honor schema versions.** Repair plans have `schema_version: 6` as of v0.32. Older plans are rejected by apply.
 - **Don't auto-pick ambiguous link candidates.** `link-ambiguous` findings carry a `candidates` list, but the CLI does not automatically resolve them. An agent should surface the ambiguity to the human or apply a deterministic disambiguation rule documented in the vault's config.
 - **Don't redirect to a file when `--out` exists.** `vault repair plan --out repair.json` is the file-first form; shell redirection works too but `--out` makes the intent explicit and avoids partial-write footguns.
 - **User-specific vault doctrine lives in `.vault/config.yaml`.** Don't hardcode vault-specific rule names or field shapes in agent prompts; read them from the config.

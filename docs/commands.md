@@ -82,6 +82,14 @@ vault repair plan --code frontmatter-disallowed-value --field status --out repai
 
 The plan has `schema_version`, `vault_root`, `source_filters`, `summary`, `changes`, and `skipped_findings`. See [validation.md](validation.md).
 
+Output formats:
+
+- `--format report` (TTY default) — decision-support summary with counts, skip tally, top affected files, and inline apply guidance.
+- `--format json` (pipe default) — full envelope artifact, the only format `vault repair apply` consumes.
+- `--format paths` — affected document paths, one per line, sorted and deduplicated.
+
+(Note: `--format jsonl` and `--format table` were removed in v0.32; both are rejected with migration messages.)
+
 ## repair apply
 
 Apply a repair plan. Writes by default; pass `--dry-run` to preview.

@@ -13,7 +13,7 @@ use vault_core::Severity;
 use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
 use crate::findings::{Finding, FindingBody};
 
-pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 5;
+pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -30,6 +30,7 @@ pub struct RepairPlanFilters {
     pub path: Vec<String>,
     pub target: Vec<String>,
     pub reason: Vec<String>,
+    pub skip_reason: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub confidence: Option<ConfidenceFilter>,
 }
@@ -37,10 +38,18 @@ pub struct RepairPlanFilters {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SkipReason {
-    /// Finding has no matching deterministic repair rule.
-    Unsupported,
+    /// Frontmatter field is missing and the configured repair rule has no deterministic default.
+    MissingDefault,
+    /// Broken link has no deterministic path/link rewrite; operator must decide.
+    LinkDecisionNeeded,
+    /// Finding has no matching repair rule in the configured rule set.
+    NoRuleMatched,
+    /// Alias collides with an existing doc stem and cannot be safely rewritten.
+    AliasShadowed,
+    /// Graph-derived diagnostic (e.g. dangling reference detected at graph build) without a repair path.
+    GraphDiagnostic,
     /// Link-ambiguous: multiple resolution candidates, manual decision required.
-    Ambiguous,
+    AmbiguousTarget,
     /// Index has no current hash for the finding's path (file removed between
     /// indexing and planning, or path didn't normalize the same way).
     MissingHash,
@@ -50,6 +59,21 @@ pub enum SkipReason {
     PreconditionFailed,
 }
 
+impl SkipReason {
+    pub fn code(self) -> &'static str {
+        match self {
+            SkipReason::MissingDefault => "missing-default",
+            SkipReason::LinkDecisionNeeded => "link-decision-needed",
+            SkipReason::NoRuleMatched => "no-rule-matched",
+            SkipReason::AliasShadowed => "alias-shadowed",
+            SkipReason::GraphDiagnostic => "graph-diagnostic",
+            SkipReason::AmbiguousTarget => "ambiguous-target",
+            SkipReason::MissingHash => "missing-hash",
+            SkipReason::PreconditionFailed => "precondition-failed",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SkippedFinding {
     pub path: Utf8PathBuf,
@@ -57,6 +81,9 @@ pub struct SkippedFinding {
     pub severity: Severity,
     pub message: String,
     pub skip_reason: SkipReason,
+    /// Kebab-case stable identifier for `skip_reason`. Always present in JSON;
+    /// derived from `SkipReason::code()` at construction time.
+    pub reason_code: String,
     pub reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rule: Option<String>,
@@ -70,13 +97,27 @@ pub struct SkippedFinding {
     pub next_actions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SkippedSummary {
-    pub unsupported: usize,
-    pub ambiguous: usize,
-    pub missing_hash: usize,
-    pub precondition_failed: usize,
+    /// Map from reason code (kebab-case) to count. By convention zero-count entries
+    /// are not inserted; `SkippedSummary::from_skipped` guarantees this.
+    pub by_reason: BTreeMap<String, usize>,
     pub total: usize,
+}
+
+impl SkippedSummary {
+    pub fn from_skipped(findings: &[SkippedFinding]) -> Self {
+        let mut by_reason: BTreeMap<String, usize> = BTreeMap::new();
+        for f in findings {
+            *by_reason
+                .entry(f.skip_reason.code().to_string())
+                .or_insert(0) += 1;
+        }
+        SkippedSummary {
+            by_reason,
+            total: findings.len(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -298,7 +339,7 @@ fn handle_closest_match(
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect();
-            let mut skipped = skipped_finding(finding, SkipReason::Ambiguous, None);
+            let mut skipped = skipped_finding(finding, SkipReason::AmbiguousTarget, None);
             skipped.candidates = candidates;
             ClosestMatchOutcome::TiedSkip {
                 skipped: Box::new(skipped),
@@ -370,18 +411,15 @@ pub fn plan_repairs(
                             skipped.push(*tied_skip);
                         }
                         ClosestMatchOutcome::NoMatch => {
-                            skipped.push(skipped_finding(finding, SkipReason::Unsupported, None));
+                            skipped.push(skipped_finding(
+                                finding,
+                                SkipReason::LinkDecisionNeeded,
+                                None,
+                            ));
                         }
                     }
                 } else {
-                    let skip = if matches!(
-                        &finding.body,
-                        FindingBody::LinkIssue { link } if link.status == vault_core::LinkStatus::Ambiguous
-                    ) {
-                        SkipReason::Ambiguous
-                    } else {
-                        SkipReason::Unsupported
-                    };
+                    let skip = skip_reason_for_body(&finding.body);
                     skipped.push(skipped_finding(finding, skip, None));
                 }
             }
@@ -399,25 +437,7 @@ pub fn plan_repairs(
         footnotes.retain(|f| !matches!(f.confidence, Confidence::Medium));
     }
 
-    let skipped_summary = SkippedSummary {
-        unsupported: skipped
-            .iter()
-            .filter(|s| s.skip_reason == SkipReason::Unsupported)
-            .count(),
-        ambiguous: skipped
-            .iter()
-            .filter(|s| s.skip_reason == SkipReason::Ambiguous)
-            .count(),
-        missing_hash: skipped
-            .iter()
-            .filter(|s| s.skip_reason == SkipReason::MissingHash)
-            .count(),
-        precondition_failed: skipped
-            .iter()
-            .filter(|s| s.skip_reason == SkipReason::PreconditionFailed)
-            .count(),
-        total: skipped.len(),
-    };
+    let skipped_summary = SkippedSummary::from_skipped(&skipped);
 
     RepairPlan {
         schema_version: REPAIR_PLAN_SCHEMA_VERSION,
@@ -581,6 +601,26 @@ fn planned_change(
     })
 }
 
+/// Derive the fine-grained `SkipReason` variant from a finding's body.
+/// Used at emit sites that previously emitted the coarse `Unsupported` or `Ambiguous` variants.
+fn skip_reason_for_body(body: &FindingBody) -> SkipReason {
+    match body {
+        FindingBody::LinkIssue { link } if link.status == vault_core::LinkStatus::Ambiguous => {
+            SkipReason::AmbiguousTarget
+        }
+        FindingBody::LinkIssue { .. } => SkipReason::LinkDecisionNeeded,
+        FindingBody::RequiredFrontmatterMissing { .. } => SkipReason::MissingDefault,
+        FindingBody::DisallowedValue { .. }
+        | FindingBody::InvalidFieldType { .. }
+        | FindingBody::ForbiddenField { .. }
+        | FindingBody::DocumentMisrouted { .. }
+        | FindingBody::AliasMalformed { .. }
+        | FindingBody::AliasDuplicateAcrossDocs { .. } => SkipReason::NoRuleMatched,
+        FindingBody::AliasShadowedByStem { .. } => SkipReason::AliasShadowed,
+        FindingBody::GraphDiagnostic { .. } => SkipReason::GraphDiagnostic,
+    }
+}
+
 fn skipped_finding(
     finding: &Finding,
     skip_reason: SkipReason,
@@ -683,6 +723,7 @@ fn skipped_finding(
         severity: finding.severity.clone(),
         message: finding.message.clone(),
         skip_reason,
+        reason_code: skip_reason.code().to_string(),
         reason,
         rule: finding_rule(finding),
         field: finding_field(finding),
@@ -956,7 +997,7 @@ mod tests {
     }
 
     #[test]
-    fn unmatched_finding_routes_to_skipped_with_unsupported_reason() {
+    fn unmatched_finding_routes_to_skipped_with_no_rule_matched_reason() {
         let finding = finding_disallowed_value("task.md", "status", json!("someday"));
         let config = RepairConfig { rules: vec![] };
         let index = index_for(&["task.md"]);
@@ -971,14 +1012,17 @@ mod tests {
         assert_eq!(plan.skipped_findings.len(), 1);
         assert_eq!(
             plan.skipped_findings[0].skip_reason,
-            SkipReason::Unsupported
+            SkipReason::NoRuleMatched
         );
-        assert_eq!(plan.summary.skipped.unsupported, 1);
-        assert_eq!(plan.summary.skipped.ambiguous, 0);
+        assert_eq!(
+            plan.summary.skipped.by_reason.get("no-rule-matched"),
+            Some(&1)
+        );
+        assert_eq!(plan.summary.skipped.by_reason.get("ambiguous-target"), None);
     }
 
     #[test]
-    fn ambiguous_link_finding_routes_to_skipped_with_ambiguous_reason() {
+    fn ambiguous_link_finding_routes_to_skipped_with_ambiguous_target_reason() {
         let finding = finding_link_ambiguous(
             "note.md",
             "Daily",
@@ -994,14 +1038,20 @@ mod tests {
             &index,
         );
         assert_eq!(plan.skipped_findings.len(), 1);
-        assert_eq!(plan.skipped_findings[0].skip_reason, SkipReason::Ambiguous);
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::AmbiguousTarget
+        );
         assert_eq!(plan.skipped_findings[0].candidates.len(), 2);
-        assert_eq!(plan.summary.skipped.ambiguous, 1);
-        assert_eq!(plan.summary.skipped.unsupported, 0);
+        assert_eq!(
+            plan.summary.skipped.by_reason.get("ambiguous-target"),
+            Some(&1)
+        );
+        assert_eq!(plan.summary.skipped.by_reason.get("no-rule-matched"), None);
     }
 
     #[test]
-    fn unresolved_link_finding_routes_to_skipped_with_unsupported_reason() {
+    fn unresolved_link_finding_routes_to_skipped_with_link_decision_needed_reason() {
         let finding = finding_link_unresolved("note.md", "missing");
         let config = RepairConfig { rules: vec![] };
         let index = index_for(&["note.md"]);
@@ -1014,9 +1064,12 @@ mod tests {
         );
         assert_eq!(
             plan.skipped_findings[0].skip_reason,
-            SkipReason::Unsupported
+            SkipReason::LinkDecisionNeeded
         );
-        assert_eq!(plan.summary.skipped.unsupported, 1);
+        assert_eq!(
+            plan.summary.skipped.by_reason.get("link-decision-needed"),
+            Some(&1)
+        );
     }
 
     #[test]
@@ -1051,7 +1104,7 @@ mod tests {
         );
         // The reason text reflects the new clearer message.
         assert!(plan.skipped_findings[0].reason.contains("hash not present"));
-        assert_eq!(plan.summary.skipped.missing_hash, 1);
+        assert_eq!(plan.summary.skipped.by_reason.get("missing-hash"), Some(&1));
     }
 
     fn finding_required_missing(path: &str, field: &str, rule: Option<&str>) -> Finding {
@@ -1101,6 +1154,38 @@ mod tests {
     }
 
     #[test]
+    fn required_missing_no_rule_routes_to_missing_default_skip() {
+        let finding = finding_required_missing("task.md", "kind", Some("typed-note"));
+        // No rules → the planner cannot find a deterministic default for this field.
+        let config = RepairConfig { rules: vec![] };
+        let index = index_for(&["task.md"]);
+        let plan = plan_repairs(
+            vault_root(),
+            RepairPlanFilters::default(),
+            vec![finding],
+            &config,
+            &index,
+        );
+        assert_eq!(plan.changes.len(), 0);
+        assert_eq!(plan.skipped_findings.len(), 1);
+        assert_eq!(
+            plan.skipped_findings[0].skip_reason,
+            SkipReason::MissingDefault
+        );
+        assert!(
+            plan.skipped_findings[0]
+                .reason
+                .contains("missing field has no configured deterministic default"),
+            "unexpected reason text: {}",
+            plan.skipped_findings[0].reason
+        );
+        assert_eq!(
+            plan.summary.skipped.by_reason.get("missing-default"),
+            Some(&1)
+        );
+    }
+
+    #[test]
     fn summary_counts_match_skip_reason_partition() {
         let findings = vec![
             finding_disallowed_value("task1.md", "status", json!("someday")),
@@ -1130,9 +1215,15 @@ mod tests {
         assert_eq!(plan.summary.findings, 3);
         assert_eq!(plan.summary.planned_changes, 1);
         assert_eq!(plan.summary.skipped.total, 2);
-        assert_eq!(plan.summary.skipped.unsupported, 1);
-        assert_eq!(plan.summary.skipped.ambiguous, 1);
-        assert_eq!(plan.summary.skipped.missing_hash, 0);
+        assert_eq!(
+            plan.summary.skipped.by_reason.get("link-decision-needed"),
+            Some(&1)
+        );
+        assert_eq!(
+            plan.summary.skipped.by_reason.get("ambiguous-target"),
+            Some(&1)
+        );
+        assert_eq!(plan.summary.skipped.by_reason.get("missing-hash"), None);
     }
 
     #[test]
@@ -1144,13 +1235,7 @@ mod tests {
             summary: RepairPlanSummary {
                 findings: 1,
                 planned_changes: 1,
-                skipped: SkippedSummary {
-                    unsupported: 0,
-                    ambiguous: 0,
-                    missing_hash: 0,
-                    precondition_failed: 0,
-                    total: 0,
-                },
+                skipped: SkippedSummary::default(),
             },
             changes: vec![PlannedChange {
                 change_id: "abc12345".into(),
@@ -1307,7 +1392,7 @@ mod tests {
         assert_eq!(plan.footnotes.len(), 0);
         assert_eq!(plan.skipped_findings.len(), 1);
         let skipped = &plan.skipped_findings[0];
-        assert_eq!(skipped.skip_reason, SkipReason::Ambiguous);
+        assert_eq!(skipped.skip_reason, SkipReason::AmbiguousTarget);
         assert_eq!(skipped.candidates.len(), 2);
         // Candidates should be the actual doc paths (subdirs preserved), not synthesized.
         assert!(skipped
@@ -1339,7 +1424,7 @@ mod tests {
         assert_eq!(plan.skipped_findings.len(), 1);
         assert_eq!(
             plan.skipped_findings[0].skip_reason,
-            SkipReason::Unsupported
+            SkipReason::LinkDecisionNeeded
         );
     }
 
@@ -1426,7 +1511,7 @@ mod tests {
 
         assert_eq!(plan.skipped_findings.len(), 1);
         let skipped = &plan.skipped_findings[0];
-        assert_eq!(skipped.skip_reason, SkipReason::Ambiguous);
+        assert_eq!(skipped.skip_reason, SkipReason::AmbiguousTarget);
         // Two distinct doc paths, not four.
         assert_eq!(
             skipped.candidates.len(),
@@ -1443,5 +1528,168 @@ mod tests {
             .candidates
             .iter()
             .any(|p| p.as_str() == "b/context.md"));
+    }
+
+    #[test]
+    fn skip_reason_has_eight_variants_with_stable_codes() {
+        use SkipReason::*;
+        let all = [
+            MissingDefault,
+            LinkDecisionNeeded,
+            NoRuleMatched,
+            AliasShadowed,
+            GraphDiagnostic,
+            AmbiguousTarget,
+            MissingHash,
+            PreconditionFailed,
+        ];
+        assert_eq!(all.len(), 8);
+
+        assert_eq!(MissingDefault.code(), "missing-default");
+        assert_eq!(LinkDecisionNeeded.code(), "link-decision-needed");
+        assert_eq!(NoRuleMatched.code(), "no-rule-matched");
+        assert_eq!(AliasShadowed.code(), "alias-shadowed");
+        assert_eq!(GraphDiagnostic.code(), "graph-diagnostic");
+        assert_eq!(AmbiguousTarget.code(), "ambiguous-target");
+        assert_eq!(MissingHash.code(), "missing-hash");
+        assert_eq!(PreconditionFailed.code(), "precondition-failed");
+    }
+
+    #[test]
+    fn skip_reason_round_trips_through_serde_with_snake_case_variants() {
+        let json = serde_json::to_string(&SkipReason::MissingDefault).unwrap();
+        assert_eq!(json, r#""missing_default""#);
+        let back: SkipReason = serde_json::from_str(r#""link_decision_needed""#).unwrap();
+        assert!(matches!(back, SkipReason::LinkDecisionNeeded));
+    }
+
+    #[test]
+    fn repair_plan_schema_version_is_six() {
+        assert_eq!(REPAIR_PLAN_SCHEMA_VERSION, 6);
+    }
+
+    #[test]
+    fn skipped_summary_uses_code_keyed_map() {
+        let mut by_reason = BTreeMap::new();
+        by_reason.insert("missing-default".to_string(), 520);
+        by_reason.insert("link-decision-needed".to_string(), 449);
+        by_reason.insert("ambiguous-target".to_string(), 32);
+        let summary = SkippedSummary {
+            by_reason,
+            total: 1001,
+        };
+
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["total"], 1001);
+        assert_eq!(json["by_reason"]["missing-default"], 520);
+        assert_eq!(json["by_reason"]["link-decision-needed"], 449);
+        assert_eq!(json["by_reason"]["ambiguous-target"], 32);
+        assert!(json["by_reason"].get("missing-hash").is_none()); // zero-count buckets omitted
+    }
+
+    #[test]
+    fn from_skipped_aggregates_codes_and_omits_zero_buckets() {
+        use camino::Utf8PathBuf;
+        let findings = vec![
+            SkippedFinding {
+                path: Utf8PathBuf::from("notes/a.md"),
+                code: "missing-default".to_string(),
+                severity: Severity::Warning,
+                message: "no default value".to_string(),
+                skip_reason: SkipReason::MissingDefault,
+                reason_code: SkipReason::MissingDefault.code().to_string(),
+                reason: "rule has no default".to_string(),
+                rule: None,
+                field: None,
+                target: None,
+                candidates: vec![],
+                next_actions: vec![],
+            },
+            SkippedFinding {
+                path: Utf8PathBuf::from("notes/b.md"),
+                code: "missing-default".to_string(),
+                severity: Severity::Warning,
+                message: "no default value".to_string(),
+                skip_reason: SkipReason::MissingDefault,
+                reason_code: SkipReason::MissingDefault.code().to_string(),
+                reason: "rule has no default".to_string(),
+                rule: None,
+                field: None,
+                target: None,
+                candidates: vec![],
+                next_actions: vec![],
+            },
+            SkippedFinding {
+                path: Utf8PathBuf::from("notes/c.md"),
+                code: "ambiguous-target".to_string(),
+                severity: Severity::Warning,
+                message: "multiple candidates".to_string(),
+                skip_reason: SkipReason::AmbiguousTarget,
+                reason_code: SkipReason::AmbiguousTarget.code().to_string(),
+                reason: "ambiguous link target".to_string(),
+                rule: None,
+                field: None,
+                target: None,
+                candidates: vec![],
+                next_actions: vec![],
+            },
+        ];
+
+        let summary = SkippedSummary::from_skipped(&findings);
+
+        assert_eq!(summary.total, findings.len());
+        assert_eq!(summary.by_reason.get("missing-default"), Some(&2));
+        assert_eq!(summary.by_reason.get("ambiguous-target"), Some(&1));
+        assert!(!summary.by_reason.contains_key("missing-hash"));
+        assert_eq!(summary.by_reason.len(), 2);
+
+        // JSON serialization also has no zero-count keys
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(
+            json["by_reason"].as_object().unwrap().len(),
+            2,
+            "zero-count buckets must not appear in serialized JSON"
+        );
+    }
+
+    #[test]
+    fn skipped_finding_json_has_reason_code() {
+        let f = SkippedFinding {
+            path: "foo.md".into(),
+            code: "frontmatter-required-field-missing".into(),
+            severity: vault_core::Severity::Warning,
+            message: "missing field".into(),
+            skip_reason: SkipReason::MissingDefault,
+            reason_code: SkipReason::MissingDefault.code().to_string(),
+            reason: "missing field has no configured deterministic default".into(),
+            rule: None,
+            field: None,
+            target: None,
+            candidates: vec![],
+            next_actions: vec![],
+        };
+        let json = serde_json::to_value(&f).unwrap();
+        assert_eq!(json["reason_code"], "missing-default");
+        assert_eq!(
+            json["reason"],
+            "missing field has no configured deterministic default"
+        );
+        // Both fields present — reason kept for backwards-compat
+    }
+
+    #[test]
+    fn repair_plan_filters_has_skip_reason_field() {
+        let filters = RepairPlanFilters {
+            skip_reason: vec!["missing-default".into(), "ambiguous-*".into()],
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&filters).unwrap();
+        assert_eq!(json["skip_reason"][0], "missing-default");
+        assert_eq!(json["skip_reason"][1], "ambiguous-*");
+
+        // Default = empty vec
+        let default = RepairPlanFilters::default();
+        let default_json = serde_json::to_value(&default).unwrap();
+        assert_eq!(default_json["skip_reason"], serde_json::json!([]));
     }
 }

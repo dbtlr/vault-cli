@@ -18,7 +18,7 @@ Use `vault` when you need to:
 - Validate a vault against configured rules (`required_frontmatter`, `field_types`, `allowed_values`, `allowed_paths`, etc.).
 - Audit unresolved or ambiguous links.
 - Surface frontmatter drift for review.
-- Produce an inspectable repair plan (`schema_version: 5`) and apply it explicitly.
+- Produce an inspectable repair plan (`schema_version: 6`) and apply it explicitly.
 
 Do not use `vault` when you need full-text or semantic search — its `find` command is exact literal substring + frontmatter + path glob.
 
@@ -61,6 +61,8 @@ The same filter set works for raw output and summaries.
 
 Use `--format json` for one-shot agent dispatch (single JSON document). Use `--format jsonl` for streaming queues (one JSON object per line). Records output is for humans and may evolve between point releases — never parse it.
 
+> **Note for `vault repair plan`:** The repair plan format set is separate from validate. Use `--format json` (machine, full envelope), `--format report` (human-readable summary, TTY default), or `--format paths` (one affected path per line, for `xargs`-style pipelines). `--format jsonl` is not supported for repair plan.
+
 Findings come back wrapped as `{"total": N, "findings": [...]}`; iterate `.findings` for individual entries.
 
 Finding codes are stable. Renames are called out as breaking changes in the project's CHANGELOG.
@@ -98,7 +100,7 @@ If a vault has no config, defaults apply.
 Mutation is always two steps. Never write to the vault outside `vault repair apply`.
 
 1. `vault -C /path/to/vault repair plan --out repair.json`
-2. Inspect `repair.json`. Read `summary.planned_changes` and `summary.skipped.*` counts.
+2. Inspect `repair.json`. Read `summary.planned_changes` count and `summary.skipped.by_reason` map for skip tallies.
 3. `vault -C /path/to/vault repair apply repair.json --dry-run --format json` — confirms the plan applies cleanly.
 4. `vault -C /path/to/vault repair apply repair.json --verify --format json` — writes and re-validates.
 
@@ -106,7 +108,7 @@ Apply rejects:
 
 - Plans for a different vault root than the current invocation.
 - Stale document hashes (a file changed since the plan was created).
-- Unsupported schema versions (currently `5`).
+- Unsupported schema versions (currently `6`).
 - Conflicting field changes.
 - Expected-old-value mismatches.
 
@@ -132,13 +134,17 @@ For `link-target-missing` findings, `vault repair plan` proposes closest-match `
 
 - **High-confidence** proposals: slug-normalized identity match (case, whitespace, hyphen/underscore variants). Safe to apply without review.
 - **Medium-confidence** proposals: small residual edit distance (Levenshtein ratio ≥ 0.7). Review recommended before applying.
-- **Ties** (multiple equally-close candidates): skipped with `SkipReason::Ambiguous`; the candidate list is populated for human review.
+- **Ties** (multiple equally-close candidates): skipped with `reason_code: "ambiguous-target"` (Rust-side: `SkipReason::AmbiguousTarget`); the candidate list is populated for human review.
 
 Use `--confidence high` to filter the plan to only high-confidence proposals (drops medium proposals and their footnotes). Default emits all confidence bands.
 
+Use `--skip-reason <PATTERN>` to filter the `skipped_findings` list by stable reason code. Useful for triage: `--skip-reason 'link-*'` shows only link-related skips; `--skip-reason ambiguous-target` isolates multi-candidate ties. Glob patterns accepted. Repeatable. Does not affect planned changes.
+
+Stable reason codes: `missing-default`, `link-decision-needed`, `no-rule-matched`, `alias-shadowed`, `graph-diagnostic`, `ambiguous-target`, `missing-hash`, `precondition-failed`.
+
 ### Plan footnotes
 
-Repair plans (schema v5) carry a `footnotes` array alongside `changes`. Footnotes are read-only commentary — `repair apply` ignores them entirely; they exist for LLM/operator consumers to reason about proposal quality. Each footnote for a closest-match rewrite carries:
+Repair plans (schema v6) carry a `footnotes` array alongside `changes`. Footnotes are read-only commentary — `repair apply` ignores them entirely; they exist for LLM/operator consumers to reason about proposal quality. Each footnote for a closest-match rewrite carries:
 
 - `change_id` — references the corresponding change.
 - `confidence` — `high` or `medium`.
@@ -188,7 +194,7 @@ The cache is disposable — missing or corrupted caches rebuild silently. Don't 
 - **Honor schema versions.** Repair plans declare `schema_version`. Apply rejects mismatched versions; re-plan instead of editing the artifact.
 - **Don't auto-pick ambiguous link candidates.** `link-ambiguous` findings carry a `candidates` list, but the CLI does not resolve them. Surface the ambiguity to the human or apply a deterministic disambiguation rule documented in the vault's config.
 - **Use `--out` for plan artifacts.** `vault repair plan --out repair.json` writes the plan directly. Shell redirection (`> repair.json`) works but is more prone to partial-write footguns.
-- **Don't parse records output.** Records are for humans. Always pass `--format json` or `--format jsonl` from an agent context.
+- **Don't parse records output.** Records are for humans. For `vault validate`, pass `--format json` or `--format jsonl` from an agent context. For `vault repair plan`, pass `--format json` (full envelope) or `--format paths` (path list).
 - **Run `--summary` first.** It's cheaper than a full finding stream and tells you whether a more expensive query is worth running.
 
 ## Shell completions

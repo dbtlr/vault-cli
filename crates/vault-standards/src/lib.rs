@@ -22,7 +22,8 @@ pub use findings::{Finding, FindingBody};
 pub use repair::link_risk::{classify as classify_link_risk, AffectedLink, LinkRisk};
 pub use repair::warnings::{detect_stem_collision, PlanWarning};
 pub use repair::{
-    plan_repairs, ConfidenceFilter, PlannedChange, RepairPlan, RepairPlanFilters,
-    RepairPlanSummary, SkipReason, SkippedFinding, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
+    plan_repairs, Confidence, ConfidenceFilter, PlanFootnote, PlannedChange, RepairPlan,
+    RepairPlanFilters, RepairPlanSummary, SkipReason, SkippedFinding, SkippedSummary,
+    REPAIR_PLAN_SCHEMA_VERSION,
 };
 pub use summary::{summarize, Summary};

@@ -15,14 +15,32 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 - **`vault files` removed.** No documented user story; "Files" demoted from a first-class graph concept to an internal walker step. Broken attachment references continue to surface via `vault validate`'s `link-target-missing` finding.
 - **`vault validate` records output now follows the norn-cli-output spec.** Status headline → severity tally → grouped tallies (`--summary`) or per-finding blocks with fix hints (default). `--format table` is no longer supported; use `--format records` (default on a TTY) or `--format json`/`jsonl`/`paths` for machine consumers. Default piped format is now `jsonl` (validate has no natural `paths` representation).
 - **`vault validate --format json` output is now wrapped in `{"total": N, "findings": [...]}`** (matches norn-cli-output §5.3). Consumers reading the old bare-array shape must navigate to `.findings`.
+- **`vault repair plan --format jsonl` removed.** Previously broken (emitted the entire envelope as a single line). Use `--format json` for piping to `vault repair apply`. The command now emits an explicit migration error when `--format jsonl` is supplied.
+- **`vault repair plan --format table` removed.** The new TTY default is `--format report`: a decision-support summary with counts, skip tally, top affected files, and inline apply guidance. `--format table` rejected with a migration error.
+- **`SkipReason` enum extended with fine-grained variants.** The coarse `Unsupported` and `Ambiguous` variants are replaced by `MissingDefault`, `LinkDecisionNeeded`, `NoRuleMatched`, `AliasShadowed`, `GraphDiagnostic`, and `AmbiguousTarget`. JSON consumers see snake_case identifiers in `skip_reason` (`missing_default`, `link_decision_needed`, `no_rule_matched`, `alias_shadowed`, `graph_diagnostic`, `ambiguous_target`, `missing_hash`, `precondition_failed`). A parallel `reason_code` field on each skipped finding carries the kebab-case stable identifier (`missing-default`, ...) — agents typically want `reason_code` since it matches the `--skip-reason` flag input.
+- **`SkippedSummary` reshaped** from named per-variant fields (`unsupported`, `ambiguous`, ...) to `{ by_reason: { code: count, ... }, total }`. Zero-count buckets are omitted.
+
+  Migration:
+  - `summary.skipped.unsupported` → fans out into one or more of `summary.skipped.by_reason["missing-default"]`, `["link-decision-needed"]`, `["no-rule-matched"]`, `["alias-shadowed"]`, `["graph-diagnostic"]` depending on the finding kind.
+  - `summary.skipped.ambiguous` → `summary.skipped.by_reason["ambiguous-target"]`
+  - `summary.skipped.missing_hash` → `summary.skipped.by_reason["missing-hash"]`
+  - `summary.skipped.precondition_failed` → `summary.skipped.by_reason["precondition-failed"]`
+  - Zero-count buckets are omitted from `by_reason` (use `.get("<code>").unwrap_or(&0)` for safe access).
+- **`repair_plan_schema_version` bumped 5 → 6** covering all of the above.
 
 ### Added
 
 - New `cli::ValidateFormat { Records, Json, Jsonl, Paths }`; default honors `isatty` (Records on TTY, Jsonl piped).
+- `vault repair plan --skip-reason <PATTERN>` filter narrows `skipped_findings` by stable reason code (`missing-default`, `link-decision-needed`, `no-rule-matched`, `alias-shadowed`, `graph-diagnostic`, `ambiguous-target`, `missing-hash`, `precondition-failed`). Glob patterns accepted (`'link-*'`). Does NOT narrow planned changes — skip-reason is a skip-tier filter only.
+- `vault repair plan --format paths` emits affected document paths (one per line, sorted, deduplicated) for `xargs`-style pipelines. Respects all filters.
+- `vault repair plan --format report` (new TTY default) produces a decision-support summary with counts, confidence breakdown, skipped tally, top-5 affected files, and filter-aware apply guidance.
+- `reason_code` field on each `skipped_findings[]` entry in JSON output, derived from `SkipReason::code()`.
+- `skip_reason` array in JSON `source_filters` echoes the operator's `--skip-reason` input.
 
 ### Changed
 
 - `vault validate --format paths` continues to emit unique sorted paths of documents that have findings.
+- `vault repair plan` piped default flips from JSON-via-default-clap-value to TTY-detected: report when stdout is a terminal, JSON when piped.
 
 ### Fixed
 

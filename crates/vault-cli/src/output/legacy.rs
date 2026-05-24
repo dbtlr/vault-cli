@@ -7,7 +7,6 @@ use std::io::{self, Write};
 use anyhow::{bail, Result};
 use serde::Serialize;
 use serde_json::Value;
-use vault_standards::RepairPlan;
 
 use crate::cli::OutputFormat;
 use crate::link_repair::LinkRepairReport;
@@ -28,90 +27,6 @@ pub fn write_item_output<T: Serialize>(item: &T, format: OutputFormat) -> Result
         OutputFormat::Paths => bail!("paths format is not supported for this command"),
     }
     Ok(())
-}
-
-pub fn write_repair_plan(plan: &RepairPlan, format: OutputFormat) -> Result<()> {
-    match format {
-        OutputFormat::Json | OutputFormat::Jsonl => write_item_output(plan, format),
-        OutputFormat::Paths => bail!("paths format is not supported for repair plans"),
-        OutputFormat::Table => {
-            let summary = vec![
-                vec!["findings".to_string(), plan.summary.findings.to_string()],
-                vec![
-                    "planned_changes".to_string(),
-                    plan.summary.planned_changes.to_string(),
-                ],
-                vec![
-                    "skipped/unsupported".to_string(),
-                    plan.summary.skipped.unsupported.to_string(),
-                ],
-                vec![
-                    "skipped/ambiguous".to_string(),
-                    plan.summary.skipped.ambiguous.to_string(),
-                ],
-                vec![
-                    "skipped/missing_hash".to_string(),
-                    plan.summary.skipped.missing_hash.to_string(),
-                ],
-                vec![
-                    "skipped/precondition_failed".to_string(),
-                    plan.summary.skipped.precondition_failed.to_string(),
-                ],
-                vec![
-                    "skipped/total".to_string(),
-                    plan.summary.skipped.total.to_string(),
-                ],
-            ];
-            write_table(&["metric", "count"], &summary)?;
-            if !plan.changes.is_empty() {
-                write_blank_line()?;
-                let rows = plan
-                    .changes
-                    .iter()
-                    .map(|change| {
-                        vec![
-                            change.path.to_string(),
-                            change.operation.clone(),
-                            change.field.clone().unwrap_or_default(),
-                            change
-                                .expected_old_value
-                                .as_ref()
-                                .map(display_value)
-                                .unwrap_or_default(),
-                            change
-                                .new_value
-                                .as_ref()
-                                .map(display_value)
-                                .unwrap_or_default(),
-                            change.repair_rule.clone(),
-                        ]
-                    })
-                    .collect::<Vec<_>>();
-                write_table(
-                    &["path", "operation", "field", "old", "new", "repair_rule"],
-                    &rows,
-                )?;
-            }
-            if !plan.skipped_findings.is_empty() {
-                write_blank_line()?;
-                let rows = plan
-                    .skipped_findings
-                    .iter()
-                    .map(|finding| {
-                        vec![
-                            finding.path.to_string(),
-                            finding.code.clone(),
-                            finding.field.clone().unwrap_or_default(),
-                            finding.target.clone().unwrap_or_default(),
-                            finding.reason.clone(),
-                        ]
-                    })
-                    .collect::<Vec<_>>();
-                write_table(&["path", "code", "field", "target", "reason"], &rows)?;
-            }
-            Ok(())
-        }
-    }
 }
 
 pub fn write_link_repair_report(report: &LinkRepairReport, format: OutputFormat) -> Result<()> {
@@ -207,22 +122,6 @@ pub fn write_repair_apply_report(report: &RepairApplyReport, format: OutputForma
                         .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(","),
-                ],
-                vec![
-                    "skipped/unsupported".to_string(),
-                    report.plan_context.skipped.unsupported.to_string(),
-                ],
-                vec![
-                    "skipped/ambiguous".to_string(),
-                    report.plan_context.skipped.ambiguous.to_string(),
-                ],
-                vec![
-                    "skipped/missing_hash".to_string(),
-                    report.plan_context.skipped.missing_hash.to_string(),
-                ],
-                vec![
-                    "skipped/precondition_failed".to_string(),
-                    report.plan_context.skipped.precondition_failed.to_string(),
                 ],
                 vec![
                     "skipped/total".to_string(),

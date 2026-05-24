@@ -16,7 +16,7 @@
 
 - `vault validate` and `vault docs|links|files|find` are read-only.
 - Repair flows are explicit: `vault repair plan` produces an artifact; `vault repair apply` consumes it.
-- Stable contracts: JSON for human/dispatch, JSONL for streams, schema-versioned repair plans (`schema_version: 4`).
+- Stable contracts: JSON for human/dispatch, JSONL for streams, schema-versioned repair plans (`schema_version: 6`).
 - Apply rejects plans for a different vault root, stale document hashes, or unsupported schema versions.
 
 ## Quick start for agents

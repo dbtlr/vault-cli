@@ -644,13 +644,7 @@ mod tests {
             summary: RepairPlanSummary {
                 findings: 0,
                 planned_changes: 0,
-                skipped: SkippedSummary {
-                    unsupported: 0,
-                    ambiguous: 0,
-                    missing_hash: 0,
-                    precondition_failed: 0,
-                    total: 0,
-                },
+                skipped: SkippedSummary::default(),
             },
             changes: vec![],
             skipped_findings: vec![],

@@ -189,7 +189,7 @@ pub enum RepairSubcommand {
     #[command(
         disable_help_flag = true,
         about = "Generate an explicit repair plan from validation findings",
-        long_about = "Generate an explicit repair plan from validation findings.\n\nRepair planning is read-only. It uses configured deterministic repair rules to produce applyable changes, and reports skipped, unsupported, and ambiguous findings as non-blocking planning fallout."
+        long_about = "Generate an explicit repair plan from validation findings.\n\nRepair planning is read-only. It uses configured deterministic repair rules to produce applyable changes, and reports skipped findings as non-blocking planning fallout, categorized by reason code (missing-default, link-decision-needed, no-rule-matched, alias-shadowed, graph-diagnostic, ambiguous-target, missing-hash, precondition-failed).\n\nOutput formats: `report` (human summary, TTY default), `json` (full envelope, pipe default), `paths` (one affected path per line). Use `--skip-reason <PATTERN>` to filter skipped findings by reason code; glob patterns accepted."
     )]
     Plan(RepairPlanArgs),
     #[command(
@@ -282,8 +282,12 @@ pub struct ValidateTriageArgs {
 
 #[derive(Debug, Parser)]
 pub struct RepairPlanArgs {
-    #[arg(long, value_enum, default_value_t = RepairOutputFormat::Json, help = "Stdout format")]
-    pub format: RepairOutputFormat,
+    #[arg(
+        long,
+        value_parser = parse_repair_plan_format,
+        help = "Output format (default: report when TTY, json when piped)"
+    )]
+    pub format: Option<RepairPlanFormat>,
     #[arg(
         long,
         help = "Write the JSON repair plan artifact to this path instead of stdout"
@@ -293,6 +297,12 @@ pub struct RepairPlanArgs {
     /// Default: emit all bands. `high` drops Medium proposals (and their footnotes).
     #[arg(long, value_enum)]
     pub confidence: Option<ConfidenceArg>,
+    #[arg(
+        long = "skip-reason",
+        value_name = "PATTERN",
+        help = "Filter skipped findings by reason code; glob patterns accepted (repeatable)"
+    )]
+    pub skip_reason: Vec<String>,
     #[command(flatten)]
     pub triage: ValidateTriageArgs,
 }
@@ -651,6 +661,28 @@ pub enum RepairOutputFormat {
     Json,
     Jsonl,
     Table,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepairPlanFormat {
+    /// Decision-support report for human review. Default for TTY.
+    Report,
+    /// Full JSON envelope. Default when piped. Required for `vault repair apply` consumers.
+    Json,
+    /// Affected document paths, one per line, sorted and deduplicated.
+    Paths,
+}
+
+fn parse_repair_plan_format(s: &str) -> Result<RepairPlanFormat, String> {
+    // Returns the suffix only — clap wraps with "invalid value '<v>' for '--format <FORMAT>': ".
+    match s {
+        "report" => Ok(RepairPlanFormat::Report),
+        "json" => Ok(RepairPlanFormat::Json),
+        "paths" => Ok(RepairPlanFormat::Paths),
+        "jsonl" => Err("jsonl was removed — use --format json".into()),
+        "table" => Err("table was removed — use --format report".into()),
+        _ => Err("possible values: report, json, paths".into()),
+    }
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
