@@ -400,29 +400,6 @@ fn document_by_path_missing_returns_none() {
 }
 
 #[test]
-fn files_returns_full_inventory_including_markdown() {
-    let tmp = TempDir::new().unwrap();
-    let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
-        .unwrap()
-        .join("vault");
-    std::fs::create_dir(root.as_std_path()).unwrap();
-    std::fs::write(root.join("doc.md").as_std_path(), "body\n").unwrap();
-    std::fs::write(root.join("image.png").as_std_path(), b"png-bytes").unwrap();
-    std::fs::write(root.join("notes.txt").as_std_path(), "plain\n").unwrap();
-    let mut cache = Cache::open(&root).unwrap();
-    cache.rebuild(&root).unwrap();
-
-    let files = cache.files().unwrap();
-    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
-
-    // All vault files appear in `index.files` and therefore in cache.files() —
-    // matches v1's `vault files` output. See graph_files_jsonl_contract test.
-    assert!(paths.contains(&"image.png"));
-    assert!(paths.contains(&"notes.txt"));
-    assert!(paths.contains(&"doc.md"));
-}
-
-#[test]
 fn has_diagnostic_errors_false_for_clean_vault() {
     let (_tmp, root) = synth_vault();
     let cache = populate_cache(&root);
