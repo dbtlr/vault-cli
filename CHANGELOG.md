@@ -10,6 +10,10 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+## v0.32.0 - 2026-05-25
+
+The renderer-port + mutation-surface release. Two coordinated arcs ship together. (1) The `output::legacy` cleanup that began at v0.27 closes: `vault validate`, `vault repair plan`, and `vault repair apply` all port onto `output::primitives` with new TTY-as-summary shapes, JSON envelopes (`{ total, findings }`, `{ ... + applied }`), and orthogonal `--out` / `--format` streams; the `legacy.rs` module itself goes away with the last renderer. (2) A new document mutation surface lands — `vault get` (renamed from `vault show`), `vault move`, and `vault delete` — replacing `vault repair links` and giving operators a CRUD-shaped surface for working with vault documents without touching the filesystem directly. Both `move` and `delete` are safe-by-default (TTY interactive confirm; non-TTY implicit dry-run; `--yes` to mutate; `--dry-run` to preview-and-exit; `--format json` is non-interactive). Along the way: `vault files` retired (orphan command with no operator use case), `repair_plan_schema_version` bumps twice (5 → 6 for SkipReason taxonomy + plan/apply orthogonality; 6 → 7 for the `force` field on `PlannedChange`), and the long-running pre-port `output::legacy` arc closes. 812 → 865 tests.
+
 ### Breaking changes
 
 - **`vault repair links` removed.** Move/delete impact analysis now lives in `vault move <SRC> <DST> --dry-run` and `vault delete <DOC> --dry-run`. Global broken-link/ambiguous-link enumeration is in `vault validate --code 'link-*'` (since v0.30). Duplicate-stem and path-style-Markdown-link reports retired with no replacement.
@@ -32,6 +36,7 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 - **`vault repair apply --format jsonl` and `--format table` removed.** Use `--format report` (TTY summary) or `--format json` (full envelope). Both retired values are rejected with explicit migration messages.
 - **`vault repair plan --out` and `--format` are now orthogonal streams.** Previously `--out` short-circuited stdout entirely (any `--format` was silently ignored when `--out` was set). New behavior: `--out` always writes JSON to the file; `--format` independently governs stdout. When only `--out` is set, stdout stays silent (matches the prior default). When both are set, both streams are honored.
 - **`vault repair apply <PLAN>` positional is now optional.** When absent or `-`, the plan is read from stdin. Enables the pipeline form `vault repair plan --format json | vault repair apply`.
+- **`repair_plan_schema_version` bumped 6 → 7** (additive). New `force: bool` field on `PlannedChange` carries the `vault move --force` semantic through the orchestrator. Existing v6 plans still apply correctly — `force` defaults to `false` and skips serialization when false.
 
 ### Added
 
