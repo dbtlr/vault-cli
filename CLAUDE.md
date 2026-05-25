@@ -10,18 +10,19 @@ Drew named this during the `vault find` brainstorm: *"prevent agent piping and t
 
 ## Per-task verification (Rust workspace)
 
-CI runs `cargo test --workspace --locked`. The per-task verification step must include ALL four of these — gaps here have failed CI twice in two sessions:
+CI runs `cargo test --workspace --locked`. The per-task verification step must include ALL four of these — gaps here have failed CI multiple times. **Order matters**: run the `--locked` check FIRST so any `Cargo.lock` drift surfaces before the non-locked test command masks it by silently regenerating the lockfile.
 
 ```
+cargo check --workspace --locked
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
-cargo check --workspace --locked
+git status --short   # Cargo.lock should NOT show as modified
 ```
 
-The last one catches `Cargo.lock` drift after adding workspace deps (locally `cargo build` updates the lockfile silently; CI rejects with `--locked`). The fmt-check belongs in verification even when clippy is clean (fmt and clippy enforce different rules).
+The first command catches `Cargo.lock` drift (locally `cargo build` and `cargo test` regenerate the lockfile silently; CI rejects with `--locked`). The trailing `git status` is a belt-and-suspenders check — if anything in the quartet still regenerated the lockfile (rare but possible on dep-tree shifts during rebase), `Cargo.lock` shows as modified and you commit the regeneration as part of the change. The fmt-check belongs in verification even when clippy is clean (fmt and clippy enforce different rules).
 
-For subagent dispatch prompts, include all four explicitly. Don't trust the implementer's verbal "tests pass" — ask for the raw `cargo test --workspace 2>&1 | grep "test result"` lines and have the spec reviewer independently re-grep and sum.
+For subagent dispatch prompts, include all five explicitly. Don't trust the implementer's verbal "tests pass" — ask for the raw `cargo test --workspace 2>&1 | grep "test result"` lines and have the spec reviewer independently re-grep and sum.
 
 ## Design framing for command redesigns
 
