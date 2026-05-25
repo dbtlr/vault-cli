@@ -8,6 +8,7 @@ pub mod manifest;
 pub mod receipt;
 pub mod render;
 pub mod resolve;
+pub mod swap;
 
 use serde::Serialize;
 
