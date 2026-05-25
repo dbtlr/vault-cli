@@ -13,7 +13,7 @@ use vault_core::Severity;
 use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
 use crate::findings::{Finding, FindingBody};
 
-pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 7;
+pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1574,8 +1574,8 @@ mod tests {
     }
 
     #[test]
-    fn repair_plan_schema_version_is_seven() {
-        assert_eq!(REPAIR_PLAN_SCHEMA_VERSION, 7);
+    fn repair_plan_schema_version_is_eight() {
+        assert_eq!(REPAIR_PLAN_SCHEMA_VERSION, 8);
     }
 
     #[test]
