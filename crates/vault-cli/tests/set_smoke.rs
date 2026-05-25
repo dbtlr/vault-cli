@@ -150,13 +150,14 @@ fn set_refuses_field_json_with_malformed_json() {
 // === Task 6.3: combined ops + body change ===
 
 #[test]
-fn set_applies_combined_field_remove_and_body_atomically() {
-    // NOTE: --push is excluded here because the minimal-edit writer currently
-    // supports only scalar values; array-producing ops (push/pop) fail at
-    // apply time. This tests the scalar-field + remove + body-replace path.
+fn set_applies_combined_field_push_remove_and_body_atomically() {
     let tmp = fixture_tempdir();
     let doc = tmp.path().join("note.md");
-    fs::write(&doc, "---\nstatus: draft\npriority: high\n---\nold body\n").unwrap();
+    fs::write(
+        &doc,
+        "---\nstatus: draft\naliases:\n  - old\npriority: high\n---\nold body\n",
+    )
+    .unwrap();
 
     let mut child = Command::new(vault_bin())
         .args([
@@ -166,6 +167,8 @@ fn set_applies_combined_field_remove_and_body_atomically() {
             "note.md",
             "--field",
             "status=active",
+            "--push",
+            "aliases=new",
             "--remove",
             "priority",
             "--body-from-stdin",
@@ -196,6 +199,14 @@ fn set_applies_combined_field_remove_and_body_atomically() {
     assert!(
         final_content.contains("status: active"),
         "status should be active: {final_content}"
+    );
+    assert!(
+        final_content.contains("- new"),
+        "new alias should be present: {final_content}"
+    );
+    assert!(
+        final_content.contains("- old"),
+        "old alias should still be present: {final_content}"
     );
     assert!(
         !final_content.contains("priority"),
@@ -257,18 +268,53 @@ fn set_body_from_stdin_matching_existing_body_is_noop_write() {
     assert_eq!(json["body_changed"], false);
 }
 
-/// --push synthesizes the correct array-append plan but the minimal-edit
-/// writer (which is scalar-only) cannot apply array-valued changes. This test
-/// documents the known limitation: --push currently fails at apply time with a
-/// descriptive error rather than silently corrupting data.
-///
-/// KNOWN LIMITATION: The apply writer needs to be extended to support
-/// array-valued set_frontmatter / add_frontmatter for --push to work end-to-end.
 #[test]
-fn set_push_on_existing_array_fails_at_apply_with_writer_limitation() {
+fn set_push_accumulates_on_existing_block_array() {
     let tmp = fixture_tempdir();
     let doc = tmp.path().join("note.md");
-    // Flow-sequence or block-sequence — both fail; writer is scalar-only.
+    fs::write(&doc, "---\naliases:\n  - existing\n---\nbody\n").unwrap();
+
+    let output = Command::new(vault_bin())
+        .args([
+            "--cwd",
+            tmp.path().to_str().unwrap(),
+            "set",
+            "note.md",
+            "--push",
+            "aliases=new-a",
+            "--push",
+            "aliases=new-b",
+            "--yes",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let final_content = fs::read_to_string(&doc).unwrap();
+    assert!(
+        final_content.contains("- existing"),
+        "original item preserved: {final_content}"
+    );
+    assert!(
+        final_content.contains("- new-a"),
+        "new-a pushed: {final_content}"
+    );
+    assert!(
+        final_content.contains("- new-b"),
+        "new-b pushed: {final_content}"
+    );
+}
+
+#[test]
+fn set_push_accumulates_on_existing_flow_array() {
+    let tmp = fixture_tempdir();
+    let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\naliases: [existing]\n---\nbody\n").unwrap();
 
     let output = Command::new(vault_bin())
@@ -280,19 +326,62 @@ fn set_push_on_existing_array_fails_at_apply_with_writer_limitation() {
             "--push",
             "aliases=new-a",
             "--yes",
+            "--format",
+            "json",
         ])
         .output()
         .unwrap();
-    // Expect non-zero: minimal-edit writer rejects array-valued operations.
     assert!(
-        !output.status.success(),
-        "expected failure from writer limitation; got success. stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    let final_content = fs::read_to_string(&doc).unwrap();
     assert!(
-        stderr.contains("minimal-edit") || stderr.contains("scalar") || stderr.contains("array"),
-        "expected writer-limitation error in stderr, got: {stderr}"
+        final_content.contains("existing"),
+        "original item preserved: {final_content}"
+    );
+    assert!(
+        final_content.contains("new-a"),
+        "new-a pushed: {final_content}"
+    );
+}
+
+#[test]
+fn set_push_creates_new_array_when_field_absent() {
+    let tmp = fixture_tempdir();
+    let doc = tmp.path().join("note.md");
+    fs::write(&doc, "---\nstatus: draft\n---\nbody\n").unwrap();
+
+    let output = Command::new(vault_bin())
+        .args([
+            "--cwd",
+            tmp.path().to_str().unwrap(),
+            "set",
+            "note.md",
+            "--push",
+            "aliases=first",
+            "--yes",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let final_content = fs::read_to_string(&doc).unwrap();
+    assert!(
+        final_content.contains("aliases:"),
+        "aliases key inserted: {final_content}"
+    );
+    assert!(
+        final_content.contains("- first"),
+        "first item present: {final_content}"
     );
 }
 
