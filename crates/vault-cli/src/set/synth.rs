@@ -27,6 +27,19 @@ pub fn resolve_target(cache: &Cache, raw: &str) -> Result<Utf8PathBuf> {
     }
 }
 
+/// Split `KEY=VALUE` at the first `=`. Returns Err on missing `=` or empty KEY.
+/// VALUE may contain additional `=` characters (preserved verbatim).
+#[allow(dead_code)] // wired in during Task 2.6 (plan synthesis)
+pub fn parse_kv(raw: &str) -> Result<(String, String)> {
+    let (k, v) = raw
+        .split_once('=')
+        .ok_or_else(|| anyhow!("expected KEY=VALUE, got: {raw}"))?;
+    if k.is_empty() {
+        bail!("KEY cannot be empty in: {raw}");
+    }
+    Ok((k.to_string(), v.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +126,29 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("ambiguous"));
         assert!(err.contains("a/shared.md") || err.contains("b/shared.md"));
+    }
+
+    #[test]
+    fn parse_kv_splits_at_first_equals() {
+        let (k, v) = parse_kv("status=active").expect("should split");
+        assert_eq!(k, "status");
+        assert_eq!(v, "active");
+    }
+
+    #[test]
+    fn parse_kv_keeps_equals_in_value() {
+        let (k, v) = parse_kv("note=key=value=embedded").expect("should split");
+        assert_eq!(k, "note");
+        assert_eq!(v, "key=value=embedded");
+    }
+
+    #[test]
+    fn parse_kv_rejects_missing_equals() {
+        assert!(parse_kv("statusonly").is_err());
+    }
+
+    #[test]
+    fn parse_kv_rejects_empty_key() {
+        assert!(parse_kv("=value").is_err());
     }
 }
