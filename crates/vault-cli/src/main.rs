@@ -626,19 +626,26 @@ fn run_self_update_command(args: cli::SelfUpdateArgs, color: cli::ColorWhen) -> 
         }
         Err(err) => {
             let exit = self_update::classify_exit(&err);
-            if exit == 2 {
-                let msg = format!("{err:#}");
-                if msg.contains("no_receipt") {
-                    eprintln!("{}", self_update::BLOCK_MESSAGE);
-                } else {
-                    eprintln!("{err:#}");
-                }
+            let msg = format!("{err:#}");
+            if exit == 2 && msg.contains("no_receipt") {
+                eprintln!("{}", self_update::BLOCK_MESSAGE);
             } else {
-                eprintln!("{err:#}");
+                // Strip the internal `BLOCK::<kind>: ` routing prefix from the
+                // user-visible message — it exists for classify_exit, not the
+                // human reading stderr.
+                let display = strip_block_prefix(&msg);
+                eprintln!("{display}");
             }
             Ok(exit)
         }
     }
+}
+
+fn strip_block_prefix(msg: &str) -> &str {
+    let Some(rest) = msg.strip_prefix("BLOCK::") else {
+        return msg;
+    };
+    rest.split_once(": ").map(|(_, tail)| tail).unwrap_or(rest)
 }
 
 fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
