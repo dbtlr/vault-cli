@@ -416,6 +416,198 @@ pub fn synth_frontmatter_ops_typed(
     Ok(changes)
 }
 
+// ── Phase 5: preflight_and_plan ─────────────────────────────────────────────
+
+/// Outcome of a successful preflight: a ready-to-apply RepairPlan plus metadata
+/// needed for rendering (warnings, body-change sizing).
+pub struct PreflightOutcome {
+    pub plan: vault_standards::RepairPlan,
+    pub warnings: Vec<crate::set::validate::SetWarning>,
+    pub target: camino::Utf8PathBuf,
+    pub body_changed: bool,
+    pub body_bytes_new: Option<usize>,
+    pub body_bytes_old: usize,
+}
+
+/// End-to-end plan synthesis for `vault set`:
+/// resolve target → load doc → optionally read stdin → schema-aware synth →
+/// wikilink resolution sweep → optional body op → stamp path/hash → wrap
+/// into a RepairPlan.
+pub fn preflight_and_plan(
+    cwd: &camino::Utf8Path,
+    cache: &vault_cache::Cache,
+    index: &vault_core::GraphIndex,
+    cfg: &vault_standards::VaultConfig,
+    args: &crate::cli::SetArgs,
+) -> anyhow::Result<PreflightOutcome> {
+    use std::io::Read as _;
+
+    // 1. Resolve target.
+    let target_path = resolve_target(cache, &args.target)?;
+    let full_path = cwd.join(&target_path);
+
+    // 2. Load doc content.
+    let content = std::fs::read_to_string(full_path.as_std_path())
+        .map_err(|e| anyhow::anyhow!("failed to read {full_path}: {e}"))?;
+
+    // 3. Parse frontmatter + body.
+    let (current_fm, current_body) = parse_doc(&content)?;
+    let current_body_len = current_body.len();
+
+    // 4. Read stdin if --body-from-stdin.
+    let new_body: Option<String> = if args.body_from_stdin {
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_to_string(&mut buf)
+            .map_err(|e| anyhow::anyhow!("failed to read stdin: {e}"))?;
+        Some(buf)
+    } else {
+        None
+    };
+
+    // 5. Find the doc in the index.
+    let doc = index
+        .documents
+        .iter()
+        .find(|d| d.path == target_path)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("doc not in index: {target_path}"))?;
+
+    // 6. Schema-aware synth.
+    let synth_result = crate::set::validate::synth_with_schema(
+        cfg,
+        &doc,
+        &current_fm,
+        &args.fields,
+        &args.field_json,
+        &args.push,
+        &args.pop,
+        &args.remove,
+        args.force,
+    )?;
+
+    let mut all_changes = synth_result.changes;
+    let mut warnings = synth_result.warnings;
+
+    // 7. Wikilink resolution sweep for wikilink-typed fields.
+    for change in &all_changes {
+        let Some(field_name) = change.field.as_deref() else {
+            continue;
+        };
+        let Some(field_type) = crate::set::validate::lookup_field_type(cfg, &doc, field_name)
+        else {
+            continue;
+        };
+        if field_type != "wikilink" && field_type != "wikilink_or_list" {
+            continue;
+        }
+        if let Some(new_value) = &change.new_value {
+            match new_value {
+                serde_json::Value::String(s) => {
+                    warnings.extend(crate::set::validate::check_wikilink_resolution(
+                        index, field_name, s,
+                    ));
+                }
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        if let Some(s) = item.as_str() {
+                            warnings.extend(crate::set::validate::check_wikilink_resolution(
+                                index, field_name, s,
+                            ));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // 8. Body op (if --body-from-stdin and content differs).
+    let body_change = new_body
+        .as_deref()
+        .and_then(|nb| synth_body_op(&current_body, nb));
+    let body_changed = body_change.is_some();
+    let body_bytes_new = body_change.as_ref().and_then(|c| {
+        c.new_value
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .map(|s| s.len())
+    });
+    if let Some(op) = body_change {
+        all_changes.push(op);
+    }
+
+    // 9. Stamp path + document_hash on every change.
+    let doc_hash = blake3::hash(content.as_bytes()).to_hex().to_string();
+    for change in all_changes.iter_mut() {
+        change.path = target_path.clone();
+        if change.document_hash.is_empty() {
+            change.document_hash = doc_hash.clone();
+        }
+        // Derive a stable change_id when empty.
+        if change.change_id.is_empty() {
+            use sha2::Digest as _;
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(change.path.as_str().as_bytes());
+            hasher.update(b"\0");
+            hasher.update(change.operation.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(change.field.as_deref().unwrap_or("").as_bytes());
+            let digest = hasher.finalize();
+            change.change_id = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
+        }
+    }
+
+    // 10. Wrap into RepairPlan.
+    let n_changes = all_changes.len();
+    let plan = vault_standards::RepairPlan {
+        schema_version: vault_standards::REPAIR_PLAN_SCHEMA_VERSION,
+        vault_root: cwd.to_path_buf(),
+        source_filters: vault_standards::RepairPlanFilters::default(),
+        summary: vault_standards::RepairPlanSummary {
+            findings: n_changes,
+            planned_changes: n_changes,
+            skipped: vault_standards::SkippedSummary::default(),
+        },
+        changes: all_changes,
+        skipped_findings: Vec::new(),
+        footnotes: Vec::new(),
+    };
+
+    Ok(PreflightOutcome {
+        plan,
+        warnings,
+        target: target_path,
+        body_changed,
+        body_bytes_new,
+        body_bytes_old: current_body_len,
+    })
+}
+
+/// Parse a document's content into (frontmatter_value, body_string).
+/// Frontmatter is returned as a JSON Value (Object if present, else empty Object).
+/// Body is the portion of the file after the closing `---\n`.
+fn parse_doc(content: &str) -> anyhow::Result<(serde_json::Value, String)> {
+    let mut diagnostics = Vec::new();
+    let (frontmatter, _frontmatter_range, _body_str, body_start) =
+        vault_frontmatter::extract_frontmatter(content, &mut diagnostics);
+
+    if !diagnostics.is_empty() {
+        anyhow::bail!(
+            "frontmatter parse errors: {}",
+            diagnostics
+                .iter()
+                .map(|d| d.message.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
+
+    let fm = frontmatter.unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+    let body = content[body_start..].to_string();
+    Ok((fm, body))
+}
+
 /// Produce a `replace_body` PlannedChange if the new body differs from the
 /// current body byte-for-byte. Returns None when content is identical (no-op
 /// write — caller should report `body_changed: false`).

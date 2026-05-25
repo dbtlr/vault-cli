@@ -42,6 +42,56 @@ pub struct FrontmatterChange {
     pub found: Option<bool>,
 }
 
+/// Build a SetReport from the preflight outcome + applied flag.
+pub fn build_report(outcome: &crate::set::synth::PreflightOutcome, applied: bool) -> SetReport {
+    let mut frontmatter_changes: Vec<FrontmatterChange> = Vec::new();
+    for c in outcome
+        .plan
+        .changes
+        .iter()
+        .filter(|c| c.operation != "replace_body")
+    {
+        let op = match c.operation.as_str() {
+            "set_frontmatter" | "add_frontmatter" => "set",
+            "remove_frontmatter" => "remove",
+            other => other,
+        };
+        let field = c.field.clone().unwrap_or_default();
+        let entry = FrontmatterChange {
+            op: op.to_string(),
+            field,
+            old: c.expected_old_value.clone(),
+            new: c.new_value.clone(),
+            value: None,
+            found: None,
+        };
+        frontmatter_changes.push(entry);
+    }
+
+    SetReport {
+        schema_version: SET_REPORT_SCHEMA_VERSION,
+        operation: "set".to_string(),
+        target: outcome.target.clone(),
+        frontmatter_changes,
+        body_changed: outcome.body_changed,
+        body_bytes_new: outcome.body_bytes_new,
+        body_bytes_old: if outcome.body_changed {
+            Some(outcome.body_bytes_old)
+        } else {
+            None
+        },
+        applied,
+        warnings: outcome.warnings.clone(),
+    }
+}
+
+/// Serialize a SetReport as newline-terminated JSON to `out`.
+pub fn render_json<W: Write>(out: &mut W, report: &SetReport) -> std::io::Result<()> {
+    serde_json::to_writer(&mut *out, report).map_err(std::io::Error::other)?;
+    writeln!(out)?;
+    Ok(())
+}
+
 /// TTY records-block summary of a SetReport. Lists changed fields with their
 /// before/after, body-bytes delta, and a `--yes` next-step hint on dry-run.
 pub fn render_records<W: Write>(out: &mut W, report: &SetReport) -> std::io::Result<()> {
