@@ -17,6 +17,7 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 ### Changed
 
 - Bumped `serde_json` 1.0.149 → 1.0.150 (patch).
+- Bumped `rusqlite` 0.32.1 → 0.39.0 (still `features = ["bundled"]`; ships with a newer bundled SQLite). No source changes required; cache schema and on-disk format unchanged.
 
 ## v0.32.0 - 2026-05-25
 
