@@ -423,8 +423,14 @@ mod tests {
         assert!(body.contains("--push"), "should have --push example");
         assert!(body.contains("--pop"), "should have --pop example");
         assert!(body.contains("--remove"), "should have --remove example");
-        assert!(body.contains("--body-from-stdin"), "should have --body-from-stdin example");
-        assert!(body.contains("--field-json"), "should have --field-json example");
+        assert!(
+            body.contains("--body-from-stdin"),
+            "should have --body-from-stdin example"
+        );
+        assert!(
+            body.contains("--field-json"),
+            "should have --field-json example"
+        );
         assert!(body.contains("--dry-run"), "should have --dry-run example");
     }
 }
