@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 use sha2::{Digest, Sha256};
@@ -69,6 +69,48 @@ fn hex_lower(bytes: &[u8]) -> String {
     s
 }
 
+/// Extract the `vault` binary out of a cargo-dist `.tar.xz` to `dest`.
+/// Sets the resulting file mode to 0o755. Errors if the archive does not
+/// contain a file whose basename is `vault`.
+pub fn extract_binary(archive: &Path, dest: &Path) -> Result<()> {
+    let file =
+        fs::File::open(archive).map_err(|e| anyhow!("open archive {}: {e}", archive.display()))?;
+    let xz = xz2::read::XzDecoder::new(file);
+    let mut tar = tar::Archive::new(xz);
+    for entry in tar.entries().map_err(|e| anyhow!("read archive: {e}"))? {
+        let mut entry = entry.map_err(|e| anyhow!("read archive entry: {e}"))?;
+        let path = entry.path().map_err(|e| anyhow!("read entry path: {e}"))?;
+        if path.file_name().and_then(|s| s.to_str()) == Some("vault") {
+            let mut out =
+                fs::File::create(dest).map_err(|e| anyhow!("create {}: {e}", dest.display()))?;
+            std::io::copy(&mut entry, &mut out)
+                .map_err(|e| anyhow!("write {}: {e}", dest.display()))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(dest, fs::Permissions::from_mode(0o755))
+                    .map_err(|e| anyhow!("chmod {}: {e}", dest.display()))?;
+            }
+            return Ok(());
+        }
+    }
+    Err(anyhow!(
+        "archive {} did not contain a vault binary",
+        archive.display()
+    ))
+}
+
+/// Temp path adjacent to `install_path`, with a `.vault-self-update-*` prefix.
+/// Same-filesystem placement is required for atomic rename.
+pub fn sibling_temp_path(install_path: &Path, suffix: &str) -> PathBuf {
+    let parent = install_path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = install_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("vault");
+    parent.join(format!(".{stem}-self-update-{suffix}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +149,53 @@ mod tests {
         let err = verify_sha256(&file, "deadbeef").unwrap_err();
         let msg = format!("{err:#}");
         assert!(msg.contains("sha256"), "expected sha256 mention: {msg}");
+    }
+
+    #[test]
+    fn extract_binary_pulls_vault_from_tarball() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive_path = tmp.path().join("release.tar.xz");
+
+        // Build a tar.xz containing `vault-foo/vault` and a noise file.
+        let xz_writer = xz2::write::XzEncoder::new(fs::File::create(&archive_path).unwrap(), 6);
+        let mut builder = tar::Builder::new(xz_writer);
+
+        let mut header = tar::Header::new_gnu();
+        header.set_path("vault-foo/vault").unwrap();
+        header.set_size(11);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder.append(&header, &b"fake binary"[..]).unwrap();
+
+        let mut header = tar::Header::new_gnu();
+        header.set_path("vault-foo/README.md").unwrap();
+        header.set_size(5);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append(&header, &b"noise"[..]).unwrap();
+
+        builder.into_inner().unwrap().finish().unwrap();
+
+        let dest = tmp.path().join("vault.new");
+        extract_binary(&archive_path, &dest).unwrap();
+        assert_eq!(fs::read(&dest).unwrap(), b"fake binary");
+    }
+
+    #[test]
+    fn extract_binary_errors_when_no_vault_in_tarball() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive_path = tmp.path().join("empty.tar.xz");
+
+        let xz_writer = xz2::write::XzEncoder::new(fs::File::create(&archive_path).unwrap(), 6);
+        let builder = tar::Builder::new(xz_writer);
+        builder.into_inner().unwrap().finish().unwrap();
+
+        let dest = tmp.path().join("vault.new");
+        let err = extract_binary(&archive_path, &dest).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("vault"),
+            "expected mention of vault binary: {msg}"
+        );
     }
 }
