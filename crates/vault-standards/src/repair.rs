@@ -13,7 +13,7 @@ use vault_core::Severity;
 use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
 use crate::findings::{Finding, FindingBody};
 
-pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 6;
+pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -197,6 +197,10 @@ pub struct PlannedChange {
     pub link_risk: Option<crate::repair::link_risk::LinkRisk>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub warnings: Vec<crate::repair::warnings::PlanWarning>,
+    /// When true, `apply_move` will remove an existing destination before
+    /// renaming. Defaults to false; skips serialization when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
 }
 
 fn derive_change_id(
@@ -302,6 +306,7 @@ fn handle_closest_match(
                 destination: None,
                 link_risk: None,
                 warnings: vec![],
+                force: false,
             };
 
             let footnote = PlanFootnote {
@@ -523,6 +528,7 @@ fn planned_change(
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         },
         RepairAction::RemoveFrontmatter { field } => PlannedChange {
             change_id: change_id.clone(),
@@ -538,6 +544,7 @@ fn planned_change(
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         },
         RepairAction::AddFrontmatter { field, value } => PlannedChange {
             change_id: change_id.clone(),
@@ -553,6 +560,7 @@ fn planned_change(
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         },
         RepairAction::MoveDocument { destination } => {
             let source_doc = documents.iter().find(|d| d.path == finding.path);
@@ -596,6 +604,7 @@ fn planned_change(
                 destination: Some(new_path),
                 link_risk: Some(link_risk),
                 warnings,
+                force: false,
             }
         }
     })
@@ -1251,6 +1260,7 @@ mod tests {
                 destination: None,
                 link_risk: None,
                 warnings: vec![],
+                force: false,
             }],
             skipped_findings: vec![],
             footnotes: vec![PlanFootnote {
@@ -1564,8 +1574,8 @@ mod tests {
     }
 
     #[test]
-    fn repair_plan_schema_version_is_six() {
-        assert_eq!(REPAIR_PLAN_SCHEMA_VERSION, 6);
+    fn repair_plan_schema_version_is_seven() {
+        assert_eq!(REPAIR_PLAN_SCHEMA_VERSION, 7);
     }
 
     #[test]

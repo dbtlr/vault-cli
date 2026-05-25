@@ -48,7 +48,7 @@ For a read-only inspection task (no mutation):
 
 1. `vault find --all --format json` or `vault count --by <field> --format json`.
 2. `vault validate --summary --format json` to spot drift.
-3. `vault show <target> --format json` for one-document detail.
+3. `vault get <target> --format json` for one-document detail.
 
 ## Read-only commands
 
@@ -56,12 +56,11 @@ These commands never write to the vault. An agent can run them with confidence:
 
 - `vault find`
 - `vault count`
-- `vault show`
+- `vault get`
 - `vault validate` (with or without `--summary`, with or without filters)
 - `vault repair plan` (produces an artifact; does not modify the vault)
-- `vault repair links` (planning report only)
 
-Only `vault repair apply` writes to the vault. The plan is provided via a positional file path, via `-`, or via stdin (the pipeline form `vault repair plan --format json | vault repair apply` composes plan + apply in one shot).
+`vault move` and `vault delete` are mutation commands; pass `--dry-run` to preview without writing. Only `vault repair apply`, `vault move`, and `vault delete` (without `--dry-run`) write to the vault. The repair plan is provided via a positional file path, via `-`, or via stdin (the pipeline form `vault repair plan --format json | vault repair apply` composes plan + apply in one shot).
 
 ## Output sketches
 

@@ -42,15 +42,15 @@ vault count --format json
 
 Without `--by`, emits the total document count only.
 
-## show
+## get
 
 Single-document detail: frontmatter, headings, outgoing links, unresolved links, incoming links. Accepts vault-relative paths, case-insensitive stems, and wikilink-shaped inputs.
 
 ```bash
-vault show "My Note" --format json
-vault show "notes/my-note.md" --format json
-vault show "My Note" --col incoming_links --format jsonl
-vault show "My Note" --body --format json
+vault get "My Note" --format json
+vault get "notes/my-note.md" --format json
+vault get "My Note" --col incoming_links --format jsonl
+vault get "My Note" --body --format json
 ```
 
 `--col` narrows the output fields; `--body` adds document body content. Multiple targets are accepted.
@@ -116,27 +116,45 @@ Output formats:
 
 Apply rejects mismatched vault roots, stale document hashes, unsupported schema versions, conflicting field changes, and expected-old-value mismatches. The orchestrator is atomic-at-batch-level: any precondition failure aborts the whole apply before any partial writes (stderr error, exit 1, no report rendered).
 
-## repair links
+## Document mutation surface
 
-Read-only link/path planning report. Does not rewrite links or move files.
+`vault get`, `vault move`, and `vault delete` form a CRUD-shaped surface
+for working with vault documents without touching the filesystem directly.
+All mutation commands (`move`, `delete`) are safe-by-default: TTY runs
+prompt for confirmation, non-TTY runs without `--yes` print a dry-run summary
+and exit. `--yes` skips the prompt and applies; `--dry-run` previews and
+exits explicitly; `--format json` is implicitly non-interactive.
+
+The cascading backlink rewrites that `vault move` performs reuse the
+existing `apply_link_rewrites` machinery from the repair-apply orchestrator;
+`vault delete --rewrite-to <ALT>` does the same for redirecting backlinks
+before deletion.
+
+## move
+
+Move or rename a document with cascading backlink rewrites.
 
 ```bash
-vault repair links --format json
-vault repair links --target "notes/some-note.md" --format json
-vault repair links --target "some-note" --format table
+vault move Inbox/task.md Projects/my-project/tasks/task.md
+vault move Inbox/task.md Projects/my-project/tasks/task.md --dry-run
+vault move Inbox/task.md Projects/my-project/tasks/task.md --yes --format json
 ```
 
-The report includes unresolved links, ambiguous links, path-style Markdown links worth reviewing before path moves, duplicate-stem risks, and optional move/delete risk for a `--target`.
+Flags: `--dry-run` (preview, no write), `--yes` (skip confirm prompt), `--no-link-rewrite` (move file only), `--force` (overwrite destination).
 
-### `vault repair links --target <path> --move-to <destination>`
+## delete
 
-Read-only analysis of what would change if the target were moved to the destination. Produces the same `link_risk` + `warnings` shape as the planner would compute for an authored `move_document` repair rule, without writing a plan file.
+Delete a document. Refuses if incoming links exist unless `--allow-broken-links` or `--rewrite-to` is supplied.
 
 ```bash
-vault repair links --target Inbox/task.md --move-to Workspaces/demo/tasks/task.md --format json
+vault delete notes/old-note.md --dry-run
+vault delete notes/old-note.md --allow-broken-links --yes
+vault delete notes/old-note.md --rewrite-to notes/replacement.md --yes
 ```
 
-Output includes a `link_risk` object (stem-only, path-qualified, and Markdown backlinks with their precomputed rewrites) and any planner warnings (e.g., `StemCollisionAfterMove`).
+Flags: `--dry-run`, `--yes`, `--allow-broken-links`, `--rewrite-to <ALT>`.
+
+To audit link drift before moving or deleting: `vault validate --code 'link-*'` surfaces unresolved and ambiguous links across the vault.
 
 ## cache
 
@@ -151,7 +169,7 @@ Cache management subcommands. See [cache.md](cache.md) for full documentation.
 | `vault cache clear` | Delete the cache; next command rebuilds. |
 | `vault cache status` | Report cache path, size, doc/link/file counts, schema version. |
 
-Query commands (`vault validate`, `vault find`, `vault count`, `vault show`, `vault repair`) refresh the cache implicitly before reading. Pass the global `--no-cache-refresh` flag to skip that step.
+Query commands (`vault validate`, `vault find`, `vault count`, `vault get`, `vault repair`) refresh the cache implicitly before reading. Pass the global `--no-cache-refresh` flag to skip that step.
 
 ## Hidden subcommands
 

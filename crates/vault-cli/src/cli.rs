@@ -80,12 +80,51 @@ pub enum Command {
     Count(CountArgs),
     #[command(
         disable_help_flag = true,
-        about = "Show one or more documents — frontmatter, headings, outgoing/incoming/unresolved links",
-        long_about = "Show one or more documents in detail.\n\nEach target may be a vault-relative path, a unique case-insensitive document stem, or a wikilink-shaped string (with or without brackets, with or without anchor / block-ref / pipe-alias suffix). Ambiguous targets emit one record per resolved candidate. --body adds full body content; --col narrows the default field set."
+        about = "Get one or more documents — frontmatter, headings, outgoing/incoming/unresolved links",
+        long_about = "Get one or more documents in detail.\n\nEach target may be a vault-relative path, a unique case-insensitive document stem, or a wikilink-shaped string (with or without brackets, with or without anchor / block-ref / pipe-alias suffix). Ambiguous targets emit one record per resolved candidate. --body adds full body content; --col narrows the default field set."
     )]
-    Show(ShowArgs),
+    Get(GetArgs),
     #[command(disable_help_flag = true, about = "Scaffold .vault/config.yaml")]
     Init(InitArgs),
+    #[command(
+        disable_help_flag = true,
+        about = "Move/rename a document with cascading backlink rewrites",
+        long_about = "Move or rename a document and rewrite incoming wikilinks across the vault.\n\
+\n\
+SAFE BY DEFAULT: vault move is destructive. In a TTY, it shows a preview and prompts for confirmation. \
+Without --yes (and in a non-TTY context), nothing is written — the preview is your dry-run.\n\
+\n\
+Flags:\n  \
+--yes            Skip the confirmation prompt and apply.\n  \
+--dry-run        Show the preview and exit without writing or prompting.\n  \
+--force          Overwrite the destination if it already exists (otherwise refused with exit 2).\n  \
+--no-link-rewrite  Move the file but do NOT rewrite incoming links (they'll surface as broken).\n  \
+--format records|json  Output shape. --format json is non-interactive and emits the MoveReport envelope.\n\
+\n\
+Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-flight refusal."
+    )]
+    Move(MoveArgs),
+    #[command(
+        name = "delete",
+        disable_help_flag = true,
+        about = "Delete a document, optionally redirecting incoming links to an alternate target",
+        long_about = "Delete a document, optionally redirecting incoming links to an alternate target.\n\
+\n\
+SAFE BY DEFAULT: vault delete is destructive. In a TTY, it shows a preview and prompts for confirmation. \
+Without --yes (and in a non-TTY context), nothing is written — the preview is your dry-run.\n\
+\n\
+Incoming links: vault delete REFUSES (exit 2) when the target has incoming links unless one of these is given:\n  \
+--allow-broken-links   Delete and let the broken links surface as link-target-missing findings in vault validate.\n  \
+--rewrite-to <ALT>     Redirect every incoming link to <ALT> before deleting. Mutually exclusive with --allow-broken-links.\n\
+\n\
+Flags:\n  \
+--yes            Skip the confirmation prompt and apply.\n  \
+--dry-run        Show the preview and exit without writing or prompting.\n  \
+--format records|json  Output shape. --format json is non-interactive and emits the DeleteReport envelope.\n\
+\n\
+Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-flight refusal."
+    )]
+    Delete(DeleteArgs),
     #[command(
         disable_help_flag = true,
         about = "Plan and apply deterministic vault repairs"
@@ -194,12 +233,6 @@ pub enum RepairSubcommand {
     Plan(RepairPlanArgs),
     #[command(
         disable_help_flag = true,
-        about = "Report link and path repair risks without writing files",
-        long_about = "Report link and path repair risks without writing files.\n\nThis surfaces unresolved links, ambiguous links, duplicate-stem risks, path-style Markdown links, affected files, and optional move/delete risk for a target."
-    )]
-    Links(RepairLinksArgs),
-    #[command(
-        disable_help_flag = true,
         about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.",
         long_about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.\n\nReads a JSON plan emitted by `vault repair plan` from a file path or stdin (when no positional or `-`). Mutates frontmatter (`set_frontmatter` / `remove_frontmatter` / `add_frontmatter` / `move_document`) and source-doc wikilinks (`rewrite_link`). Plan changes are gated by precondition checks; any failure aborts the whole apply before any partial writes (stderr error, exit 1).\n\nOutput formats: `report` (TTY default, human summary), `json` (pipe default, full RepairApplyReport envelope), `paths` (sorted dedup of changed files). Use `--out <PATH>` to write the JSON report to file independently of `--format` (stdout stays silent when `--out` is set without `--format`)."
     )]
@@ -305,22 +338,6 @@ pub struct RepairPlanArgs {
     pub skip_reason: Vec<String>,
     #[command(flatten)]
     pub triage: ValidateTriageArgs,
-}
-
-#[derive(Debug, Parser)]
-pub struct RepairLinksArgs {
-    #[arg(
-        long,
-        help = "Exact vault-relative path or unique document stem to analyze for move/delete risk"
-    )]
-    pub target: Option<String>,
-    #[arg(
-        long = "move-to",
-        help = "Hypothetical destination path; computes link risk + warnings as if the target were moved to this path"
-    )]
-    pub move_to: Option<Utf8PathBuf>,
-    #[arg(long, value_enum, default_value_t = RepairOutputFormat::Json, help = "Stdout format")]
-    pub format: RepairOutputFormat,
 }
 
 #[derive(Debug, Parser)]
@@ -547,7 +564,7 @@ pub enum CountFormat {
 }
 
 #[derive(Args, Debug)]
-pub struct ShowArgs {
+pub struct GetArgs {
     /// One or more doc targets. Each accepts path, stem, or wikilink-shaped
     /// input (with or without [[]]). Anchor / block-ref / pipe-alias
     /// suffixes are stripped before resolution.
@@ -571,13 +588,81 @@ pub struct ShowArgs {
     pub col: Vec<String>,
 
     /// Output format. Default text (records-block per doc).
-    #[arg(long, value_enum, default_value_t = ShowFormat::Text, help_heading = "Output")]
-    pub format: ShowFormat,
+    #[arg(long, value_enum, default_value_t = GetFormat::Text, help_heading = "Output")]
+    pub format: GetFormat,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShowFormat {
+pub enum GetFormat {
     Text,
+    Json,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct MoveArgs {
+    /// Source: vault-relative path or unique stem.
+    pub src: String,
+
+    /// Destination: vault-relative path.
+    pub dst: String,
+
+    /// Skip interactive confirm and apply.
+    #[arg(long)]
+    pub yes: bool,
+
+    /// Print summary, exit. No write, no confirm.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Move the file but skip backlink rewrites.
+    #[arg(long)]
+    pub no_link_rewrite: bool,
+
+    /// Overwrite destination if it exists.
+    #[arg(long)]
+    pub force: bool,
+
+    /// Stdout format. `records` is the default TTY summary; `json` emits the MoveReport.
+    #[arg(long, value_enum, default_value_t = MoveFormat::Records)]
+    pub format: MoveFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum MoveFormat {
+    Records,
+    Json,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct DeleteArgs {
+    /// Document to delete: vault-relative path or unique stem.
+    pub doc: String,
+
+    /// Skip interactive confirm and apply.
+    #[arg(long)]
+    pub yes: bool,
+
+    /// Print summary, exit. No write, no confirm.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Acknowledge that incoming links will break. Required if the doc has incoming
+    /// links and --rewrite-to is not provided.
+    #[arg(long, conflicts_with = "rewrite_to")]
+    pub allow_broken_links: bool,
+
+    /// Rewrite incoming links to this alternate doc instead of leaving them broken.
+    #[arg(long, value_name = "ALT_DOC")]
+    pub rewrite_to: Option<String>,
+
+    /// Stdout format. `records` is the default TTY summary; `json` emits the DeleteReport.
+    #[arg(long, value_enum, default_value_t = DeleteFormat::Records)]
+    pub format: DeleteFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum DeleteFormat {
+    Records,
     Json,
 }
 
@@ -668,13 +753,6 @@ pub enum OutputFormat {
     Paths,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum RepairOutputFormat {
-    Json,
-    Jsonl,
-    Table,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepairPlanFormat {
     /// Decision-support report for human review. Default for TTY.
@@ -723,16 +801,6 @@ fn parse_repair_apply_format(s: &str) -> Result<RepairApplyFormat, String> {
 #[clap(rename_all = "snake_case")]
 pub enum ConfidenceArg {
     High,
-}
-
-impl From<RepairOutputFormat> for OutputFormat {
-    fn from(format: RepairOutputFormat) -> Self {
-        match format {
-            RepairOutputFormat::Json => OutputFormat::Json,
-            RepairOutputFormat::Jsonl => OutputFormat::Jsonl,
-            RepairOutputFormat::Table => OutputFormat::Table,
-        }
-    }
 }
 
 #[derive(Debug, Parser)]
@@ -829,60 +897,59 @@ mod count_cli_tests {
 }
 
 #[cfg(test)]
-mod show_cli_tests {
+mod get_cli_tests {
     use super::*;
     use clap::Parser;
 
     #[test]
-    fn show_requires_at_least_one_target() {
-        assert!(Cli::try_parse_from(["vault", "show"]).is_err());
+    fn get_requires_at_least_one_target() {
+        assert!(Cli::try_parse_from(["vault", "get"]).is_err());
     }
 
     #[test]
-    fn show_parses_single_target() {
-        let cli = Cli::try_parse_from(["vault", "show", "Notes.md"]).unwrap();
+    fn get_parses_single_target() {
+        let cli = Cli::try_parse_from(["vault", "get", "Notes.md"]).unwrap();
         match cli.command {
-            Command::Show(args) => assert_eq!(args.targets, vec!["Notes.md".to_string()]),
-            _ => panic!("expected Show variant"),
+            Command::Get(args) => assert_eq!(args.targets, vec!["Notes.md".to_string()]),
+            _ => panic!("expected Get variant"),
         }
     }
 
     #[test]
-    fn show_parses_multiple_targets() {
-        let cli = Cli::try_parse_from(["vault", "show", "a.md", "b.md", "c.md"]).unwrap();
+    fn get_parses_multiple_targets() {
+        let cli = Cli::try_parse_from(["vault", "get", "a.md", "b.md", "c.md"]).unwrap();
         match cli.command {
-            Command::Show(args) => assert_eq!(args.targets.len(), 3),
-            _ => panic!("expected Show variant"),
+            Command::Get(args) => assert_eq!(args.targets.len(), 3),
+            _ => panic!("expected Get variant"),
         }
     }
 
     #[test]
-    fn show_parses_body_flag() {
-        let cli = Cli::try_parse_from(["vault", "show", "a.md", "--body"]).unwrap();
+    fn get_parses_body_flag() {
+        let cli = Cli::try_parse_from(["vault", "get", "a.md", "--body"]).unwrap();
         match cli.command {
-            Command::Show(args) => assert!(args.body),
-            _ => panic!("expected Show variant"),
+            Command::Get(args) => assert!(args.body),
+            _ => panic!("expected Get variant"),
         }
     }
 
     #[test]
-    fn show_parses_col_narrowing() {
-        let cli =
-            Cli::try_parse_from(["vault", "show", "a.md", "--col", "incoming_links"]).unwrap();
+    fn get_parses_col_narrowing() {
+        let cli = Cli::try_parse_from(["vault", "get", "a.md", "--col", "incoming_links"]).unwrap();
         match cli.command {
-            Command::Show(args) => {
+            Command::Get(args) => {
                 assert_eq!(args.col, vec!["incoming_links".to_string()]);
             }
-            _ => panic!("expected Show variant"),
+            _ => panic!("expected Get variant"),
         }
     }
 
     #[test]
-    fn show_format_defaults_text() {
-        let cli = Cli::try_parse_from(["vault", "show", "a.md"]).unwrap();
+    fn get_format_defaults_text() {
+        let cli = Cli::try_parse_from(["vault", "get", "a.md"]).unwrap();
         match cli.command {
-            Command::Show(args) => assert_eq!(args.format, ShowFormat::Text),
-            _ => panic!("expected Show variant"),
+            Command::Get(args) => assert_eq!(args.format, GetFormat::Text),
+            _ => panic!("expected Get variant"),
         }
     }
 }
@@ -983,5 +1050,78 @@ mod repair_apply_args_tests {
             msg.contains("jsonl was removed"),
             "expected jsonl migration msg, got: {msg}"
         );
+    }
+}
+
+#[cfg(test)]
+mod move_cli_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn move_subcommand_parses_with_all_flags() {
+        let cli = Cli::try_parse_from([
+            "vault",
+            "move",
+            "src.md",
+            "dst.md",
+            "--yes",
+            "--dry-run",
+            "--no-link-rewrite",
+            "--force",
+            "--format",
+            "json",
+        ]);
+        assert!(cli.is_ok(), "parse error: {:?}", cli.err());
+    }
+}
+
+#[cfg(test)]
+mod delete_cli_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn delete_subcommand_parses_with_all_flags() {
+        // --allow-broken-links and --rewrite-to conflict; test each combo separately.
+        // This variant exercises --rewrite-to path.
+        let cli = Cli::try_parse_from([
+            "vault",
+            "delete",
+            "old.md",
+            "--yes",
+            "--dry-run",
+            "--rewrite-to",
+            "new.md",
+            "--format",
+            "json",
+        ]);
+        assert!(cli.is_ok(), "parse error: {:?}", cli.err());
+
+        // Also verify --allow-broken-links path (without --rewrite-to).
+        let cli2 = Cli::try_parse_from([
+            "vault",
+            "delete",
+            "old.md",
+            "--yes",
+            "--dry-run",
+            "--allow-broken-links",
+            "--format",
+            "json",
+        ]);
+        assert!(cli2.is_ok(), "parse error: {:?}", cli2.err());
+    }
+
+    #[test]
+    fn delete_allow_broken_links_and_rewrite_to_are_mutually_exclusive() {
+        let cli = Cli::try_parse_from([
+            "vault",
+            "delete",
+            "old.md",
+            "--allow-broken-links",
+            "--rewrite-to",
+            "new.md",
+        ]);
+        assert!(cli.is_err(), "expected mutually-exclusive error");
     }
 }

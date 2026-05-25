@@ -12,6 +12,8 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 
 ### Breaking changes
 
+- **`vault repair links` removed.** Move/delete impact analysis now lives in `vault move <SRC> <DST> --dry-run` and `vault delete <DOC> --dry-run`. Global broken-link/ambiguous-link enumeration is in `vault validate --code 'link-*'` (since v0.30). Duplicate-stem and path-style-Markdown-link reports retired with no replacement.
+- **`vault show` renamed to `vault get`.** No alias; pre-1.0 break. Anchors the CRUD-shaped mutation surface (`get` / `move` / `delete`).
 - **`vault files` removed.** No documented user story; "Files" demoted from a first-class graph concept to an internal walker step. Broken attachment references continue to surface via `vault validate`'s `link-target-missing` finding.
 - **`vault validate` records output now follows the norn-cli-output spec.** Status headline → severity tally → grouped tallies (`--summary`) or per-finding blocks with fix hints (default). `--format table` is no longer supported; use `--format records` (default on a TTY) or `--format json`/`jsonl`/`paths` for machine consumers. Default piped format is now `jsonl` (validate has no natural `paths` representation).
 - **`vault validate --format json` output is now wrapped in `{"total": N, "findings": [...]}`** (matches norn-cli-output §5.3). Consumers reading the old bare-array shape must navigate to `.findings`.
@@ -33,6 +35,8 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 
 ### Added
 
+- `vault move <SRC> <DST>` — rename/move a document with cascading backlink rewrites. Safe-by-default: interactive confirm in TTY, `--yes` to skip the prompt and apply, `--dry-run` to preview and exit, `--force` to overwrite an existing destination, `--no-link-rewrite` to skip the backlink cascade. Output is a thin `MoveReport` (records-shaped TTY by default; `--format json` emits the structured envelope and is implicitly non-interactive).
+- `vault delete <DOC>` — delete a document. Refuses if incoming links exist unless `--allow-broken-links` (leaves them broken; surfaced via `vault validate`) or `--rewrite-to <ALT_DOC>` (redirects backlinks to an alternate doc). Same safe-by-default apply model as `vault move`.
 - New `cli::ValidateFormat { Records, Json, Jsonl, Paths }`; default honors `isatty` (Records on TTY, Jsonl piped).
 - `vault repair plan --skip-reason <PATTERN>` filter narrows `skipped_findings` by stable reason code (`missing-default`, `link-decision-needed`, `no-rule-matched`, `alias-shadowed`, `graph-diagnostic`, `ambiguous-target`, `missing-hash`, `precondition-failed`). Glob patterns accepted (`'link-*'`). Does NOT narrow planned changes — skip-reason is a skip-tier filter only.
 - `vault repair plan --format paths` emits affected document paths (one per line, sorted, deduplicated) for `xargs`-style pipelines. Respects all filters.
@@ -53,6 +57,11 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 ### Fixed
 
 - `NO_COLOR` now correctly overrides `--color always` per [no-color.org](https://no-color.org/). Previously, an explicit `--color always` would still emit ANSI even when `NO_COLOR` was set. Affects every command using the shared palette (`vault find`, `vault config show`, `vault show`, `vault validate`).
+
+### Removed (internal)
+
+- `crates/vault-cli/src/link_repair.rs` deleted. `LinkRepairReport` and `plan_link_repairs` went with `vault repair links`.
+- `crates/vault-cli/src/output/legacy.rs` module deleted. The long-running pre-port cleanup arc (started v0.27) is now closed. `is_broken_pipe` relocated to `output::primitives`.
 
 ## v0.31.0 - 2026-05-23
 

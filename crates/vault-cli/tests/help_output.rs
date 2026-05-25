@@ -129,11 +129,7 @@ fn repair_apply_long_help() {
     assert_long_help_shape(&out, "vault repair apply");
 }
 
-#[test]
-fn repair_links_short_help() {
-    let out = vault_help(&["repair", "links", "-h"]);
-    assert_short_help_shape(&out, "vault repair links");
-}
+// repair_links_short_help: removed — vault repair links retired.
 
 #[test]
 fn config_show_short_help() {
@@ -337,7 +333,7 @@ fn count_short_help() {
 }
 
 #[test]
-fn show_short_help() {
-    let out = vault_help(&["show", "-h"]);
-    assert!(out.contains("Show one or more documents"));
+fn get_short_help() {
+    let out = vault_help(&["get", "-h"]);
+    assert!(out.contains("Get one or more documents"));
 }

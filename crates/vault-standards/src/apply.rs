@@ -3,7 +3,7 @@ use std::fs;
 use std::ops::Range;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 use vault_frontmatter::{
@@ -77,9 +77,15 @@ pub enum ApplyError {
 
     #[error("move destination already exists: {destination}")]
     MoveDestinationExists { destination: Utf8PathBuf },
+
+    #[error("delete source missing: {path}")]
+    DeleteSourceMissing { path: Utf8PathBuf },
+
+    #[error("delete source is a symlink, not a regular file: {path}")]
+    DeleteSourceIsSymlink { path: Utf8PathBuf },
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoveResult {
     pub from: Utf8PathBuf,
     pub to: Utf8PathBuf,
@@ -108,6 +114,8 @@ pub struct RepairApplyReport {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub moved_files: Vec<MoveResult>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub deleted_documents: Vec<DeleteResult>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub rewritten_links: Vec<LinkRewriteResult>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub warnings: Vec<RepairApplyWarning>,
@@ -135,6 +143,7 @@ impl RepairApplyReport {
             changed_files: Vec::new(),
             applied_changes: plan.changes.len(),
             moved_files: Vec::new(),
+            deleted_documents: Vec::new(),
             rewritten_links: Vec::new(),
             warnings: Vec::new(),
             plan_context: RepairApplyPlanContext {
@@ -170,6 +179,16 @@ pub fn validate_plan_for_apply(cwd: &Utf8PathBuf, plan: &RepairPlan) -> Result<(
     Ok(())
 }
 
+/// Returns true for operations that are handled by dedicated orchestrator passes
+/// (Pass 1b, 1c, 2, 3) rather than the per-file frontmatter edit pass. These
+/// are skipped in `changes_by_path` rather than rejected as unsupported.
+fn is_orchestrator_pass_op(operation: &str) -> bool {
+    matches!(
+        operation,
+        "move_document" | "rewrite_link" | "delete_document"
+    )
+}
+
 pub fn changes_by_path(
     plan: &RepairPlan,
 ) -> Result<BTreeMap<Utf8PathBuf, Vec<&PlannedChange>>, ApplyError> {
@@ -177,10 +196,10 @@ pub fn changes_by_path(
     let mut seen_fields = BTreeSet::new();
 
     for change in &plan.changes {
-        // move_document and rewrite_link are handled by the orchestrator
-        // separately — they are not per-file frontmatter edits, so they
-        // are skipped here rather than rejected.
-        if change.operation == "move_document" || change.operation == "rewrite_link" {
+        // move_document, rewrite_link, and delete_document are handled by
+        // the orchestrator separately — they are not per-file frontmatter
+        // edits, so they are skipped here rather than rejected.
+        if is_orchestrator_pass_op(&change.operation) {
             continue;
         }
         if !matches!(
@@ -442,11 +461,6 @@ pub fn apply_move(cwd: &Utf8Path, change: &PlannedChange) -> Result<MoveResult, 
     let source_abs = cwd.join(source_rel);
     let dest_abs = cwd.join(dest_rel);
 
-    if !source_abs.as_std_path().exists() {
-        return Err(ApplyError::MoveSourceMissing {
-            path: source_rel.clone(),
-        });
-    }
     let metadata = fs::symlink_metadata(source_abs.as_std_path()).map_err(|_| {
         ApplyError::MoveSourceMissing {
             path: source_rel.clone(),
@@ -458,9 +472,19 @@ pub fn apply_move(cwd: &Utf8Path, change: &PlannedChange) -> Result<MoveResult, 
         });
     }
     if dest_abs.as_std_path().exists() {
-        return Err(ApplyError::MoveDestinationExists {
-            destination: dest_rel.clone(),
-        });
+        if change.force {
+            // Best-effort atomicity: remove destination, then attempt rename.
+            // If rename fails after this, destination is gone with no rollback.
+            // Future improvement: snapshot-and-restore for true atomicity.
+            fs::remove_file(dest_abs.as_std_path()).map_err(|e| ApplyError::CannotMinimalEdit {
+                path: dest_rel.clone(),
+                reason: format!("force-remove destination failed: {e}"),
+            })?;
+        } else {
+            return Err(ApplyError::MoveDestinationExists {
+                destination: dest_rel.clone(),
+            });
+        }
     }
     if let Some(parent) = dest_abs.parent() {
         fs::create_dir_all(parent.as_std_path()).map_err(|e| ApplyError::CannotMinimalEdit {
@@ -494,6 +518,38 @@ pub fn apply_move(cwd: &Utf8Path, change: &PlannedChange) -> Result<MoveResult, 
             })
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteResult {
+    pub path: Utf8PathBuf,
+}
+
+/// Performs the filesystem removal for a `delete_document` PlannedChange.
+/// Refuses with precondition errors if source is missing or is a symlink.
+pub fn apply_delete(cwd: &Utf8Path, change: &PlannedChange) -> Result<DeleteResult, ApplyError> {
+    let source_rel = &change.path;
+    let source_abs = cwd.join(source_rel);
+
+    let metadata = fs::symlink_metadata(source_abs.as_std_path()).map_err(|_| {
+        ApplyError::DeleteSourceMissing {
+            path: source_rel.clone(),
+        }
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(ApplyError::DeleteSourceIsSymlink {
+            path: source_rel.clone(),
+        });
+    }
+
+    fs::remove_file(source_abs.as_std_path()).map_err(|e| ApplyError::CannotMinimalEdit {
+        path: source_rel.clone(),
+        reason: format!("delete failed: {e}"),
+    })?;
+
+    Ok(DeleteResult {
+        path: source_rel.clone(),
+    })
 }
 
 /// Reads every file containing an AffectedLink and replaces the raw link
@@ -673,6 +729,7 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         }
     }
 
@@ -1019,6 +1076,7 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand]]"));
@@ -1042,6 +1100,7 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand|the brand spec]]"));
@@ -1064,6 +1123,7 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand#colors]]"));
@@ -1086,6 +1146,7 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand^block-id]]"));
@@ -1108,6 +1169,7 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert_eq!(updated.matches("[[norn-brand]]").count(), 2);
@@ -1131,6 +1193,7 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[Other Doc]]"));
@@ -1154,8 +1217,192 @@ mod tests {
             destination: None,
             link_risk: None,
             warnings: vec![],
+            force: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand#^block-id]]"));
+    }
+
+    #[test]
+    fn apply_delete_removes_file() {
+        let tmp = tempfile::Builder::new()
+            .prefix("vault-cli-apply-delete-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let doc_rel = camino::Utf8PathBuf::from("foo.md");
+        std::fs::write(root.join(&doc_rel), "---\ntype: note\n---\n# Foo\n").unwrap();
+
+        let change = PlannedChange {
+            change_id: "delete-foo".into(),
+            path: doc_rel.clone(),
+            document_hash: "irrelevant".into(),
+            finding_code: "operator-request".into(),
+            finding_rule: None,
+            repair_rule: "operator-request".into(),
+            operation: "delete_document".into(),
+            field: None,
+            expected_old_value: None,
+            new_value: None,
+            destination: None,
+            link_risk: None,
+            warnings: Vec::new(),
+            force: false,
+        };
+
+        let result = apply_delete(root, &change).unwrap();
+        assert_eq!(result.path, doc_rel);
+        assert!(!root.join(&doc_rel).as_std_path().exists());
+    }
+
+    #[test]
+    fn apply_delete_missing_source_errors() {
+        let tmp = tempfile::Builder::new()
+            .prefix("vault-cli-apply-delete-missing-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let doc_rel = camino::Utf8PathBuf::from("missing.md");
+
+        let change = PlannedChange {
+            change_id: "delete-missing".into(),
+            path: doc_rel.clone(),
+            document_hash: "irrelevant".into(),
+            finding_code: "operator-request".into(),
+            finding_rule: None,
+            repair_rule: "operator-request".into(),
+            operation: "delete_document".into(),
+            field: None,
+            expected_old_value: None,
+            new_value: None,
+            destination: None,
+            link_risk: None,
+            warnings: Vec::new(),
+            force: false,
+        };
+
+        let err = apply_delete(root, &change).unwrap_err();
+        match err {
+            ApplyError::DeleteSourceMissing { path } => assert_eq!(path, doc_rel),
+            other => panic!("expected DeleteSourceMissing, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_delete_refuses_symlink() {
+        let tmp = tempfile::Builder::new()
+            .prefix("vault-cli-apply-delete-symlink-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let real_rel = camino::Utf8PathBuf::from("real.md");
+        let link_rel = camino::Utf8PathBuf::from("link.md");
+        std::fs::write(root.join(&real_rel), "real").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.join(&real_rel), root.join(&link_rel)).unwrap();
+
+        #[cfg(unix)]
+        {
+            let change = PlannedChange {
+                change_id: "delete-symlink".into(),
+                path: link_rel.clone(),
+                document_hash: "irrelevant".into(),
+                finding_code: "operator-request".into(),
+                finding_rule: None,
+                repair_rule: "operator-request".into(),
+                operation: "delete_document".into(),
+                field: None,
+                expected_old_value: None,
+                new_value: None,
+                destination: None,
+                link_risk: None,
+                warnings: Vec::new(),
+                force: false,
+            };
+
+            let err = apply_delete(root, &change).unwrap_err();
+            match err {
+                ApplyError::DeleteSourceIsSymlink { path } => assert_eq!(path, link_rel),
+                other => panic!("expected DeleteSourceIsSymlink, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn apply_move_with_force_overwrites_destination() {
+        let tmp = tempfile::Builder::new()
+            .prefix("vault-cli-apply-move-force-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let src_rel = camino::Utf8PathBuf::from("src.md");
+        let dst_rel = camino::Utf8PathBuf::from("dst.md");
+        std::fs::write(root.join(&src_rel), "src content").unwrap();
+        std::fs::write(root.join(&dst_rel), "dst content").unwrap();
+
+        let change = PlannedChange {
+            change_id: "force-test".into(),
+            path: src_rel.clone(),
+            document_hash: "irrelevant".into(),
+            finding_code: "operator-request".into(),
+            finding_rule: None,
+            repair_rule: "operator-request".into(),
+            operation: "move_document".into(),
+            field: None,
+            expected_old_value: None,
+            new_value: None,
+            destination: Some(dst_rel.clone()),
+            link_risk: None,
+            warnings: Vec::new(),
+            force: true,
+        };
+
+        let result = apply_move(root, &change).unwrap();
+        assert_eq!(result.from, src_rel);
+        assert_eq!(result.to, dst_rel);
+        // dst now has src's content; src is gone.
+        assert_eq!(
+            std::fs::read_to_string(root.join(&dst_rel)).unwrap(),
+            "src content"
+        );
+        assert!(!root.join(&src_rel).as_std_path().exists());
+    }
+
+    #[test]
+    fn apply_move_without_force_refuses_existing_destination() {
+        let tmp = tempfile::Builder::new()
+            .prefix("vault-cli-apply-move-noforce-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let src_rel = camino::Utf8PathBuf::from("src.md");
+        let dst_rel = camino::Utf8PathBuf::from("dst.md");
+        std::fs::write(root.join(&src_rel), "src").unwrap();
+        std::fs::write(root.join(&dst_rel), "dst").unwrap();
+
+        let change = PlannedChange {
+            change_id: "noforce-test".into(),
+            path: src_rel.clone(),
+            document_hash: "irrelevant".into(),
+            finding_code: "operator-request".into(),
+            finding_rule: None,
+            repair_rule: "operator-request".into(),
+            operation: "move_document".into(),
+            field: None,
+            expected_old_value: None,
+            new_value: None,
+            destination: Some(dst_rel.clone()),
+            link_risk: None,
+            warnings: Vec::new(),
+            force: false,
+        };
+
+        let err = apply_move(root, &change).unwrap_err();
+        match err {
+            ApplyError::MoveDestinationExists { destination } => {
+                assert_eq!(destination, dst_rel)
+            }
+            other => panic!("expected MoveDestinationExists, got {other:?}"),
+        }
     }
 }

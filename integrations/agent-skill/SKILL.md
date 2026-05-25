@@ -37,13 +37,12 @@ None of these write to the vault:
 
 - `vault find --all` (document inventory)
 - `vault count` / `vault count --by FIELD`
-- `vault show <doc>`
+- `vault get <doc>`
 - `vault find`
 - `vault validate` (with or without `--summary` or filters)
 - `vault repair plan` (produces an artifact; does not modify the vault)
-- `vault repair links` (planning report only)
 
-Only `vault repair apply` writes to the vault. The plan argument is optional — omit it (or pass `-`) to read the plan from stdin.
+`vault move` and `vault delete` are mutation commands; pass `--dry-run` to preview without writing. Only `vault repair apply`, `vault move`, and `vault delete` (without `--dry-run`) write to the vault. The repair plan argument is optional — omit it (or pass `-`) to read the plan from stdin.
 
 ## Validation summary first, raw findings second
 

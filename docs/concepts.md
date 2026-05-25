@@ -32,7 +32,7 @@ All predicates are ANDed. Pass `--all` with no other predicates to return every 
 
 `vault count --by <field>` produces grouped counts for a single frontmatter field. Without `--by`, emits the total. Use it to size a queue before listing.
 
-`vault show <path-or-stem>` returns one document's detail: frontmatter, headings, outgoing links, unresolved links, and incoming links.
+`vault get <path-or-stem>` returns one document's detail: frontmatter, headings, outgoing links, unresolved links, and incoming links.
 
 ## Frontmatter
 
@@ -62,7 +62,7 @@ Wikilinks inside inline code (`` `[[example]]` ``) and fenced code blocks are no
 - **Exact paths** are case-sensitive.
 - **Unique stem lookup** is case-insensitive and applies only to Markdown documents.
 - **Ambiguous stems** (two documents with the same case-insensitive stem) report as `link-ambiguous` findings with all candidate paths.
-- **Backlink queries by exact attachment path** are supported via `vault show <path> --col incoming_links`.
+- **Backlink queries by exact attachment path** are supported via `vault get <path> --col incoming_links`.
 
 ## Validation vs repair
 

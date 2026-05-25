@@ -237,17 +237,29 @@ See [examples/repair-recipe.sh](../examples/repair-recipe.sh) for a runnable ver
 
 ## Link and path planning
 
-`vault repair links` is a read-only planning surface for link drift and path move/delete risk. It does not rewrite links or move files.
+To surface link drift across the vault before moving or deleting documents, use `vault validate --code 'link-*'`. This returns unresolved links, ambiguous links with candidate paths, and related link findings in the standard validation shape.
 
 ```bash
-vault repair links --format json
-vault repair links --target "notes/some-note.md" --format json
-vault repair links --target "some-note" --format table
+vault validate --code 'link-*' --format jsonl
+vault validate --code 'link-*' --target "notes/some-note.md" --format jsonl
+vault validate --code 'link-*' --summary --format json
 ```
 
-The report includes unresolved links, ambiguous links with candidate paths, path-style Markdown links worth reviewing before path moves, duplicate-stem risks for stem-style wikilinks, affected files, and optional move/delete risk for the selected `--target`.
+To preview the effect of moving a document (backlink rewrites, stem collisions, affected files), use `vault move` with `--dry-run`:
 
-Link and path planning separates deterministic facts from ambiguous/skipped fallout. It does not automatically resolve ambiguous links, guess missing semantic targets, or apply path rewrites.
+```bash
+vault move Inbox/task.md Projects/demo/task.md --dry-run
+vault move Inbox/task.md Projects/demo/task.md --dry-run --format json
+```
+
+To preview deletion risk (incoming links that would break), use `vault delete` with `--dry-run`:
+
+```bash
+vault delete notes/old-note.md --dry-run
+vault delete notes/old-note.md --dry-run --format json
+```
+
+These dry-run passes separate deterministic facts (exact backlinks, path conflicts) from ambiguous/skipped fallout, without writing to the vault.
 
 ## See also
 

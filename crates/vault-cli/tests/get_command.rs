@@ -1,11 +1,11 @@
-//! Integration tests for `vault show`.
+//! Integration tests for `vault get`.
 
 use std::process::Command;
 use tempfile::TempDir;
 
 fn synth() -> TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-show-int-")
+        .prefix("vault-cli-get-int-")
         .tempdir()
         .unwrap();
     let root = tmp.path().join("vault");
@@ -28,12 +28,12 @@ fn vault_bin() -> std::path::PathBuf {
 }
 
 #[test]
-fn show_single_target_json() {
+fn get_single_target_json() {
     let tmp = synth();
     let out = Command::new(vault_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
-        .args(["show", "a.md", "--format", "json"])
+        .args(["get", "a.md", "--format", "json"])
         .output()
         .unwrap();
     assert!(
@@ -49,12 +49,12 @@ fn show_single_target_json() {
 }
 
 #[test]
-fn show_wikilink_target() {
+fn get_wikilink_target() {
     let tmp = synth();
     let out = Command::new(vault_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
-        .args(["show", "[[a]]", "--format", "json"])
+        .args(["get", "[[a]]", "--format", "json"])
         .output()
         .unwrap();
     assert!(
@@ -68,12 +68,12 @@ fn show_wikilink_target() {
 }
 
 #[test]
-fn show_multiple_targets_returns_array() {
+fn get_multiple_targets_returns_array() {
     let tmp = synth();
     let out = Command::new(vault_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
-        .args(["show", "a.md", "b.md", "--format", "json"])
+        .args(["get", "a.md", "b.md", "--format", "json"])
         .output()
         .unwrap();
     assert!(
@@ -87,19 +87,12 @@ fn show_multiple_targets_returns_array() {
 }
 
 #[test]
-fn show_col_narrows_output() {
+fn get_col_narrows_output() {
     let tmp = synth();
     let out = Command::new(vault_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
-        .args([
-            "show",
-            "a.md",
-            "--col",
-            "incoming_links",
-            "--format",
-            "json",
-        ])
+        .args(["get", "a.md", "--col", "incoming_links", "--format", "json"])
         .output()
         .unwrap();
     assert!(
@@ -115,12 +108,12 @@ fn show_col_narrows_output() {
 }
 
 #[test]
-fn show_body_flag_includes_content() {
+fn get_body_flag_includes_content() {
     let tmp = synth();
     let out = Command::new(vault_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
-        .args(["show", "a.md", "--body", "--format", "json"])
+        .args(["get", "a.md", "--body", "--format", "json"])
         .output()
         .unwrap();
     assert!(
@@ -134,13 +127,13 @@ fn show_body_flag_includes_content() {
 }
 
 #[test]
-fn show_unknown_col_warns_on_stderr() {
+fn get_unknown_col_warns_on_stderr() {
     let tmp = synth();
     let out = Command::new(vault_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args([
-            "show",
+            "get",
             "a.md",
             "--col",
             "nonexistent_field",
@@ -164,12 +157,12 @@ fn show_unknown_col_warns_on_stderr() {
 }
 
 #[test]
-fn show_missing_target_partial_failure_exit() {
+fn get_missing_target_partial_failure_exit() {
     let tmp = synth();
     let out = Command::new(vault_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
-        .args(["show", "a.md", "nonexistent", "--format", "json"])
+        .args(["get", "a.md", "nonexistent", "--format", "json"])
         .output()
         .unwrap();
     // Non-zero exit because one target failed; stdout still has the one

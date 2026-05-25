@@ -67,12 +67,13 @@ For a deeper walkthrough including scoped rules and a first repair plan, see [do
 | Workflow | Command shape | Docs |
 |---|---|---|
 | Inventory documents | `vault find --all --format records` | [commands.md](docs/commands.md) |
-| Inspect one document | `vault show <path-or-stem>` | [commands.md](docs/commands.md) |
+| Inspect one document | `vault get <path-or-stem>` | [commands.md](docs/commands.md) |
 | Walk unresolved links | `vault validate --code 'link-*'` | [commands.md](docs/commands.md) |
 | Validate against rules | `vault validate --summary` | [validation.md](docs/validation.md) |
 | Plan a repair | `vault repair plan --out repair.json` | [validation.md](docs/validation.md) |
 | Apply a repair | `vault repair apply repair.json --verify` | [validation.md](docs/validation.md) |
-| Plan link/path moves | `vault repair links --target <path>` | [validation.md](docs/validation.md) |
+| Move a document | `vault move <src> <dst>` | [commands.md](docs/commands.md) |
+| Delete a document | `vault delete <doc>` | [commands.md](docs/commands.md) |
 | Find | `vault find --text "..." --eq k:v` | [commands.md](docs/commands.md) |
 
 Commands accept `--format json|jsonl` (stable contracts) plus format-specific human-readable options (`records`, `text`, `paths`). JSON and JSONL contracts are stable across point releases; human-readable formats may evolve.

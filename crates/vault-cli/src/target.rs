@@ -11,14 +11,6 @@ pub fn backlinks<'a>(index: &'a GraphIndex, target_path: &Utf8PathBuf) -> Vec<&'
         .collect()
 }
 
-pub fn resolve_backlink_target_path(index: &GraphIndex, target: &str) -> Result<Utf8PathBuf> {
-    if let Some(file) = index.files.iter().find(|file| file.path == target) {
-        return Ok(file.path.clone());
-    }
-
-    resolve_target_path(index, target)
-}
-
 pub fn resolve_target_path(index: &GraphIndex, target: &str) -> Result<Utf8PathBuf> {
     if let Some(document) = index
         .documents

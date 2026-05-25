@@ -202,6 +202,16 @@ fn links_backlinks_is_removed() {
 }
 
 #[test]
+fn repair_links_is_removed() {
+    let error = vault_error(&["repair", "links"]);
+    assert!(
+        error.contains("unrecognized subcommand 'links'")
+            || error.contains("unexpected argument 'links'"),
+        "expected unrecognized-subcommand error for `vault repair links`; got: {error}"
+    );
+}
+
+#[test]
 fn grouped_help_lists_new_surfaces() {
     let output = vault(&["cache", "--help"]);
     assert!(output.contains("Manage the SQLite-backed vault graph cache"));
@@ -213,7 +223,13 @@ fn grouped_help_lists_new_surfaces() {
     let output = vault(&["repair", "--help"]);
     assert!(output.contains("Plan and apply deterministic vault repairs"));
     assert!(output.contains("plan"));
-    assert!(output.contains("links"));
+    assert!(output.contains("apply"));
+    // "vault repair links" subcommand was retired; the word "links" still appears in
+    // apply/plan descriptions, so we check for the subcommand listing token instead.
+    assert!(
+        !output.contains("  links  ") && !output.contains("  links\n"),
+        "vault repair links subcommand should be retired; got: {output}"
+    );
 
     let output = vault(&["repair", "plan", "--help"]);
     // RepairPlanFormat uses a custom value_parser; clap no longer auto-lists possible values.
@@ -232,109 +248,11 @@ fn grouped_help_lists_new_surfaces() {
     assert!(!output.contains("manual-decision"));
 }
 
-#[test]
-fn repair_links_reports_link_drift_and_duplicate_stems() {
-    let root = fixture_root();
-    let output = vault(&[
-        "-C",
-        root.to_str().unwrap(),
-        "repair",
-        "links",
-        "--format",
-        "json",
-    ]);
-
-    let report = serde_json::from_str::<Value>(&output).expect("link report should be JSON");
-    assert_eq!(report["schema_version"], 1);
-    assert_eq!(report["summary"]["unresolved_links"], 5);
-    assert_eq!(report["summary"]["ambiguous_links"], 1);
-    assert_eq!(report["summary"]["duplicate_stem_risks"], 1);
-    assert_eq!(report["ambiguous_links"][0]["target"], "duplicate");
-    assert_eq!(
-        report["ambiguous_links"][0]["candidates"][0],
-        "duplicate.md"
-    );
-    assert!(report["ambiguous_links"][0]["decision"]
-        .as_str()
-        .unwrap()
-        .starts_with("skipped:"));
-    assert_eq!(report["duplicate_stem_risks"][0]["stem"], "duplicate");
-    assert!(report["unresolved_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| {
-            link["unresolved_reason"] == "anchor-missing"
-                && link["anchor"] == "Missing Same Heading"
-        }));
-    assert!(report["path_style_markdown_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| link["target"] == "folder/delta.md"));
-    assert!(report["unresolved_links"][0]["decision"]
-        .as_str()
-        .unwrap()
-        .starts_with("skipped:"));
-}
-
-#[test]
-fn repair_links_reports_target_move_and_delete_risk() {
-    let root = fixture_root();
-    let output = vault(&[
-        "-C",
-        root.to_str().unwrap(),
-        "repair",
-        "links",
-        "--target",
-        "alpha",
-        "--format",
-        "json",
-    ]);
-
-    let report = serde_json::from_str::<Value>(&output).expect("link report should be JSON");
-    assert_eq!(report["target_risk"]["target_path"], "alpha.md");
-    assert_eq!(report["target_risk"]["incoming_link_count"], 6);
-    assert!(report["target_risk"]["incoming_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| link["source_path"] == "beta.md"));
-    assert!(report["target_risk"]["delete_risk"]
-        .as_str()
-        .unwrap()
-        .contains("break indexed incoming links"));
-    assert!(report["affected_files"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|path| path == "beta.md"));
-}
-
-#[test]
-fn repair_links_table_is_row_oriented() {
-    let root = fixture_root();
-    let output = vault(&[
-        "-C",
-        root.to_str().unwrap(),
-        "repair",
-        "links",
-        "--target",
-        "alpha",
-        "--format",
-        "table",
-    ]);
-
-    assert!(output.contains("unresolved_links"));
-    assert!(output.contains("category"));
-    assert!(output.contains("ambiguous"));
-    assert!(output.contains("path-style"));
-    assert!(output.contains("target_path"));
-    assert!(output.contains("incoming_sources"));
-    assert!(output.contains("skipped:"));
-    assert!(!output.contains("manual decision required"));
-    assert!(!output.contains("\"unresolved_links\""));
-}
+// repair_links_reports_link_drift_and_duplicate_stems: removed — vault repair links retired.
+// Broken-link enumeration is now vault validate --code 'link-*'.
+// repair_links_reports_target_move_and_delete_risk: removed — vault repair links retired.
+// Move/delete impact analysis is vault move --dry-run and vault delete --dry-run.
+// repair_links_table_is_row_oriented: removed — vault repair links retired.
 
 #[test]
 fn repair_plan_generates_configured_frontmatter_change() {
@@ -366,7 +284,7 @@ fn repair_plan_generates_configured_frontmatter_change() {
     ]);
 
     let plan = serde_json::from_str::<Value>(&output).expect("repair plan should be JSON");
-    assert_eq!(plan["schema_version"], 6);
+    assert_eq!(plan["schema_version"], 7);
     assert_eq!(plan["summary"]["findings"], 1);
     assert_eq!(plan["summary"]["planned_changes"], 1);
     assert_eq!(plan["summary"]["skipped"]["total"], 0);
@@ -2383,7 +2301,7 @@ repair:
     let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
     let plan_json: Value = serde_json::from_str(&plan_text).expect("repair plan should be JSON");
 
-    assert_eq!(plan_json["schema_version"], 6);
+    assert_eq!(plan_json["schema_version"], 7);
     assert_eq!(plan_json["summary"]["planned_changes"], 1);
     let change = &plan_json["changes"][0];
     assert_eq!(change["operation"], "move_document");
@@ -2643,55 +2561,8 @@ repair:
     fs::remove_file(&config_path).ok();
 }
 
-#[test]
-fn repair_links_move_to_reports_risk_without_plan() {
-    let root = temp_cache_dir();
-    fs::create_dir_all(root.join("Inbox")).expect("inbox dir should be created");
-    fs::write(root.join("Inbox/task.md"), "---\ntype: task\n---\n# Body\n")
-        .expect("task should write");
-    fs::write(
-        root.join("Inbox/index.md"),
-        "---\ntitle: Index\n---\n- [[Inbox/task]]\n- [task](task.md)\n",
-    )
-    .expect("index should write");
-
-    let output = vault(&[
-        "-C",
-        root.to_str().unwrap(),
-        "repair",
-        "links",
-        "--target",
-        "Inbox/task.md",
-        "--move-to",
-        "Workspaces/demo/tasks/task.md",
-        "--format",
-        "json",
-    ]);
-    let report = serde_json::from_str::<Value>(&output).expect("link report should be JSON");
-
-    assert!(
-        !report["link_risk"]["path_qualified_wikilinks"]
-            .as_array()
-            .unwrap()
-            .is_empty(),
-        "expected at least one path-qualified wikilink in link_risk; got: {report}"
-    );
-    assert!(
-        !report["link_risk"]["markdown_links"]
-            .as_array()
-            .unwrap()
-            .is_empty(),
-        "expected at least one markdown link in link_risk; got: {report}"
-    );
-    assert_eq!(report["link_risk"]["directory_changed"], true);
-    assert_eq!(report["link_risk"]["stem_changed"], false);
-    assert!(
-        report.get("planned_changes").is_none(),
-        "report should not include a planned move; got: {report}"
-    );
-
-    fs::remove_dir_all(&root).ok();
-}
+// repair_links_move_to_reports_risk_without_plan: removed — vault repair links retired.
+// Move risk without a plan is now vault move --dry-run (with link rewrite preview).
 
 #[test]
 fn cache_index_creates_cache_and_status_reports_documents() {

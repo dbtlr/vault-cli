@@ -2,8 +2,23 @@
 
 use std::io::{self, Write};
 
+use anyhow::Error;
+
 use super::glyphs::{self, Glyph};
 use super::palette::Palette;
+
+/// Returns true when the error chain contains a broken-pipe IO error.
+///
+/// Used in `main` to suppress the exit-1 that would otherwise fire when
+/// a consumer closes the read end of a pipe before vault finishes writing
+/// (e.g. `vault find … | head -5`).
+pub fn is_broken_pipe(error: &Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<io::Error>()
+            .is_some_and(|error| error.kind() == io::ErrorKind::BrokenPipe)
+    })
+}
 
 /// Status headline: `{text}…` in `dim`. One trailing newline.
 pub fn status_headline(out: &mut dyn Write, p: &Palette, text: &str) -> io::Result<()> {

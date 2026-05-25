@@ -1,4 +1,4 @@
-//! `vault show` — single-doc detail with multi-target support and
+//! `vault get` — single-doc detail with multi-target support and
 //! wikilink-aware input resolution.
 
 pub mod render;
@@ -9,7 +9,7 @@ use serde::Serialize;
 use vault_cache::{Cache, IncomingLink};
 use vault_core::{Heading, Link};
 
-use crate::cli::ShowArgs;
+use crate::cli::GetArgs;
 
 #[derive(Debug, Serialize)]
 pub struct ShowRecord {
@@ -32,7 +32,7 @@ pub struct ShowReport {
     pub notes: Vec<String>,
 }
 
-pub fn run(cache: &Cache, args: &ShowArgs) -> Result<ShowReport> {
+pub fn run(cache: &Cache, args: &GetArgs) -> Result<ShowReport> {
     let mut records: Vec<ShowRecord> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
 
@@ -106,12 +106,12 @@ mod tests {
         cache
     }
 
-    fn args(targets: Vec<&str>, body: bool) -> crate::cli::ShowArgs {
-        crate::cli::ShowArgs {
+    fn args(targets: Vec<&str>, body: bool) -> crate::cli::GetArgs {
+        crate::cli::GetArgs {
             targets: targets.into_iter().map(String::from).collect(),
             body,
             col: vec![],
-            format: crate::cli::ShowFormat::Text,
+            format: crate::cli::GetFormat::Text,
         }
     }
 
@@ -166,11 +166,11 @@ mod tests {
     fn col_narrows_to_named_field_only_in_json() {
         let (_t, root) = synth_pair();
         let cache = open(&root);
-        let args = crate::cli::ShowArgs {
+        let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
             body: false,
             col: vec!["incoming_links".to_string()],
-            format: crate::cli::ShowFormat::Json,
+            format: crate::cli::GetFormat::Json,
         };
         let r = run(&cache, &args).unwrap();
         let json = render::render_json_with_col(&r, &args.col);
@@ -187,11 +187,11 @@ mod tests {
     fn col_with_multiple_fields() {
         let (_t, root) = synth_pair();
         let cache = open(&root);
-        let args = crate::cli::ShowArgs {
+        let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
             body: false,
             col: vec!["headings".to_string(), "outgoing_links".to_string()],
-            format: crate::cli::ShowFormat::Json,
+            format: crate::cli::GetFormat::Json,
         };
         let r = run(&cache, &args).unwrap();
         let json = render::render_json_with_col(&r, &args.col);
@@ -206,11 +206,11 @@ mod tests {
     fn json_default_includes_all_fields() {
         let (_t, root) = synth_pair();
         let cache = open(&root);
-        let args = crate::cli::ShowArgs {
+        let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
             body: false,
             col: vec![],
-            format: crate::cli::ShowFormat::Json,
+            format: crate::cli::GetFormat::Json,
         };
         let r = run(&cache, &args).unwrap();
         let json = render::render_json(&r);
@@ -230,11 +230,11 @@ mod tests {
     fn text_records_block_emits_path_and_headings() {
         let (_t, root) = synth_pair();
         let cache = open(&root);
-        let args = crate::cli::ShowArgs {
+        let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
             body: false,
             col: vec![],
-            format: crate::cli::ShowFormat::Text,
+            format: crate::cli::GetFormat::Text,
         };
         let r = run(&cache, &args).unwrap();
         let text = render::render_text(&r);
@@ -249,29 +249,29 @@ mod tests {
     fn col_with_unknown_field_warns_but_does_not_error() {
         let (_t, root) = synth_pair();
         let cache = open(&root);
-        let args = crate::cli::ShowArgs {
+        let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
             body: false,
             col: vec!["nonexistent_field".to_string()],
-            format: crate::cli::ShowFormat::Json,
+            format: crate::cli::GetFormat::Json,
         };
         let r = run(&cache, &args).unwrap();
         // run() doesn't have stderr access; the warning fires at the render
         // layer. Just verify the run succeeded and emitted a record.
         assert_eq!(r.records.len(), 1);
         // The render layer's warning is tested separately or via the
-        // integration test in tests/show_command.rs.
+        // integration test in tests/get_command.rs.
     }
 
     #[test]
     fn text_separator_between_multi_target_records() {
         let (_t, root) = synth_pair();
         let cache = open(&root);
-        let args = crate::cli::ShowArgs {
+        let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string(), "b.md".to_string()],
             body: false,
             col: vec![],
-            format: crate::cli::ShowFormat::Text,
+            format: crate::cli::GetFormat::Text,
         };
         let r = run(&cache, &args).unwrap();
         let text = render::render_text(&r);
