@@ -682,7 +682,7 @@ pub enum DeleteFormat {
 pub struct SelfUpdateArgs {
     /// Install this specific version (e.g. `0.30.0`). Downgrades allowed.
     /// Defaults to the latest GitHub release.
-    #[arg(long, value_name = "X.Y.Z")]
+    #[arg(long = "version", id = "pin_version", value_name = "X.Y.Z")]
     pub version: Option<String>,
 
     /// Resolve the target and print the plan, do not download or modify
