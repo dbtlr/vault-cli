@@ -19,6 +19,10 @@ The rule is enforced at *change time*, not at *release time*. By the time a rele
 
 ## What counts as "user-visible"
 
+**Guiding principle:** *Does this change land in the compiled binary the user runs?* If yes, it belongs in the CHANGELOG. If no — it lives only in the repo (CI config, contributor docs, dev-only tooling) — it does not.
+
+This is a binary-effect test, not a "did the user request it" test. A runtime cargo dependency bump that ships in the linked binary is user-visible even though the user didn't ask for it; a `deny.toml` tweak that only changes what cargo-deny accepts in CI is not, because the user's binary is bit-for-bit identical either way.
+
 **Requires a CHANGELOG entry:**
 
 - New commands, subcommands, flags, options, or config keys
@@ -28,7 +32,8 @@ The rule is enforced at *change time*, not at *release time*. By the time a rele
 - Performance characteristics meaningful enough to mention (e.g., "vault validate now under 100ms via cache")
 - Plan/cache/index JSON schema changes (especially version bumps)
 - Breaking changes — these get loud treatment, see below
-- New dependencies that affect installation (e.g., a new C library)
+- **Runtime cargo dependency *bumps* that land in the compiled binary** — version changes to existing `[dependencies]` entries (`Cargo.toml` or transitive `Cargo.lock`), feature-flag changes that alter what's linked in. Even when the change is "transparent" from a feature perspective, the bytes the user runs are different and there is no other paper trail in the CHANGELOG. *Adding* a new dep is different — it almost always rides along with a feature/change that already has its own CHANGELOG entry, and that entry implicitly covers the dep. Only call out the dep separately when it ships without a corresponding feature change.
+- New dependencies that affect installation (e.g., a new C library, a different TLS backend that pulls in system libraries)
 - File-location changes (cache path, log path, where vault writes user data)
 - New permission requirements (e.g., file mode changes)
 - Documentation contract changes (changing what an agent is told to do)
@@ -37,10 +42,26 @@ The rule is enforced at *change time*, not at *release time*. By the time a rele
 
 - Internal refactors with no observable user/agent difference
 - Test additions or test infrastructure
-- CI/build infrastructure changes
+- **Dev-dependency-only changes** (`[dev-dependencies]`, build-only deps that don't link into the binary) — these affect the test runner / build process, not the shipped artifact
+- **CI/CD configuration changes** — workflow files, GitHub Actions versions, runner setup, `cargo-dist` workflow regeneration
+- **Linter / formatter / security-scanner config changes that don't affect the binary** — `deny.toml`, `rustfmt.toml`, `clippy.toml`, `.editorconfig`. These shape what the toolchain accepts at build time but produce the same compiled output.
 - Code style fixes (rustfmt, clippy lint compliance)
-- Doc-only changes that don't change a documented contract (typo fixes, clarifications)
-- Comments and inline documentation
+- Repo-only documentation changes that don't change a documented user/agent contract (README typo fixes, contributor-facing CONTRIBUTING.md edits, internal architecture notes)
+- Comments and inline documentation in source files
+
+**The compiled-binary test in practice:**
+
+| Change | Lands in binary? | CHANGELOG? |
+|---|---|---|
+| Add `ureq = "2.10"` to `[dependencies]` **as part of a new feature that needs HTTP** | Yes (linked) | No separate entry — covered by the feature's own `### Added` line |
+| Add `ureq = "2.10"` to `[dependencies]` with no corresponding feature change (e.g., preparing infrastructure for a later release) | Yes (linked) | Yes — one line under `### Changed` |
+| Bump `serde` from 1.0.150 → 1.0.200 (no API change, just a transitive bytes change) | Yes (different bytes) | Yes — one line under `### Changed` |
+| Drop a previously-used runtime dep (e.g., replace `reqwest` with `ureq`) | Yes (different bytes) | Yes — one line under `### Changed`; mention what's replaced |
+| Add `mockito` to `[dev-dependencies]` | No (test-only) | No |
+| Add `CDLA-Permissive-2.0` to `deny.toml` allow-list | No (lints CI, not the binary) | No |
+| Bump `actions/checkout` from v5 → v6 in `.github/workflows/ci.yml` | No (CI tool, not the binary) | No |
+| `cargo fmt` sweep across the repo | Yes technically (same semantics, identical compiled output) | No — same observable bytes are emitted by the compiler |
+| Bump `cargo-dist` and regen `release.yml` | Sometimes — if installer scripts change, that's user-visible; if only the workflow YAML changes, no | Judgment call; lean toward "yes" when the installer scripts change |
 
 When in doubt: add an entry. Operators reading the CHANGELOG would rather see a sentence they can skip than miss a real change.
 
@@ -173,6 +194,11 @@ This is the standard mechanism for "group multiple tasks into a release without 
 | Removing or renaming surface | Add bullet under `### Breaking changes` with migration path |
 | Bumping schema version (plan, cache, etc.) | Add bullet under `### Breaking changes` with rejection-message text |
 | Fixing a bug operators have hit | Add bullet under `### Fixed` describing the user-visible symptom |
+| Adding a runtime cargo dep AS PART OF a new feature | No separate entry — the feature's `### Added` line covers it |
+| Adding/removing a runtime cargo dep WITHOUT a corresponding feature change | One-liner under `### Changed` ("now depends on `ureq` for HTTP"; "dropped `reqwest`") |
+| Bumping an existing runtime cargo dep version (different bytes in the binary) | One-liner under `### Changed` — keep it terse unless behavior is affected |
+| Adding a dev-dependency or CI tool config (no effect on binary) | No CHANGELOG entry needed |
+| Tweaking `deny.toml`, `rustfmt.toml`, `.github/workflows/*` | No CHANGELOG entry needed |
 | Internal refactor with no observable change | No CHANGELOG entry needed |
 | About to squash-merge a feature branch | Verify the feature's entry is in `## [Unreleased]`; rich squash body covers history |
 | Cutting a tagged release | Promote `## [Unreleased]` → `## v0.X.0 - YYYY-MM-DD`; add fresh `## [Unreleased]` above |
