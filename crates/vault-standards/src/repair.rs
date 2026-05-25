@@ -1579,6 +1579,45 @@ mod tests {
     }
 
     #[test]
+    fn replace_body_op_is_a_valid_operation() {
+        let plan_json = r#"{
+            "schema_version": 8,
+            "vault_root": "/tmp/vault",
+            "source_filters": {
+                "code": [],
+                "severity": [],
+                "field": [],
+                "rule": [],
+                "path": [],
+                "target": [],
+                "reason": [],
+                "skip_reason": []
+            },
+            "summary": {
+                "findings": 1,
+                "planned_changes": 1,
+                "skipped": {
+                    "by_reason": {},
+                    "total": 0
+                }
+            },
+            "changes": [{
+                "change_id": "abcd1234",
+                "path": "notes/foo.md",
+                "document_hash": "deadbeef",
+                "finding_code": "operator-mutation",
+                "repair_rule": "vault-set",
+                "operation": "replace_body",
+                "new_value": "fresh body content"
+            }],
+            "skipped_findings": [],
+            "footnotes": []
+        }"#;
+        let plan: RepairPlan = serde_json::from_str(plan_json).expect("plan should deserialize");
+        assert_eq!(plan.changes[0].operation, "replace_body");
+    }
+
+    #[test]
     fn skipped_summary_uses_code_keyed_map() {
         let mut by_reason = BTreeMap::new();
         by_reason.insert("missing-default".to_string(), 520);
