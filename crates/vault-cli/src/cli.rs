@@ -86,7 +86,32 @@ pub enum Command {
     Get(GetArgs),
     #[command(
         disable_help_flag = true,
-        about = "Update one document — schema-aware frontmatter mutation + wholesale body replacement"
+        about = "Update one document — schema-aware frontmatter mutation + wholesale body replacement",
+        long_about = "Update one document: mutate frontmatter fields and optionally replace the body.\n\
+\n\
+WORKFLOW: vault set runs schema-aware validation against the configured field_types rules, \
+then applies all ops as a single atomic filesystem write, then emits a SetReport (records on \
+TTY, JSON when piped or --format json is set).\n\
+\n\
+SAFE BY DEFAULT: vault set is destructive. In a TTY, it shows a preview and prompts for \
+confirmation. Without --yes (and in a non-TTY context), nothing is written — the preview is \
+your dry-run.\n\
+\n\
+Safety flags:\n  \
+--yes            Skip the confirmation prompt and apply.\n  \
+--dry-run        Show the preview and exit without writing or prompting.\n  \
+--force          Bypass schema enforcement (type validation + required-field protection).\n  \
+--format records|json  Output shape. --format json is non-interactive and emits the SetReport envelope.\n\
+\n\
+Flag classes:\n  \
+--field KEY=VALUE      Set a frontmatter field. Multi-instance of the same key accumulates into an array.\n  \
+--field-json KEY=JSON  Set a field with an explicit JSON-parsed value (arrays, objects, null).\n  \
+--push KEY=VALUE       Append to a list-typed field; creates a single-element array if absent.\n  \
+--pop KEY=VALUE        Remove a value from a list-typed field. Silent no-op if absent.\n  \
+--remove KEY           Drop a frontmatter key entirely. Silent no-op if the key is missing.\n  \
+--body-from-stdin      Read new body content from stdin (wholesale body replacement).\n\
+\n\
+Exit codes: 0 success or dry-run, 1 operator-cancelled, 2 pre-flight refusal."
     )]
     Set(SetArgs),
     #[command(disable_help_flag = true, about = "Scaffold .vault/config.yaml")]

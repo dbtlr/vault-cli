@@ -15,7 +15,6 @@ use vault_standards::PlannedChange;
 /// Refuses (Err) when:
 /// - The target doesn't resolve to any doc.
 /// - The target resolves to multiple docs (ambiguous stem).
-#[allow(dead_code)] // wired in when Command::Set handler lands (Task 2.2)
 pub fn resolve_target(cache: &Cache, raw: &str) -> Result<Utf8PathBuf> {
     let resolved = crate::show::target::resolve_target(cache, raw)?;
     match resolved.paths.len() {
@@ -33,7 +32,6 @@ pub fn resolve_target(cache: &Cache, raw: &str) -> Result<Utf8PathBuf> {
 
 /// Split `KEY=VALUE` at the first `=`. Returns Err on missing `=` or empty KEY.
 /// VALUE may contain additional `=` characters (preserved verbatim).
-#[allow(dead_code)] // wired in during Task 2.6 (plan synthesis)
 pub fn parse_kv(raw: &str) -> Result<(String, String)> {
     let (k, v) = raw
         .split_once('=')
@@ -51,7 +49,6 @@ pub fn parse_kv(raw: &str) -> Result<(String, String)> {
 /// --field and --field-json are treated as a single class for this purpose:
 /// both write a value to the key, and using both for the same key is
 /// ambiguous.
-#[allow(dead_code)] // wired in during Task 2.6 (plan synthesis)
 pub fn detect_cross_class_conflicts(
     fields: &[String],
     field_json: &[String],
@@ -106,7 +103,6 @@ pub fn detect_cross_class_conflicts(
 /// - everything else → string
 ///
 /// Does NOT do YAML datetime/date inference (foot-gun).
-#[allow(dead_code)] // wired in when synth_frontmatter_ops is called from Command::Set handler
 pub fn infer_scalar(raw: &str) -> Value {
     match raw {
         "true" => Value::Bool(true),
@@ -163,7 +159,7 @@ pub fn make_planned_change(
 /// Silent no-ops:
 /// - --pop on missing key, scalar value, or value not in array
 /// - --remove on missing key
-#[allow(dead_code)] // wired in when Command::Set handler lands (Phase 5)
+#[allow(dead_code)] // schema-silent path; only called from unit tests (production uses synth_frontmatter_ops_typed via synth_with_schema)
 pub fn synth_frontmatter_ops(
     current_frontmatter: &Value,
     fields: &[String],
@@ -611,7 +607,6 @@ fn parse_doc(content: &str) -> anyhow::Result<(serde_json::Value, String)> {
 /// Produce a `replace_body` PlannedChange if the new body differs from the
 /// current body byte-for-byte. Returns None when content is identical (no-op
 /// write — caller should report `body_changed: false`).
-#[allow(dead_code)] // wired in when Command::Set handler lands (Phase 5.4)
 pub fn synth_body_op(current_body: &str, new_body: &str) -> Option<PlannedChange> {
     if current_body == new_body {
         return None;
