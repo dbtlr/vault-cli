@@ -27,7 +27,7 @@ mod validate_filter;
 use std::{fs, process};
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use vault_core::GraphIndex;
 use vault_graph::{concise_diagnostics, has_errors};
 use vault_standards::{plan_repairs, validate_with_alias_field, RepairPlanFilters, SkippedSummary};
@@ -49,7 +49,12 @@ fn main() {
     if let Some(exit_code) = help::intercept_from_args() {
         process::exit(exit_code);
     }
-    let cli = Cli::parse();
+    let mut cmd = Cli::command();
+    if !self_update::receipt::exists() {
+        cmd = cmd.mut_subcommand("self-update", |sc| sc.hide(true));
+    }
+    let matches = cmd.get_matches();
+    let cli = Cli::from_arg_matches(&matches).expect("clap-derive contract: parse from matches");
     match run(cli) {
         Ok(exit_code) => process::exit(exit_code),
         Err(error) if is_broken_pipe(&error) => process::exit(0),

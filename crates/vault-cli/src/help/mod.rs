@@ -49,7 +49,10 @@ pub fn intercept_from_args() -> Option<i32> {
         .map(|(w, _)| w.0 as usize)
         .unwrap_or(80);
 
-    let root = Cli::command();
+    let mut root = Cli::command();
+    if !crate::self_update::receipt::exists() {
+        root = root.mut_subcommand("self-update", |sc| sc.hide(true));
+    }
     let (subcmd, cmd_path, hit_unknown) = resolve_subcmd_from_raw_args(&root, &args);
     if hit_unknown {
         // An unknown token appeared before the help flag. Let Cli::parse()
