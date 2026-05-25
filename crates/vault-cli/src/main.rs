@@ -18,6 +18,7 @@ pub mod prompt;
 mod query;
 mod repair;
 mod repair_apply;
+mod self_update;
 mod show;
 mod target;
 mod validate;
@@ -26,7 +27,7 @@ mod validate_filter;
 use std::{fs, process};
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use vault_core::GraphIndex;
 use vault_graph::{concise_diagnostics, has_errors};
 use vault_standards::{plan_repairs, validate_with_alias_field, RepairPlanFilters, SkippedSummary};
@@ -48,7 +49,12 @@ fn main() {
     if let Some(exit_code) = help::intercept_from_args() {
         process::exit(exit_code);
     }
-    let cli = Cli::parse();
+    let mut cmd = Cli::command();
+    if !self_update::receipt::exists() {
+        cmd = cmd.mut_subcommand("self-update", |sc| sc.hide(true));
+    }
+    let matches = cmd.get_matches();
+    let cli = Cli::from_arg_matches(&matches).expect("clap-derive contract: parse from matches");
     match run(cli) {
         Ok(exit_code) => process::exit(exit_code),
         Err(error) if is_broken_pipe(&error) => process::exit(0),
@@ -74,6 +80,7 @@ fn run(cli: Cli) -> Result<i32> {
     let command = match command {
         Command::Completions(args) => return run_completions_command(args),
         Command::Manpage => return run_manpage_command(),
+        Command::SelfUpdate(args) => return run_self_update_command(args, color),
         command => command,
     };
 
@@ -554,6 +561,9 @@ fn run(cli: Cli) -> Result<i32> {
         Command::Manpage => {
             unreachable!("manpage is handled before vault targeting")
         }
+        Command::SelfUpdate(_) => {
+            unreachable!("self-update is handled before vault targeting")
+        }
     }
 }
 
@@ -573,6 +583,69 @@ fn run_completions_command(cmd: crate::cli::CompletionsCommand) -> Result<i32> {
 fn run_manpage_command() -> Result<i32> {
     completions::run_manpage()?;
     Ok(0)
+}
+
+fn run_self_update_command(args: cli::SelfUpdateArgs, color: cli::ColorWhen) -> Result<i32> {
+    use std::io::IsTerminal;
+
+    let install_path =
+        std::env::current_exe().map_err(|e| anyhow::anyhow!("resolve current_exe: {e}"))?;
+
+    let cfg = self_update::RunConfig {
+        dry_run: args.dry_run,
+        pinned_version: args.version.clone(),
+        receipt_path_override: None,
+        install_path,
+        releases_url: "https://github.com/dbtlr/vault-cli/releases".to_string(),
+        target_triple: self_update::resolve::TARGET_TRIPLE.map(str::to_string),
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+
+    let result = self_update::run(&cfg);
+    let format = args.format.unwrap_or_else(|| {
+        if std::io::stdout().is_terminal() {
+            cli::SelfUpdateFormat::Text
+        } else {
+            cli::SelfUpdateFormat::Json
+        }
+    });
+
+    match result {
+        Ok((report, exit)) => {
+            let palette = crate::output::palette::resolve(color);
+            let mut stdout = std::io::stdout().lock();
+            match format {
+                cli::SelfUpdateFormat::Text => {
+                    self_update::render::render_text(&mut stdout, &palette, &report)?
+                }
+                cli::SelfUpdateFormat::Json => {
+                    self_update::render::render_json(&mut stdout, &report)?
+                }
+            }
+            Ok(exit)
+        }
+        Err(err) => {
+            let exit = self_update::classify_exit(&err);
+            let msg = format!("{err:#}");
+            if exit == 2 && msg.contains("no_receipt") {
+                eprintln!("{}", self_update::BLOCK_MESSAGE);
+            } else {
+                // Strip the internal `BLOCK::<kind>: ` routing prefix from the
+                // user-visible message — it exists for classify_exit, not the
+                // human reading stderr.
+                let display = strip_block_prefix(&msg);
+                eprintln!("{display}");
+            }
+            Ok(exit)
+        }
+    }
+}
+
+fn strip_block_prefix(msg: &str) -> &str {
+    let Some(rest) = msg.strip_prefix("BLOCK::") else {
+        return msg;
+    };
+    rest.split_once(": ").map(|(_, tail)| tail).unwrap_or(rest)
 }
 
 fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
