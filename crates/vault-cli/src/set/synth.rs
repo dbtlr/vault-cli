@@ -125,7 +125,6 @@ pub fn infer_scalar(raw: &str) -> Value {
 /// Construct a partial PlannedChange with the operator-mutation defaults filled in.
 ///
 /// path / document_hash / change_id are left empty for the caller to stamp.
-#[allow(dead_code)] // wired in when synth_frontmatter_ops is called from Command::Set handler
 pub fn make_planned_change(
     key: &str,
     op: &str,
@@ -284,6 +283,124 @@ pub fn synth_frontmatter_ops(
     }
 
     // --remove: emit only when the key actually exists.
+    for key in remove {
+        if !current_obj.contains_key(key) {
+            continue; // silent no-op
+        }
+        changes.push(make_planned_change(
+            key,
+            "remove_frontmatter",
+            current_obj.get(key).cloned(),
+            None,
+        ));
+    }
+
+    Ok(changes)
+}
+
+/// Typed-input variant of `synth_frontmatter_ops`: skips `parse_kv` + `infer_scalar`
+/// since the caller has already coerced values per schema. Used by the
+/// schema-aware path in `crate::set::validate::synth_with_schema`.
+///
+/// Each fields/push/pop entry is (key, typed_Value). --remove takes plain keys.
+/// Same routing rules as `synth_frontmatter_ops`:
+/// - existing key + value-replacement → set_frontmatter
+/// - missing key + value-creation → add_frontmatter
+/// - --push on scalar current → refuse
+/// - --pop on missing/scalar/absent-value → silent no-op
+/// - --remove on missing → silent no-op
+pub fn synth_frontmatter_ops_typed(
+    current_frontmatter: &Value,
+    fields: &[(String, Value)],
+    push: &[(String, Value)],
+    pop: &[(String, Value)],
+    remove: &[String],
+) -> Result<Vec<PlannedChange>> {
+    let current_obj = current_frontmatter
+        .as_object()
+        .ok_or_else(|| anyhow!("frontmatter is not a top-level mapping"))?;
+
+    let mut changes: Vec<PlannedChange> = Vec::new();
+
+    // Group fields by key. Multi-instance of same key accumulates into an array.
+    let mut grouped_fields: BTreeMap<String, Vec<Value>> = Default::default();
+    for (k, v) in fields {
+        grouped_fields.entry(k.clone()).or_default().push(v.clone());
+    }
+    for (key, values) in &grouped_fields {
+        let new_value = if values.len() == 1 {
+            values[0].clone()
+        } else {
+            Value::Array(values.clone())
+        };
+        let op = if current_obj.contains_key(key) {
+            "set_frontmatter"
+        } else {
+            "add_frontmatter"
+        };
+        changes.push(make_planned_change(
+            key,
+            op,
+            current_obj.get(key).cloned(),
+            Some(new_value),
+        ));
+    }
+
+    // --push
+    let mut grouped_push: BTreeMap<String, Vec<Value>> = Default::default();
+    for (k, v) in push {
+        grouped_push.entry(k.clone()).or_default().push(v.clone());
+    }
+    for (key, values) in &grouped_push {
+        let current_val = current_obj.get(key);
+        let mut new_array = match current_val {
+            Some(Value::Array(existing)) => existing.clone(),
+            None => Vec::new(),
+            Some(_) => {
+                bail!("--push on key '{key}' requires an array-typed value (current is scalar)")
+            }
+        };
+        new_array.extend(values.iter().cloned());
+        let op = if current_val.is_some() {
+            "set_frontmatter"
+        } else {
+            "add_frontmatter"
+        };
+        changes.push(make_planned_change(
+            key,
+            op,
+            current_val.cloned(),
+            Some(Value::Array(new_array)),
+        ));
+    }
+
+    // --pop
+    let mut grouped_pop: BTreeMap<String, Vec<Value>> = Default::default();
+    for (k, v) in pop {
+        grouped_pop.entry(k.clone()).or_default().push(v.clone());
+    }
+    for (key, drops) in &grouped_pop {
+        let current_val = current_obj.get(key);
+        let Some(Value::Array(existing)) = current_val else {
+            continue; // silent no-op
+        };
+        let new_array: Vec<Value> = existing
+            .iter()
+            .filter(|v| !drops.contains(v))
+            .cloned()
+            .collect();
+        if new_array.len() == existing.len() {
+            continue; // no actual change → silent no-op
+        }
+        changes.push(make_planned_change(
+            key,
+            "set_frontmatter",
+            current_val.cloned(),
+            Some(Value::Array(new_array)),
+        ));
+    }
+
+    // --remove
     for key in remove {
         if !current_obj.contains_key(key) {
             continue; // silent no-op
