@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 use vault_frontmatter::{
-    extract_frontmatter, serialize_value_preserving_style, top_level_property_spans, QuoteError,
-    ValueStyle,
+    extract_frontmatter, serialize_array_block_for_new_field, serialize_value_preserving_style,
+    top_level_property_spans, QuoteError, ValueStyle,
 };
 
 use crate::findings::Finding;
@@ -305,6 +305,37 @@ pub fn apply_file_changes(content: &str, changes: &[&PlannedChange]) -> Result<S
                         reason: format!("field {field} not present in frontmatter"),
                     });
                 };
+                let new_value = change
+                    .new_value
+                    .as_ref()
+                    .ok_or_else(|| ApplyError::MissingNewValue { path: path.clone() })?;
+
+                // Block-sequence arrays: value_range is None; replace the
+                // entire line_range (which covers `key:\n  - item\n …`) with
+                // a freshly serialized block.
+                if span.style == ValueStyle::BlockSequence {
+                    if let Value::Array(items) = new_value {
+                        let block_items =
+                            serialize_array_block_for_new_field(items).map_err(|e| {
+                                ApplyError::CannotMinimalEdit {
+                                    path: path.clone(),
+                                    reason: e.to_string(),
+                                }
+                            })?;
+                        let replacement = format!("{field}:\n{block_items}");
+                        edits.push((span.line_range.clone(), replacement));
+                        continue;
+                    }
+                    // Scalar value into a block-sequence field — refuse.
+                    return Err(ApplyError::CannotMinimalEdit {
+                        path: path.clone(),
+                        reason: format!(
+                            "field {field} has style {:?}; set_frontmatter requires a scalar value",
+                            span.style
+                        ),
+                    });
+                }
+
                 let Some(value_range) = span.value_range.clone() else {
                     return Err(ApplyError::CannotMinimalEdit {
                         path: path.clone(),
@@ -314,18 +345,14 @@ pub fn apply_file_changes(content: &str, changes: &[&PlannedChange]) -> Result<S
                         ),
                     });
                 };
-                let new_value = change
-                    .new_value
-                    .as_ref()
-                    .ok_or_else(|| ApplyError::MissingNewValue { path: path.clone() })?;
                 let replacement = serialize_value_preserving_style(new_value, span.style).map_err(
                     |e| match e {
-                        QuoteError::StructuredOriginalStyle(_) | QuoteError::NonScalarValue => {
-                            ApplyError::CannotMinimalEdit {
-                                path: path.clone(),
-                                reason: e.to_string(),
-                            }
-                        }
+                        QuoteError::StructuredOriginalStyle(_)
+                        | QuoteError::NonScalarValue
+                        | QuoteError::ArrayIntoScalar => ApplyError::CannotMinimalEdit {
+                            path: path.clone(),
+                            reason: e.to_string(),
+                        },
                         QuoteError::Unrepresentable { .. } => ApplyError::CannotMinimalEdit {
                             path: path.clone(),
                             reason: e.to_string(),
@@ -372,11 +399,6 @@ pub fn apply_file_changes(content: &str, changes: &[&PlannedChange]) -> Result<S
                     .new_value
                     .as_ref()
                     .ok_or_else(|| ApplyError::MissingNewValue { path: path.clone() })?;
-                let rendered = serialize_value_preserving_style(new_value, ValueStyle::Plain)
-                    .map_err(|e| ApplyError::CannotMinimalEdit {
-                        path: path.clone(),
-                        reason: e.to_string(),
-                    })?;
                 // Insert at end of frontmatter block. extract_frontmatter
                 // returns a range over the YAML content (between the leading
                 // and trailing `---` lines). It ends at the byte just after
@@ -389,7 +411,29 @@ pub fn apply_file_changes(content: &str, changes: &[&PlannedChange]) -> Result<S
                     } else {
                         "\n"
                     };
-                let line_to_insert = format!("{leading_newline}{field}: {rendered}\n");
+                let line_to_insert = match new_value {
+                    Value::Array(items) => {
+                        // Default to block style for new array fields — more
+                        // readable in Markdown frontmatter.
+                        let block_items =
+                            serialize_array_block_for_new_field(items).map_err(|e| {
+                                ApplyError::CannotMinimalEdit {
+                                    path: path.clone(),
+                                    reason: e.to_string(),
+                                }
+                            })?;
+                        format!("{leading_newline}{field}:\n{block_items}")
+                    }
+                    _ => {
+                        let rendered =
+                            serialize_value_preserving_style(new_value, ValueStyle::Plain)
+                                .map_err(|e| ApplyError::CannotMinimalEdit {
+                                    path: path.clone(),
+                                    reason: e.to_string(),
+                                })?;
+                        format!("{leading_newline}{field}: {rendered}\n")
+                    }
+                };
                 edits.push((insertion..insertion, line_to_insert));
             }
             "move_document" => {
@@ -1050,6 +1094,98 @@ mod tests {
         let change = make_change("a.md", "status", "h1", "remove_frontmatter", None);
         let err = apply_change(content, &change).unwrap_err();
         assert!(matches!(err, ApplyError::CannotMinimalEdit { .. }));
+    }
+
+    #[test]
+    fn apply_add_frontmatter_array_inserts_block_style() {
+        let content = "---\ntitle: Foo\n---\nbody\n";
+        let change = make_change(
+            "a.md",
+            "aliases",
+            "h1",
+            "add_frontmatter",
+            Some(json!(["alpha", "beta"])),
+        );
+        let result = apply_change(content, &change).unwrap();
+        assert!(
+            result.contains("aliases:\n  - alpha\n  - beta"),
+            "expected block-style array in result: {result}"
+        );
+        assert!(result.contains("title: Foo"));
+        assert!(result.contains("body"));
+    }
+
+    #[test]
+    fn apply_add_frontmatter_empty_array_inserts_key_only() {
+        let content = "---\ntitle: Foo\n---\nbody\n";
+        let change = make_change("a.md", "aliases", "h1", "add_frontmatter", Some(json!([])));
+        let result = apply_change(content, &change).unwrap();
+        assert!(
+            result.contains("aliases:\n"),
+            "expected key line with no items: {result}"
+        );
+    }
+
+    #[test]
+    fn apply_set_frontmatter_array_on_existing_block_replaces_items() {
+        let content = "---\naliases:\n  - old\n---\nbody\n";
+        let change = PlannedChange {
+            expected_old_value: Some(json!(["old"])),
+            ..make_change(
+                "a.md",
+                "aliases",
+                "h1",
+                "set_frontmatter",
+                Some(json!(["alpha", "beta"])),
+            )
+        };
+        let result = apply_change(content, &change).unwrap();
+        assert!(
+            result.contains("aliases:\n  - alpha\n  - beta"),
+            "expected new block items: {result}"
+        );
+        assert!(
+            !result.contains("- old"),
+            "old item should be removed: {result}"
+        );
+    }
+
+    #[test]
+    fn apply_set_frontmatter_array_on_existing_flow_replaces_inline() {
+        let content = "---\naliases: [old]\n---\nbody\n";
+        let change = PlannedChange {
+            expected_old_value: Some(json!(["old"])),
+            ..make_change(
+                "a.md",
+                "aliases",
+                "h1",
+                "set_frontmatter",
+                Some(json!(["alpha", "beta"])),
+            )
+        };
+        let result = apply_change(content, &change).unwrap();
+        assert!(
+            result.contains("aliases: [alpha, beta]"),
+            "expected inline flow array: {result}"
+        );
+        assert!(!result.contains("old"), "old item should be gone: {result}");
+    }
+
+    #[test]
+    fn apply_set_frontmatter_scalar_into_scalar_still_works() {
+        let content = "---\nstatus: draft\n---\nbody\n";
+        let change = PlannedChange {
+            expected_old_value: Some(json!("draft")),
+            ..make_change(
+                "a.md",
+                "status",
+                "h1",
+                "set_frontmatter",
+                Some(json!("active")),
+            )
+        };
+        let result = apply_change(content, &change).unwrap();
+        assert_eq!(result, "---\nstatus: active\n---\nbody\n");
     }
 
     #[test]
