@@ -40,6 +40,25 @@ pub fn select_asset<'a>(manifest: &'a DistManifest, triple: &str) -> Option<(&'a
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Action {
+    WouldUpdate,
+    WouldNoOp,
+    Updated,
+    NoOp,
+}
+
+pub fn determine_action(dry_run: bool, target_version: &str, current_version: &str) -> Action {
+    let same = target_version == current_version;
+    match (dry_run, same) {
+        (true, false) => Action::WouldUpdate,
+        (true, true) => Action::WouldNoOp,
+        (false, false) => Action::Updated,
+        (false, true) => Action::NoOp,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,5 +114,19 @@ mod tests {
             "AA",
         )]);
         assert_eq!(select_asset(&m, "some-other-triple"), None);
+    }
+
+    #[test]
+    fn action_truth_table() {
+        assert_eq!(
+            determine_action(true, "0.33.1", "0.32.0"),
+            Action::WouldUpdate
+        );
+        assert_eq!(
+            determine_action(true, "0.32.0", "0.32.0"),
+            Action::WouldNoOp
+        );
+        assert_eq!(determine_action(false, "0.33.1", "0.32.0"), Action::Updated);
+        assert_eq!(determine_action(false, "0.32.0", "0.32.0"), Action::NoOp);
     }
 }
