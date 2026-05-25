@@ -158,6 +158,18 @@ Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-fli
         about = "Emit roff-format man page to stdout"
     )]
     Manpage,
+    #[command(
+        disable_help_flag = true,
+        about = "Update vault to the latest GitHub release",
+        long_about = "Update vault to the latest GitHub release.\n\n\
+            Only works when vault was installed via the official GitHub install \
+            script. If you installed via `cargo install`, Homebrew, or built \
+            from source, use that tool's update mechanism instead.\n\n\
+            `--dry-run` resolves the target version and prints the plan without \
+            downloading or modifying anything. Combine with `--format json` for \
+            scriptable \"is an update available?\" checks."
+    )]
+    SelfUpdate(SelfUpdateArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -663,6 +675,30 @@ pub struct DeleteArgs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum DeleteFormat {
     Records,
+    Json,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct SelfUpdateArgs {
+    /// Install this specific version (e.g. `0.30.0`). Downgrades allowed.
+    /// Defaults to the latest GitHub release.
+    #[arg(long, value_name = "X.Y.Z")]
+    pub version: Option<String>,
+
+    /// Resolve the target and print the plan, do not download or modify
+    /// anything. Combine with `--format json` for scriptable "is an update
+    /// available?" checks.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Output format. Default: `text` on TTY, `json` when piped.
+    #[arg(long, value_enum, help_heading = "Output")]
+    pub format: Option<SelfUpdateFormat>,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfUpdateFormat {
+    Text,
     Json,
 }
 

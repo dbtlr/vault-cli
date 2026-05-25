@@ -75,6 +75,7 @@ fn run(cli: Cli) -> Result<i32> {
     let command = match command {
         Command::Completions(args) => return run_completions_command(args),
         Command::Manpage => return run_manpage_command(),
+        Command::SelfUpdate(args) => return run_self_update_command(args, color),
         command => command,
     };
 
@@ -555,6 +556,9 @@ fn run(cli: Cli) -> Result<i32> {
         Command::Manpage => {
             unreachable!("manpage is handled before vault targeting")
         }
+        Command::SelfUpdate(_) => {
+            unreachable!("self-update is handled before vault targeting")
+        }
     }
 }
 
@@ -574,6 +578,62 @@ fn run_completions_command(cmd: crate::cli::CompletionsCommand) -> Result<i32> {
 fn run_manpage_command() -> Result<i32> {
     completions::run_manpage()?;
     Ok(0)
+}
+
+fn run_self_update_command(args: cli::SelfUpdateArgs, color: cli::ColorWhen) -> Result<i32> {
+    use std::io::IsTerminal;
+
+    let install_path =
+        std::env::current_exe().map_err(|e| anyhow::anyhow!("resolve current_exe: {e}"))?;
+
+    let cfg = self_update::RunConfig {
+        dry_run: args.dry_run,
+        pinned_version: args.version.clone(),
+        receipt_path_override: None,
+        install_path,
+        releases_url: "https://github.com/dbtlr/vault-cli/releases".to_string(),
+        target_triple: self_update::resolve::TARGET_TRIPLE.map(str::to_string),
+        current_version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+
+    let result = self_update::run(&cfg);
+    let format = args.format.unwrap_or_else(|| {
+        if std::io::stdout().is_terminal() {
+            cli::SelfUpdateFormat::Text
+        } else {
+            cli::SelfUpdateFormat::Json
+        }
+    });
+
+    match result {
+        Ok((report, exit)) => {
+            let palette = crate::output::palette::resolve(color);
+            let mut stdout = std::io::stdout().lock();
+            match format {
+                cli::SelfUpdateFormat::Text => {
+                    self_update::render::render_text(&mut stdout, &palette, &report)?
+                }
+                cli::SelfUpdateFormat::Json => {
+                    self_update::render::render_json(&mut stdout, &report)?
+                }
+            }
+            Ok(exit)
+        }
+        Err(err) => {
+            let exit = self_update::classify_exit(&err);
+            if exit == 2 {
+                let msg = format!("{err:#}");
+                if msg.contains("no_receipt") {
+                    eprintln!("{}", self_update::BLOCK_MESSAGE);
+                } else {
+                    eprintln!("{err:#}");
+                }
+            } else {
+                eprintln!("{err:#}");
+            }
+            Ok(exit)
+        }
+    }
 }
 
 fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
