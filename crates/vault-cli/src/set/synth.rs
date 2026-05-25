@@ -158,8 +158,11 @@ pub fn make_planned_change(
 ///
 /// Refuses on:
 /// - Malformed JSON in --field-json
+/// - --push against a current scalar value (schema-silent defensive check)
 ///
-/// Silent no-ops: none yet (push/pop/remove added in the next task).
+/// Silent no-ops:
+/// - --pop on missing key, scalar value, or value not in array
+/// - --remove on missing key
 #[allow(dead_code)] // wired in when Command::Set handler lands (Phase 5)
 pub fn synth_frontmatter_ops(
     current_frontmatter: &Value,
@@ -220,8 +223,75 @@ pub fn synth_frontmatter_ops(
         ));
     }
 
-    // push/pop/remove args are accepted but not yet processed (added Task 3.2).
-    let _ = (push, pop, remove);
+    // --push: group by key, resolve against current array.
+    let mut grouped_push: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    for kv in push {
+        let (k, v) = parse_kv(kv)?;
+        grouped_push.entry(k).or_default().push(infer_scalar(&v));
+    }
+    for (key, values) in &grouped_push {
+        let current_val = current_obj.get(key);
+        let mut new_array = match current_val {
+            Some(Value::Array(existing)) => existing.clone(),
+            None => Vec::new(),
+            Some(_) => {
+                bail!("--push on key '{key}' requires an array-typed value (current is scalar)")
+            }
+        };
+        new_array.extend(values.iter().cloned());
+        let op = if current_val.is_some() {
+            "set_frontmatter"
+        } else {
+            "add_frontmatter"
+        };
+        changes.push(make_planned_change(
+            key,
+            op,
+            current_val.cloned(),
+            Some(Value::Array(new_array)),
+        ));
+    }
+
+    // --pop: group by key, resolve drops against current array.
+    // Silent no-op when key missing, scalar value, or value not in array.
+    let mut grouped_pop: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    for kv in pop {
+        let (k, v) = parse_kv(kv)?;
+        grouped_pop.entry(k).or_default().push(infer_scalar(&v));
+    }
+    for (key, drops) in &grouped_pop {
+        let current_val = current_obj.get(key);
+        let Some(Value::Array(existing)) = current_val else {
+            continue; // silent no-op
+        };
+        let new_array: Vec<Value> = existing
+            .iter()
+            .filter(|v| !drops.contains(v))
+            .cloned()
+            .collect();
+        if new_array.len() == existing.len() {
+            continue; // no actual change → silent no-op
+        }
+        changes.push(make_planned_change(
+            key,
+            "set_frontmatter",
+            current_val.cloned(),
+            Some(Value::Array(new_array)),
+        ));
+    }
+
+    // --remove: emit only when the key actually exists.
+    for key in remove {
+        if !current_obj.contains_key(key) {
+            continue; // silent no-op
+        }
+        changes.push(make_planned_change(
+            key,
+            "remove_frontmatter",
+            current_obj.get(key).cloned(),
+            None,
+        ));
+    }
 
     Ok(changes)
 }
@@ -526,5 +596,100 @@ mod tests {
         assert_eq!(by_field.get("count"), Some(&Some(json!(42))));
         assert_eq!(by_field.get("missing"), Some(&Some(json!(null))));
         assert_eq!(by_field.get("name"), Some(&Some(json!("alpha"))));
+    }
+
+    #[test]
+    fn synth_push_on_existing_array_appends() {
+        let current = json!({"aliases": ["foo", "bar"]});
+        let changes =
+            synth_frontmatter_ops(&current, &[], &[], &["aliases=baz".to_string()], &[], &[])
+                .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].operation, "set_frontmatter");
+        assert_eq!(changes[0].new_value, Some(json!(["foo", "bar", "baz"])));
+    }
+
+    #[test]
+    fn synth_push_on_missing_key_creates_single_element_array() {
+        let current = json!({});
+        let changes =
+            synth_frontmatter_ops(&current, &[], &[], &["aliases=foo".to_string()], &[], &[])
+                .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].operation, "add_frontmatter");
+        assert_eq!(changes[0].new_value, Some(json!(["foo"])));
+    }
+
+    #[test]
+    fn synth_pop_drops_matching_value() {
+        let current = json!({"aliases": ["foo", "bar", "baz"]});
+        let changes =
+            synth_frontmatter_ops(&current, &[], &[], &[], &["aliases=bar".to_string()], &[])
+                .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].new_value, Some(json!(["foo", "baz"])));
+    }
+
+    #[test]
+    fn synth_pop_of_missing_value_emits_no_op_change() {
+        let current = json!({"aliases": ["foo"]});
+        let changes = synth_frontmatter_ops(
+            &current,
+            &[],
+            &[],
+            &[],
+            &["aliases=missing".to_string()],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            changes.len(),
+            0,
+            "pop of missing value should be a no-op (no change emitted)"
+        );
+    }
+
+    #[test]
+    fn synth_push_on_scalar_typed_field_returns_error() {
+        let current = json!({"name": "scalar"});
+        let result =
+            synth_frontmatter_ops(&current, &[], &[], &["name=extra".to_string()], &[], &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn synth_multi_push_same_key_accumulates() {
+        let current = json!({"aliases": ["x"]});
+        let changes = synth_frontmatter_ops(
+            &current,
+            &[],
+            &[],
+            &["aliases=a".to_string(), "aliases=b".to_string()],
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].new_value, Some(json!(["x", "a", "b"])));
+    }
+
+    #[test]
+    fn synth_remove_drops_key() {
+        let current = json!({"priority": "high", "status": "draft"});
+        let changes =
+            synth_frontmatter_ops(&current, &[], &[], &[], &[], &["priority".to_string()]).unwrap();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].operation, "remove_frontmatter");
+        assert_eq!(changes[0].field.as_deref(), Some("priority"));
+        assert_eq!(changes[0].expected_old_value, Some(json!("high")));
+    }
+
+    #[test]
+    fn synth_remove_of_missing_key_emits_no_op() {
+        let current = json!({"status": "draft"});
+        let changes =
+            synth_frontmatter_ops(&current, &[], &[], &[], &[], &["nonexistent".to_string()])
+                .unwrap();
+        assert_eq!(changes.len(), 0);
     }
 }
