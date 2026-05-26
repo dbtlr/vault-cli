@@ -19,6 +19,7 @@
 //! in Tasks 1.2/1.3 of the vault-new arc.
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
+use std::collections::BTreeMap;
 
 /// Known format tokens.
 ///
@@ -196,6 +197,229 @@ const DOW_FULL: [&str; 7] = [
     "Saturday",
     "Sunday",
 ];
+
+// ── Variable resolution ────────────────────────────────────────────────────
+
+/// Substitution context: resolved once per `vault new` invocation.
+#[derive(Debug, Clone)]
+pub struct Context {
+    pub now: NaiveDateTime,
+    pub title: String,
+    pub path_vars: BTreeMap<String, String>,
+    pub date_format: String,
+    pub time_format: String,
+}
+
+/// Errors produced by [`render`].
+#[derive(Debug, thiserror::Error)]
+pub enum RenderError {
+    #[error("unknown variable `{0}`")]
+    UnknownVariable(String),
+    #[error("unknown transform `{0}`")]
+    UnknownTransform(String),
+    #[error("malformed template: {0}")]
+    Malformed(String),
+}
+
+/// Render a template string against the context.
+///
+/// `{{{{` renders as a literal `{{`; `}}}}` renders as `}}`.
+/// Unknown `{{path.X}}` variables render as empty string — the caller
+/// surfaces a `path_variable_unresolved` warning.
+pub fn render(template: &str, ctx: &Context) -> Result<String, RenderError> {
+    let mut out = String::with_capacity(template.len());
+    let bytes = template.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // `{{{{` → literal `{{`
+        if i + 3 < bytes.len()
+            && bytes[i] == b'{'
+            && bytes[i + 1] == b'{'
+            && bytes[i + 2] == b'{'
+            && bytes[i + 3] == b'{'
+        {
+            out.push_str("{{");
+            i += 4;
+            continue;
+        }
+        // `}}}}` → literal `}}`
+        if i + 3 < bytes.len()
+            && bytes[i] == b'}'
+            && bytes[i + 1] == b'}'
+            && bytes[i + 2] == b'}'
+            && bytes[i + 3] == b'}'
+        {
+            out.push_str("}}");
+            i += 4;
+            continue;
+        }
+        // `{{ … }}` substitution
+        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'{' {
+            if let Some(end) = template[i + 2..].find("}}") {
+                let inner = &template[i + 2..i + 2 + end];
+                let rendered = render_expression(inner.trim(), ctx)?;
+                out.push_str(&rendered);
+                i += end + 4;
+                continue;
+            }
+            return Err(RenderError::Malformed(format!(
+                "unclosed `{{{{` at byte {i}"
+            )));
+        }
+        // Literal char — UTF-8 safe via chars().
+        let ch = template[i..]
+            .chars()
+            .next()
+            .expect("non-empty by loop guard");
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    Ok(out)
+}
+
+fn render_expression(expr: &str, ctx: &Context) -> Result<String, RenderError> {
+    if expr.contains('|') {
+        // Pipe transforms land in Task 1.3.
+        return Err(RenderError::UnknownTransform(
+            "pipeline transforms not yet implemented".into(),
+        ));
+    }
+    render_var(expr.trim(), ctx)
+}
+
+fn render_var(expr: &str, ctx: &Context) -> Result<String, RenderError> {
+    // Parse `name` or `name:arg`.
+    let (name, arg) = match expr.find(':') {
+        Some(idx) => (&expr[..idx], Some(&expr[idx + 1..])),
+        None => (expr, None),
+    };
+    let name = name.trim();
+    match name {
+        "title" => Ok(ctx.title.clone()),
+        "now" => Ok(format_datetime("YYYY-MM-DDTHH:mm", &ctx.now)),
+        "date" => {
+            let fmt = arg.unwrap_or(&ctx.date_format);
+            Ok(format_datetime(fmt, &ctx.now))
+        }
+        "time" => {
+            let fmt = arg.unwrap_or(&ctx.time_format);
+            Ok(format_datetime(fmt, &ctx.now))
+        }
+        n if n.starts_with("path.") => {
+            let key = &n["path.".len()..];
+            // Empty string for unknown path var — caller surfaces warning.
+            Ok(ctx.path_vars.get(key).cloned().unwrap_or_default())
+        }
+        other => Err(RenderError::UnknownVariable(other.into())),
+    }
+}
+
+#[cfg(test)]
+mod var_tests {
+    use super::*;
+    use chrono::{NaiveDate, NaiveTime};
+    use std::collections::BTreeMap;
+
+    fn ctx_for(stem: &str) -> Context {
+        let now = NaiveDate::from_ymd_opt(2026, 5, 25)
+            .unwrap()
+            .and_time(NaiveTime::from_hms_opt(18, 30, 45).unwrap());
+        Context {
+            now,
+            title: stem.into(),
+            path_vars: BTreeMap::new(),
+            date_format: "YYYY-MM-DD".into(),
+            time_format: "HH:mm".into(),
+        }
+    }
+
+    #[test]
+    fn renders_title_var() {
+        let ctx = ctx_for("design-vault-new");
+        assert_eq!(render("{{title}}", &ctx).unwrap(), "design-vault-new");
+    }
+
+    #[test]
+    fn renders_date_default_format() {
+        let ctx = ctx_for("foo");
+        assert_eq!(render("{{date}}", &ctx).unwrap(), "2026-05-25");
+    }
+
+    #[test]
+    fn renders_time_default_format() {
+        let ctx = ctx_for("foo");
+        assert_eq!(render("{{time}}", &ctx).unwrap(), "18:30");
+    }
+
+    #[test]
+    fn renders_date_custom_format() {
+        let ctx = ctx_for("foo");
+        assert_eq!(
+            render("{{date:YYYY-MM-DDTHH:mm}}", &ctx).unwrap(),
+            "2026-05-25T18:30"
+        );
+    }
+
+    #[test]
+    fn renders_time_custom_format() {
+        let ctx = ctx_for("foo");
+        assert_eq!(render("{{time:HH:mm:ss}}", &ctx).unwrap(), "18:30:45");
+    }
+
+    #[test]
+    fn renders_now_iso_extension() {
+        let ctx = ctx_for("foo");
+        assert_eq!(render("{{now}}", &ctx).unwrap(), "2026-05-25T18:30");
+    }
+
+    #[test]
+    fn renders_path_var() {
+        let mut ctx = ctx_for("foo");
+        ctx.path_vars.insert("workspace".into(), "vault-cli".into());
+        assert_eq!(
+            render("[[{{path.workspace}}]]", &ctx).unwrap(),
+            "[[vault-cli]]"
+        );
+    }
+
+    #[test]
+    fn unknown_path_var_renders_empty() {
+        // Empty string for unknown path var — caller emits warning.
+        let ctx = ctx_for("foo");
+        assert_eq!(render("{{path.unknown}}", &ctx).unwrap(), "");
+    }
+
+    #[test]
+    fn multiple_vars_in_one_string() {
+        let ctx = ctx_for("foo");
+        assert_eq!(
+            render("created at {{date}} {{time}}", &ctx).unwrap(),
+            "created at 2026-05-25 18:30"
+        );
+    }
+
+    #[test]
+    fn literal_braces_via_double_brace_escape() {
+        let ctx = ctx_for("foo");
+        // `{{{{` renders as literal `{{`; `}}}}` as literal `}}`
+        assert_eq!(render("{{{{not a var}}}}", &ctx).unwrap(), "{{not a var}}");
+    }
+
+    #[test]
+    fn unknown_var_errors() {
+        let ctx = ctx_for("foo");
+        let err = render("{{whatever}}", &ctx).unwrap_err();
+        assert!(err.to_string().contains("unknown variable"));
+    }
+
+    #[test]
+    fn pipeline_rejected_until_task_1_3() {
+        // Tasks 1.3 implements pipe transforms; for now this errors cleanly.
+        let ctx = ctx_for("foo");
+        let err = render("{{title | titlecase}}", &ctx).unwrap_err();
+        assert!(err.to_string().contains("transform"));
+    }
+}
 
 #[cfg(test)]
 mod format_tests {
