@@ -1674,6 +1674,7 @@ dependencies = [
  "clap_mangen",
  "globset",
  "mockito",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
