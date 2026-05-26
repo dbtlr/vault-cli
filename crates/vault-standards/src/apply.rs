@@ -28,7 +28,7 @@ pub enum ApplyError {
     #[error("repair plan targets a document not in the index: {path}")]
     UnknownPath { path: Utf8PathBuf },
 
-    #[error("stale repair plan for {path}: expected hash {expected}, found {actual}")]
+    #[error("stale repair plan for {path}: expected hash {expected}, found {actual}; regenerate with `vault repair plan`")]
     StaleDocumentHash {
         path: Utf8PathBuf,
         expected: String,
@@ -41,7 +41,7 @@ pub enum ApplyError {
     #[error("repair plan contains conflicting document hash preconditions for {path}")]
     ConflictingHashes { path: Utf8PathBuf },
 
-    #[error("stale repair plan for {path} field {field}: expected {expected}, found {actual}")]
+    #[error("stale repair plan for {path} field {field}: expected {expected}, found {actual}; regenerate with `vault repair plan`")]
     ExpectedOldValueMismatch {
         path: Utf8PathBuf,
         field: String,

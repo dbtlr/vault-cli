@@ -12,7 +12,7 @@ Entries here have landed on `main` but have not yet been cut into a tagged relea
 
 ### Changed
 
-- `vault repair apply`'s schema-mismatch error now ends with `; regenerate with \`vault repair plan\`` so operators see the next step inline instead of having to consult the CHANGELOG.
+- `vault repair apply`'s plan-staleness errors (schema mismatch, document-hash drift, expected-old-value mismatch) now end with `; regenerate with \`vault repair plan\`` so operators see the next step inline instead of having to consult the CHANGELOG.
 
 ## v0.33.0 - 2026-05-26
 
