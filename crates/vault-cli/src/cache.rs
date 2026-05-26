@@ -5,7 +5,8 @@ use anyhow::Result;
 use camino::Utf8Path;
 use vault_cache::{Cache, CacheError, ChangeDetectOptions};
 use vault_core::GraphIndex;
-use vault_graph::{pattern_matches_path, IndexOptions};
+use vault_graph::IndexOptions;
+use vault_standards::path_match::PathPattern;
 
 use crate::cli::{CacheIndexArgs, CacheOutputFormat, CacheStatusArgs};
 
@@ -76,9 +77,12 @@ fn apply_ignore_filter(index: &mut GraphIndex, ignore: &[String]) {
         return;
     }
     let is_ignored = |path: &camino::Utf8Path| -> bool {
-        patterns
-            .iter()
-            .any(|pattern| pattern_matches_path(pattern, path))
+        patterns.iter().any(|pattern| {
+            PathPattern::parse(pattern)
+                .ok()
+                .and_then(|p| p.match_path(path.as_str()))
+                .is_some()
+        })
     };
     let mut ignored_files: Vec<camino::Utf8PathBuf> = Vec::new();
     index.files.retain(|f| {

@@ -1656,6 +1656,7 @@ dependencies = [
  "vault-frontmatter",
  "vault-graph",
  "vault-links",
+ "vault-standards",
 ]
 
 [[package]]
