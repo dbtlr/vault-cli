@@ -1,22 +1,35 @@
-//! Render a NaiveDateTime through a Moment-subset format string.
+//! Substitution engine for `frontmatter_defaults` and future template files.
 //!
-//! Supported tokens (v1):
-//! - Year: YYYY, YY
-//! - Month: MM, M, MMM, MMMM
-//! - Day: DD, D
-//! - Hour: HH, H, hh, h
-//! - Minute: mm
-//! - Second: ss
-//! - AM/PM: A, a
-//! - Day of week: dddd, ddd
+//! Renders templates against a [`Context`] in three layers:
 //!
-//! Bracket escape: `[X]` renders X as literal (where X may be a token letter).
-//! An unmatched `[` (no closing `]`) is emitted as a literal `[` and scanning continues.
+//! 1. **Format tokens** ([`format_datetime`]) — Moment-subset date/time formatting
+//!    (`"YYYY-MM-DD"` → `"2026-05-25"`).
+//! 2. **Variable resolution** ([`render`]) — `{{var}}` and `{{var:arg}}` shapes.
+//!    Vocabulary is Obsidian-core-compatible (`{{title}}`, `{{date}}`, `{{time}}`,
+//!    `{{date:fmt}}`, `{{time:fmt}}`) plus Norn extensions (`{{now}}`, `{{path.X}}`).
+//! 3. **Pipe transforms** — `{{var | titlecase | slugify}}` chains. Available
+//!    transforms: `titlecase`, `sentencecase`, `lower`, `upper`, `unsep`,
+//!    `strip_date_prefix`, `slugify`.
+//!
+//! Unknown path variables (`{{path.X}}` where `X` is not bound) render as the empty
+//! string; callers surface this as a `path_variable_unresolved` warning.
+//!
+//! ## Moment format tokens (v1 subset)
+//!
+//! - Year: `YYYY`, `YY`
+//! - Month: `MM`, `M`, `MMM`, `MMMM`
+//! - Day: `DD`, `D`
+//! - Hour: `HH`, `H`, `hh`, `h`
+//! - Minute: `mm`
+//! - Second: `ss`
+//! - AM/PM: `A`, `a`
+//! - Day of week: `dddd`, `ddd`
+//!
+//! Bracket escape: `[X]` renders X as literal (where X may be a token letter). An
+//! unmatched `[` (no closing `]`) is emitted as a literal `[` and scanning continues.
 //! Unsupported token-shaped sequences render as themselves.
 //!
-//! This module is the format-token layer of the substitution engine; variable
-//! resolution (`{{var}}`) and pipe transforms (`{{var | transform}}`) are layered
-//! in Tasks 1.2/1.3 of the vault-new arc.
+//! Inside `{{...}}`, use `{{{{` / `}}}}` (quad-brace) to emit literal `{{` / `}}`.
 
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use std::collections::BTreeMap;
