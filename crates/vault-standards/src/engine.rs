@@ -308,6 +308,7 @@ mod tests {
             field_types: std::collections::HashMap::new(),
             allowed_values: std::collections::HashMap::new(),
             allowed_paths: vec![],
+            frontmatter_defaults: std::collections::HashMap::new(),
         }
     }
 
@@ -730,6 +731,7 @@ mod validate_rule_tests {
             field_types: HashMap::new(),
             allowed_values: HashMap::new(),
             allowed_paths: vec![],
+            frontmatter_defaults: HashMap::new(),
         };
 
         let scope = vec![

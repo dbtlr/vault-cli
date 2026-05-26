@@ -97,6 +97,8 @@ pub struct ValidateRule {
     pub allowed_values: HashMap<String, Vec<serde_json::Value>>,
     #[serde(default)]
     pub allowed_paths: Vec<String>,
+    #[serde(default)]
+    pub frontmatter_defaults: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -797,5 +799,46 @@ validate:
         let msg = err.to_string();
         assert!(msg.contains("invalid path pattern"), "got: {msg}");
         assert!(msg.contains("bad"), "got: {msg}");
+    }
+
+    #[test]
+    fn parses_frontmatter_defaults() {
+        let yaml = r#"
+validate:
+  rules:
+    - name: task-rule
+      match:
+        path: "Workspaces/{{workspace}}/tasks/*.md"
+      required_frontmatter: [type, status]
+      frontmatter_defaults:
+        type: task
+        status: backlog
+        workspace: "[[{{path.workspace}}]]"
+        created: "{{now}}"
+"#;
+        let cfg = parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap();
+        let rule = &cfg.validate.rules[0];
+        assert_eq!(
+            rule.frontmatter_defaults.get("type"),
+            Some(&serde_json::json!("task"))
+        );
+        assert_eq!(
+            rule.frontmatter_defaults.get("status"),
+            Some(&serde_json::json!("backlog"))
+        );
+        assert_eq!(rule.frontmatter_defaults.len(), 4);
+    }
+
+    #[test]
+    fn frontmatter_defaults_optional_and_empty_by_default() {
+        let yaml = r#"
+validate:
+  rules:
+    - name: any
+      match:
+        path: "**/*.md"
+"#;
+        let cfg = parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap();
+        assert!(cfg.validate.rules[0].frontmatter_defaults.is_empty());
     }
 }
