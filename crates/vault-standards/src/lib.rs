@@ -12,8 +12,9 @@ mod summary;
 
 pub use apply::{
     apply_delete, apply_file_changes, apply_link_rewrites, apply_move, changes_by_path,
-    validate_plan_for_apply, ApplyError, DeleteResult, LinkRewriteResult, MoveResult,
-    RepairApplyPlanContext, RepairApplyReport, RepairApplyVerification, RepairApplyWarning,
+    validate_plan_for_apply, ApplyError, CreateDocumentResult, DeleteResult, LinkRewriteResult,
+    MoveResult, RepairApplyPlanContext, RepairApplyReport, RepairApplyVerification,
+    RepairApplyWarning,
 };
 pub use config::{
     parse_config, parse_config_compiled, CompiledConfig, CompiledRule, ConfigError, FilesConfig,
