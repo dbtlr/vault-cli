@@ -34,6 +34,39 @@ pub(crate) fn collect_path_var_refs(template: &str) -> BTreeSet<String> {
     out
 }
 
+/// Collect all transform names referenced in a template string.
+///
+/// Scans for `{{var | t1 | t2}}` patterns and returns all transform names
+/// (the parts after `|`) found across the template.
+pub(crate) fn collect_transform_refs(template: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = template;
+    while let Some(open) = rest.find("{{") {
+        let after = &rest[open + 2..];
+        let Some(close) = after.find("}}") else {
+            break;
+        };
+        let inner = after[..close].trim();
+        for part in inner.split('|').skip(1) {
+            out.push(part.trim().to_string());
+        }
+        rest = &after[close + 2..];
+    }
+    out
+}
+
+/// The canonical list of known transform names, matching `apply_transform` in
+/// `substitution.rs` exactly.
+pub(crate) const KNOWN_TRANSFORMS: &[&str] = &[
+    "titlecase",
+    "sentencecase",
+    "lower",
+    "upper",
+    "unsep",
+    "strip_date_prefix",
+    "slugify",
+];
+
 /// Extract the named path-variable bindings produced by a rule's `match.path`
 /// pattern against `path`. Returns an empty map if the rule has no path
 /// pattern or if the path does not match.

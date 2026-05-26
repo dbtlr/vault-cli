@@ -453,6 +453,23 @@ fn post_validate(cfg: &VaultConfig, source_path: &Utf8Path) -> Result<(), Config
                 }
             }
         }
+
+        // frontmatter_defaults: transforms must be known.
+        for (field, value) in &rule.frontmatter_defaults {
+            let Some(s) = value.as_str() else {
+                continue;
+            };
+            for t in crate::defaults::collect_transform_refs(s) {
+                if !crate::defaults::KNOWN_TRANSFORMS.contains(&t.as_str()) {
+                    return Err(ConfigError::Invalid {
+                        source_path: source_path.to_owned(),
+                        message: format!(
+                            "rule {rule_label}: field `{field}` uses unknown transform `{t}`"
+                        ),
+                    });
+                }
+            }
+        }
     }
 
     // Repair rules: exactly one of the four action fields.
@@ -908,6 +925,43 @@ validate:
         path: "Workspaces/{{workspace}}/tasks/*.md"
       frontmatter_defaults:
         workspace: "[[{{path.workspace}}]]"
+"#;
+        parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap();
+    }
+
+    #[test]
+    fn config_load_rejects_unknown_transform_in_default() {
+        let yaml = r#"
+validate:
+  rules:
+    - name: r
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        title: "{{title | bogus_transform}}"
+"#;
+        let err = parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("unknown transform") || msg.contains("transform"),
+            "msg was {msg}"
+        );
+        assert!(
+            msg.contains("bogus_transform") || msg.contains("bogus"),
+            "msg was {msg}"
+        );
+    }
+
+    #[test]
+    fn config_load_accepts_known_transforms() {
+        let yaml = r#"
+validate:
+  rules:
+    - name: r
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        title: "{{title | strip_date_prefix | titlecase}}"
 "#;
         parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap();
     }
