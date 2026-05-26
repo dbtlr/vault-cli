@@ -5,6 +5,7 @@ pub mod engine;
 mod findings;
 pub mod predicates;
 mod repair;
+pub mod substitution;
 mod summary;
 
 pub use apply::{
