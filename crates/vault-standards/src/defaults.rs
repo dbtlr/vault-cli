@@ -1,11 +1,10 @@
 //! Helpers for resolving `frontmatter_defaults` against a vault config.
 //!
-//! Currently exposes [`path_variables`] for extracting named path-variable
-//! bindings from a [`CompiledRule`] given a destination path. Phase 3 of the
-//! `vault new` arc adds `applicable_rules`, `merge_defaults`, and the
-//! fixpoint resolver on top.
+//! Exposes [`path_variables`] for extracting named path-variable bindings,
+//! [`applicable_rules`] + [`merge_defaults`] for the match-to-defaults pass,
+//! and [`resolve_to_fixpoint`] for the iterative resolver used by `vault new`.
 
-use crate::config::CompiledRule;
+use crate::config::{CompiledConfig, CompiledRule, ValidateRule, VaultConfig};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Iterate `{{…}}` substitution groups in a template, yielding the inner
@@ -99,6 +98,187 @@ pub fn path_variables(rule: &CompiledRule, path: &str) -> BTreeMap<String, Strin
         .as_ref()
         .and_then(|p| p.match_path(path))
         .unwrap_or_default()
+}
+
+/// Rules from the config that apply to `path` (and to `frontmatter`, when supplied).
+///
+/// Returns paired references to both the (uncompiled) [`ValidateRule`] (which carries
+/// `frontmatter_defaults`, `required_frontmatter`, etc.) and the matching
+/// [`CompiledRule`] (which carries the pre-compiled path patterns).
+///
+/// A rule matches when:
+/// - Its `match.path` is `None`, OR the path matches its compiled `PathPattern`.
+/// - Its `match.frontmatter` is empty, OR `frontmatter` is `Some(fm)` and every
+///   `(key, value)` predicate is present in `fm`.
+pub fn applicable_rules<'a>(
+    cfg: &'a VaultConfig,
+    compiled: &'a CompiledConfig,
+    path: &str,
+    frontmatter: Option<&serde_json::Value>,
+) -> Vec<(&'a ValidateRule, &'a CompiledRule)> {
+    let mut out = Vec::new();
+    for (rule, compiled_rule) in cfg.validate.rules.iter().zip(compiled.rules.iter()) {
+        // Path matcher
+        if let Some(pat) = &compiled_rule.path {
+            if pat.match_path(path).is_none() {
+                continue;
+            }
+        }
+        // Frontmatter matchers — if the rule has any, frontmatter must be provided and match all.
+        if !rule.r#match.frontmatter.is_empty() {
+            let Some(fm) = frontmatter else { continue };
+            let Some(fm_obj) = fm.as_object() else {
+                continue;
+            };
+            let all_match = rule
+                .r#match
+                .frontmatter
+                .iter()
+                .all(|(k, v)| fm_obj.get(k) == Some(v));
+            if !all_match {
+                continue;
+            }
+        }
+        out.push((rule, compiled_rule));
+    }
+    out
+}
+
+/// Collect `frontmatter_defaults` from a slice of matching rules.
+///
+/// Earlier-in-slice wins on field collision (config-load already refused
+/// rule-level conflicts with different values; identical values are safe).
+pub fn merge_defaults<'a>(
+    rules: &[(&'a ValidateRule, &'a CompiledRule)],
+) -> BTreeMap<String, &'a serde_json::Value> {
+    let mut out: BTreeMap<String, &serde_json::Value> = BTreeMap::new();
+    for (rule, _) in rules {
+        for (field, value) in &rule.frontmatter_defaults {
+            out.entry(field.clone()).or_insert(value);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod api_tests {
+    use super::*;
+    use crate::config::{parse_config_compiled, VaultConfig};
+    use camino::Utf8Path;
+
+    fn build(yaml: &str) -> (VaultConfig, crate::config::CompiledConfig) {
+        parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap()
+    }
+
+    #[test]
+    fn applicable_rules_path_only_match() {
+        let (cfg, compiled) = build(
+            r#"
+validate:
+  rules:
+    - name: any
+      match:
+        path: "**/*.md"
+    - name: task
+      match:
+        path: "Workspaces/{{workspace}}/tasks/*.md"
+"#,
+        );
+        let rules = applicable_rules(&cfg, &compiled, "Workspaces/foo/tasks/bar.md", None);
+        let names: Vec<_> = rules
+            .iter()
+            .filter_map(|(r, _)| r.name.as_deref())
+            .collect();
+        assert!(names.contains(&"any"));
+        assert!(names.contains(&"task"));
+    }
+
+    #[test]
+    fn applicable_rules_skips_non_matching_path() {
+        let (cfg, compiled) = build(
+            r#"
+validate:
+  rules:
+    - name: task
+      match:
+        path: "Workspaces/{{workspace}}/tasks/*.md"
+"#,
+        );
+        let rules = applicable_rules(&cfg, &compiled, "Logs/2026/foo.md", None);
+        assert!(rules.is_empty());
+    }
+
+    #[test]
+    fn applicable_rules_frontmatter_matcher_requires_match() {
+        let (cfg, compiled) = build(
+            r#"
+validate:
+  rules:
+    - name: task-base
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+"#,
+        );
+        // Without frontmatter: rule has a frontmatter matcher → does NOT match.
+        let rules = applicable_rules(&cfg, &compiled, "anything.md", None);
+        assert!(rules.is_empty());
+
+        // With frontmatter type=task: matches.
+        let fm = serde_json::json!({"type": "task"});
+        let rules = applicable_rules(&cfg, &compiled, "anything.md", Some(&fm));
+        assert_eq!(rules.len(), 1);
+    }
+
+    #[test]
+    fn merge_defaults_collects_across_rules() {
+        let (cfg, compiled) = build(
+            r#"
+validate:
+  rules:
+    - name: any
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        type: note
+    - name: with-status
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        status: backlog
+"#,
+        );
+        let rules = applicable_rules(&cfg, &compiled, "foo.md", None);
+        let merged = merge_defaults(&rules);
+        assert_eq!(merged.get("type"), Some(&&serde_json::json!("note")));
+        assert_eq!(merged.get("status"), Some(&&serde_json::json!("backlog")));
+    }
+
+    #[test]
+    fn merge_defaults_earlier_rule_wins_on_collision() {
+        // Both rules say `type` — identical values are allowed by config-load
+        // (Phase 3.4); merge_defaults should pick the earlier one without panicking.
+        let (cfg, compiled) = build(
+            r#"
+validate:
+  rules:
+    - name: first
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        type: note
+    - name: second
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        type: note
+"#,
+        );
+        let rules = applicable_rules(&cfg, &compiled, "foo.md", None);
+        let merged = merge_defaults(&rules);
+        assert_eq!(merged.get("type"), Some(&&serde_json::json!("note")));
+    }
 }
 
 #[cfg(test)]
