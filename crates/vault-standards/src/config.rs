@@ -472,6 +472,29 @@ fn post_validate(cfg: &VaultConfig, source_path: &Utf8Path) -> Result<(), Config
         }
     }
 
+    // frontmatter_defaults: reject conflicting values for the same field across rules.
+    {
+        let mut seen: std::collections::HashMap<&str, (&str, &serde_json::Value)> =
+            std::collections::HashMap::new();
+        for rule in &cfg.validate.rules {
+            let rule_label = rule.name.as_deref().unwrap_or("(unnamed)");
+            for (field, value) in &rule.frontmatter_defaults {
+                if let Some((other_rule, other_value)) = seen.get(field.as_str()) {
+                    if *other_value != value {
+                        return Err(ConfigError::Invalid {
+                            source_path: source_path.to_owned(),
+                            message: format!(
+                                "conflicting frontmatter_defaults for field `{field}`: rule `{other_rule}` and rule `{rule_label}` declare different values"
+                            ),
+                        });
+                    }
+                } else {
+                    seen.insert(field, (rule_label, value));
+                }
+            }
+        }
+    }
+
     // Repair rules: exactly one of the four action fields.
     for rule in &cfg.repair.rules {
         let rule_label = rule
@@ -962,6 +985,50 @@ validate:
         path: "**/*.md"
       frontmatter_defaults:
         title: "{{title | strip_date_prefix | titlecase}}"
+"#;
+        parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap();
+    }
+
+    #[test]
+    fn config_load_rejects_conflicting_defaults_across_rules() {
+        let yaml = r#"
+validate:
+  rules:
+    - name: a
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        status: backlog
+    - name: b
+      match:
+        path: "tasks/**/*.md"
+      frontmatter_defaults:
+        status: in_progress
+"#;
+        let err = parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("conflict") || msg.contains("conflicting"),
+            "msg was {msg}"
+        );
+        assert!(msg.contains("status"), "msg was {msg}");
+    }
+
+    #[test]
+    fn config_load_accepts_identical_defaults_across_rules() {
+        let yaml = r#"
+validate:
+  rules:
+    - name: a
+      match:
+        path: "**/*.md"
+      frontmatter_defaults:
+        type: note
+    - name: b
+      match:
+        path: "notes/**/*.md"
+      frontmatter_defaults:
+        type: note
 "#;
         parse_config(yaml, camino::Utf8Path::new(".vault/config.yaml")).unwrap();
     }
