@@ -30,7 +30,6 @@ mod validate_filter;
 
 use std::{fs, process};
 
-use crate::standards::{plan_repairs, validate_with_compiled, RepairPlanFilters, SkippedSummary};
 use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches};
 use vault_core::GraphIndex;
@@ -44,6 +43,7 @@ use crate::config_loader::{effective_cwd, load_config, resolve_path};
 use crate::output::primitives::is_broken_pipe;
 use crate::repair::skip_reasons::code_matches_any;
 use crate::repair_apply::{apply_repair_plan, with_verification};
+use crate::standards::{plan_repairs, validate_with_compiled, RepairPlanFilters, SkippedSummary};
 use crate::validate_filter::{filter_findings, ValidateFilterOptions};
 
 fn main() {

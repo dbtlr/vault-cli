@@ -28,10 +28,10 @@ clap.workspace = true
 clap_complete.workspace = true
 clap_complete_nushell.workspace = true
 clap_mangen.workspace = true
+regex = { workspace = true }
 rusqlite = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
-regex = { workspace = true }
 serde_yaml.workspace = true
 sha2.workspace = true
 strsim.workspace = true
