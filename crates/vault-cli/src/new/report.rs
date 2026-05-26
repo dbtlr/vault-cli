@@ -152,6 +152,12 @@ pub fn render_records(
         }
     }
 
+    // Dry-run next-step hint — mirrors set::report::render_records convention.
+    if !applied {
+        out.push('\n');
+        out.push_str("Apply with --yes\n");
+    }
+
     out
 }
 
@@ -449,5 +455,21 @@ mod render_records_tests {
         let s = strip_ansi(&out);
         assert!(s.contains("missing-required-field") || s.contains("status"));
         assert!(s.contains("unresolved-wikilink") || s.contains("missing-stem"));
+    }
+
+    #[test]
+    fn dry_run_emits_apply_hint() {
+        let p = plan(vec![], vec![]);
+        let out = render_records(&p, "p.md", false, 0);
+        let s = strip_ansi(&out);
+        assert!(s.contains("--yes"), "dry-run should suggest --yes");
+    }
+
+    #[test]
+    fn applied_omits_apply_hint() {
+        let p = plan(vec![], vec![]);
+        let out = render_records(&p, "p.md", true, 0);
+        let s = strip_ansi(&out);
+        assert!(!s.contains("--yes"), "applied run should NOT suggest --yes");
     }
 }
