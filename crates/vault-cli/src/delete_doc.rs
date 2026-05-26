@@ -7,13 +7,13 @@
 
 use std::io::Write;
 
-use camino::Utf8PathBuf;
-use serde::Serialize;
-use vault_core::GraphIndex;
-use vault_standards::{
+use crate::standards::{
     classify_link_risk, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary,
     SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
 };
+use camino::Utf8PathBuf;
+use serde::Serialize;
+use vault_core::GraphIndex;
 
 use crate::mutation_report::{LinkFile, LinkSummary};
 

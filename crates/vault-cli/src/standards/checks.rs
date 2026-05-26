@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::findings::Finding;
-use crate::path_match::PathPattern;
+use crate::standards::findings::Finding;
+use crate::standards::path_match::PathPattern;
 use camino::Utf8PathBuf;
 use serde_json::Value;
 use vault_core::{Document, LinkStatus};
@@ -21,7 +21,9 @@ pub(crate) fn check_required_frontmatter(
 ) -> Vec<Finding> {
     fields
         .iter()
-        .filter(|field| !crate::predicates::document_has_frontmatter_field(document, field))
+        .filter(|field| {
+            !crate::standards::predicates::document_has_frontmatter_field(document, field)
+        })
         .map(|field| {
             Finding::frontmatter_required_missing(
                 document.path.clone(),
@@ -40,8 +42,8 @@ pub(crate) fn check_field_types(
     types
         .iter()
         .filter_map(|(field, expected_type)| {
-            let actual = crate::predicates::document_frontmatter_field(document, field)?;
-            if crate::predicates::frontmatter_type_matches(actual, expected_type) {
+            let actual = crate::standards::predicates::document_frontmatter_field(document, field)?;
+            if crate::standards::predicates::frontmatter_type_matches(actual, expected_type) {
                 None
             } else {
                 Some(Finding::frontmatter_invalid_type(
@@ -64,7 +66,7 @@ pub(crate) fn check_forbidden_frontmatter(
     fields
         .iter()
         .filter_map(|field| {
-            let actual = crate::predicates::document_frontmatter_field(document, field)?;
+            let actual = crate::standards::predicates::document_frontmatter_field(document, field)?;
             Some(Finding::frontmatter_forbidden_field(
                 document.path.clone(),
                 rule.map(str::to_string),
@@ -83,10 +85,10 @@ pub(crate) fn check_allowed_values(
     values
         .iter()
         .filter_map(|(field, allowed_values)| {
-            let actual = crate::predicates::document_frontmatter_field(document, field)?;
+            let actual = crate::standards::predicates::document_frontmatter_field(document, field)?;
             if allowed_values
                 .iter()
-                .any(|av| crate::predicates::frontmatter_value_matches(actual, av))
+                .any(|av| crate::standards::predicates::frontmatter_value_matches(actual, av))
             {
                 None
             } else {
@@ -102,6 +104,10 @@ pub(crate) fn check_allowed_values(
         .collect()
 }
 
+// Superseded by check_allowed_paths_compiled (hot path). Only the dead
+// validate_rule_compiled fallback (when compiled patterns are absent) calls
+// this. Safe to delete in a cleanup pass.
+#[allow(dead_code)]
 pub(crate) fn check_allowed_paths(
     document: &Document,
     paths: &[String],

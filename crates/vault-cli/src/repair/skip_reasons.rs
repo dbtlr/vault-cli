@@ -1,6 +1,6 @@
 //! Glob matching for `--skip-reason` filter values.
 //!
-//! The codes themselves live on `vault_standards::repair::SkipReason::code()`.
+//! The codes themselves live on `crate::standards::repair::SkipReason::code()`.
 //! This module holds only the matching/filter glue specific to the CLI surface.
 
 use globset::Glob;
@@ -8,7 +8,7 @@ use globset::Glob;
 /// Returns the user-facing prose for a stable skip-reason code.
 ///
 /// This is the single point of evolution for skip-reason prose; if a new code is
-/// added in the future to `vault_standards::repair::SkipReason::code()`, add the
+/// added in the future to `crate::standards::repair::SkipReason::code()`, add the
 /// matching arm here.
 pub fn prose_for(code: &str) -> &'static str {
     match code {

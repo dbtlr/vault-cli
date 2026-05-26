@@ -199,7 +199,7 @@ mod render_json_tests {
 
     fn plan_with_fields(fields: Vec<FieldSource>) -> CreateDocumentPlan {
         CreateDocumentPlan {
-            change: vault_standards::PlannedChange {
+            change: crate::standards::PlannedChange {
                 change_id: "abc12345".into(),
                 path: "test/foo.md".into(),
                 document_hash: "".into(),
@@ -352,7 +352,7 @@ mod render_records_tests {
 
     fn plan(fields: Vec<FieldSource>, warnings: Vec<Warning>) -> CreateDocumentPlan {
         CreateDocumentPlan {
-            change: vault_standards::PlannedChange {
+            change: crate::standards::PlannedChange {
                 change_id: "abc12345".into(),
                 path: "test/foo.md".into(),
                 document_hash: "".into(),

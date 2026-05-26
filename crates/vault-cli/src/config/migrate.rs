@@ -19,7 +19,7 @@ use anyhow::{anyhow, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::config::discover;
-use vault_standards::{parse_config, CURRENT_SCHEMA_VERSION};
+use crate::standards::{parse_config, CURRENT_SCHEMA_VERSION};
 
 fn write_noop(out: &mut dyn std::io::Write, version: u32) -> std::io::Result<()> {
     writeln!(out, "config is on schema v{version} — nothing to migrate")

@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde_json::Value;
 use vault_core::Severity;
 
-use crate::findings::{Finding, FindingBody};
+use crate::standards::findings::{Finding, FindingBody};
 
 #[derive(Debug, Serialize)]
 pub struct Summary {

@@ -15,11 +15,11 @@
 
 use std::io::Write;
 
+use crate::standards::{parse_config, CURRENT_SCHEMA_VERSION};
 use anyhow::Result;
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
 use serde_json::{json, Value};
-use vault_standards::{parse_config, CURRENT_SCHEMA_VERSION};
 
 use crate::cli::{ColorWhen, ConfigFormat, ConfigValidateArgs};
 use crate::config::discover;

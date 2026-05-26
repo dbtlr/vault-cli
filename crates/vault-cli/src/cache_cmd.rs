@@ -2,11 +2,11 @@
 //! query commands.
 
 use crate::cache::{Cache, CacheError, ChangeDetectOptions};
+use crate::standards::path_match::PathPattern;
 use anyhow::Result;
 use camino::Utf8Path;
 use vault_core::GraphIndex;
 use vault_graph::IndexOptions;
-use vault_standards::path_match::PathPattern;
 
 use crate::cli::{CacheIndexArgs, CacheOutputFormat, CacheStatusArgs};
 

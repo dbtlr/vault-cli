@@ -16,7 +16,7 @@ use serde_json::Value;
 #[derive(Debug)]
 pub struct CreateDocumentPlan {
     /// The single `create_document` PlannedChange.
-    pub change: vault_standards::PlannedChange,
+    pub change: crate::standards::PlannedChange,
     /// Informational warnings (never blocking); shown to the operator.
     pub warnings: Vec<Warning>,
     /// Provenance for each frontmatter field — used by `report::render_json`.
@@ -90,8 +90,8 @@ pub enum SynthError {
 /// 8. Construct the `PlannedChange`.
 pub fn build_plan(
     args: &crate::cli::NewArgs,
-    cfg: &vault_standards::VaultConfig,
-    compiled: &vault_standards::CompiledConfig,
+    cfg: &crate::standards::VaultConfig,
+    compiled: &crate::standards::CompiledConfig,
     index: Option<&vault_core::GraphIndex>,
     body: String,
 ) -> Result<CreateDocumentPlan, SynthError> {
@@ -100,7 +100,7 @@ pub fn build_plan(
     // First-rule-wins on collisions.
     let mut path_vars: BTreeMap<String, String> = BTreeMap::new();
     for compiled_rule in &compiled.rules {
-        let captures = vault_standards::path_variables(compiled_rule, args.path.as_str());
+        let captures = crate::standards::path_variables(compiled_rule, args.path.as_str());
         for (k, v) in captures {
             path_vars.entry(k).or_insert(v);
         }
@@ -134,7 +134,7 @@ pub fn build_plan(
     // document doesn't exist yet, we use applicable_rules with path-only matching
     // (frontmatter = None for the first pass — same as resolve_to_fixpoint does).
     let path_only_rules =
-        vault_standards::applicable_rules(cfg, compiled, args.path.as_str(), None);
+        crate::standards::applicable_rules(cfg, compiled, args.path.as_str(), None);
 
     let mut operator_overrides: BTreeMap<String, Value> = BTreeMap::new();
     let mut operator_sources: Vec<(String, Value, FieldSourceKind)> = Vec::new();
@@ -170,7 +170,7 @@ pub fn build_plan(
     }
 
     // ── Step 4: fixpoint resolution ───────────────────────────────────────────
-    let (resolved_fm, applied_rule_names) = vault_standards::resolve_to_fixpoint(
+    let (resolved_fm, applied_rule_names) = crate::standards::resolve_to_fixpoint(
         cfg,
         compiled,
         args.path.as_str(),
@@ -299,7 +299,7 @@ pub fn build_plan(
 
     let change_id = derive_change_id(&args.path, "create_document");
 
-    let change = vault_standards::PlannedChange {
+    let change = crate::standards::PlannedChange {
         change_id,
         path: args.path.clone(),
         document_hash: String::new(), // no existing hash for a brand-new file
@@ -353,10 +353,10 @@ fn derive_change_id(path: &Utf8PathBuf, code: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::standards::{parse_config_compiled, VaultConfig};
     use camino::Utf8Path;
-    use vault_standards::{parse_config_compiled, VaultConfig};
 
-    fn build(yaml: &str) -> (VaultConfig, vault_standards::CompiledConfig) {
+    fn build(yaml: &str) -> (VaultConfig, crate::standards::CompiledConfig) {
         parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap()
     }
 

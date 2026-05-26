@@ -3,9 +3,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
+use crate::standards::{summarize, Finding};
 use anyhow::Result;
 use vault_core::Severity;
-use vault_standards::{summarize, Finding};
 
 use super::fix_hints::fix_hint_for;
 use crate::cli::ValidateFormat;
@@ -222,8 +222,8 @@ fn group_by_code(findings: &[Finding]) -> Vec<(String, Vec<&Finding>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::standards::Finding;
     use serde_json::Value;
-    use vault_standards::Finding;
 
     fn sample_findings() -> Vec<Finding> {
         vec![

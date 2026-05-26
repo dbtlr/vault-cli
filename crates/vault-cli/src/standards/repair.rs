@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use vault_core::Severity;
 
-use crate::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
-use crate::findings::{Finding, FindingBody};
+use crate::standards::config::{RepairAction, RepairConfig, RepairRule, RepairRuleMatch};
+use crate::standards::findings::{Finding, FindingBody};
 
 pub const REPAIR_PLAN_SCHEMA_VERSION: u32 = 9;
 
@@ -194,9 +194,9 @@ pub struct PlannedChange {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination: Option<Utf8PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub link_risk: Option<crate::repair::link_risk::LinkRisk>,
+    pub link_risk: Option<crate::standards::repair::link_risk::LinkRisk>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub warnings: Vec<crate::repair::warnings::PlanWarning>,
+    pub warnings: Vec<crate::standards::repair::warnings::PlanWarning>,
     /// When true, `apply_move` will remove an existing destination before
     /// renaming. Defaults to false; skips serialization when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -566,7 +566,7 @@ fn planned_change(
             let source_doc = documents.iter().find(|d| d.path == finding.path);
             let frontmatter = source_doc.and_then(|d| d.frontmatter.as_ref());
 
-            let new_path = match crate::repair::destination::resolve_destination(
+            let new_path = match crate::standards::repair::destination::resolve_destination(
                 destination,
                 &finding.path,
                 frontmatter,
@@ -580,13 +580,19 @@ fn planned_change(
                 }
             };
 
-            let link_risk =
-                crate::repair::link_risk::classify(&finding.path, &new_path, documents, &[]);
+            let link_risk = crate::standards::repair::link_risk::classify(
+                &finding.path,
+                &new_path,
+                documents,
+                &[],
+            );
 
             let mut warnings = Vec::new();
-            if let Some(w) =
-                crate::repair::warnings::detect_stem_collision(&finding.path, &new_path, documents)
-            {
+            if let Some(w) = crate::standards::repair::warnings::detect_stem_collision(
+                &finding.path,
+                &new_path,
+                documents,
+            ) {
                 warnings.push(w);
             }
 
@@ -804,8 +810,8 @@ fn finding_candidates(finding: &Finding) -> Vec<Utf8PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{RepairAction, RepairRule, RepairRuleMatch};
-    use crate::findings::{Finding, FindingBody};
+    use crate::standards::config::{RepairAction, RepairRule, RepairRuleMatch};
+    use crate::standards::findings::{Finding, FindingBody};
     use serde_json::json;
     use vault_core::{Link, LinkKind, LinkStatus, Severity, UnresolvedReason};
 
@@ -876,35 +882,37 @@ mod tests {
     ) -> RepairRule {
         let (set_frontmatter, remove_frontmatter, add_frontmatter, move_document) = match action {
             RepairAction::SetFrontmatter { field, value } => (
-                Some(crate::config::SetFrontmatterAction { field, value }),
+                Some(crate::standards::config::SetFrontmatterAction { field, value }),
                 None,
                 None,
                 None,
             ),
             RepairAction::RemoveFrontmatter { field } => (
                 None,
-                Some(crate::config::RemoveFrontmatterAction { field }),
+                Some(crate::standards::config::RemoveFrontmatterAction { field }),
                 None,
                 None,
             ),
             RepairAction::AddFrontmatter { field, value } => (
                 None,
                 None,
-                Some(crate::config::AddFrontmatterAction { field, value }),
+                Some(crate::standards::config::AddFrontmatterAction { field, value }),
                 None,
             ),
             RepairAction::MoveDocument { destination } => {
                 let (to_directory, to_path) = match destination {
-                    crate::config::DestinationSpec::Directory { to_directory } => {
+                    crate::standards::config::DestinationSpec::Directory { to_directory } => {
                         (Some(to_directory), None)
                     }
-                    crate::config::DestinationSpec::Path { to_path } => (None, Some(to_path)),
+                    crate::standards::config::DestinationSpec::Path { to_path } => {
+                        (None, Some(to_path))
+                    }
                 };
                 (
                     None,
                     None,
                     None,
-                    Some(crate::config::MoveDocumentAction {
+                    Some(crate::standards::config::MoveDocumentAction {
                         to_directory,
                         to_path,
                     }),

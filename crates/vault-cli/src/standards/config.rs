@@ -4,7 +4,7 @@ use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::path_match::{PathPattern, PathPatternError};
+use crate::standards::path_match::{PathPattern, PathPatternError};
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -296,6 +296,10 @@ pub struct CompiledRule {
 /// in the source `Vec<String>`.
 #[derive(Debug, Clone, Default)]
 pub struct CompiledConfig {
+    // Populated by config compilation but no live consumer in vault-cli yet.
+    // Mirrors `validate_ignore` (which is consumed). Safe to delete in a
+    // cleanup pass if the file-ignore wiring stays unused.
+    #[allow(dead_code)]
     pub files_ignore: Vec<PathPattern>,
     pub validate_ignore: Vec<PathPattern>,
     pub rules: Vec<CompiledRule>,
@@ -462,7 +466,7 @@ fn post_validate(cfg: &VaultConfig, source_path: &Utf8Path) -> Result<(), Config
             .path
             .as_deref()
             .and_then(|p| {
-                crate::path_match::PathPattern::parse(p)
+                crate::standards::path_match::PathPattern::parse(p)
                     .ok()
                     .map(|pp| pp.declared_variables().into_iter().collect())
             })
@@ -471,7 +475,7 @@ fn post_validate(cfg: &VaultConfig, source_path: &Utf8Path) -> Result<(), Config
             let Some(s) = value.as_str() else {
                 continue;
             };
-            for referenced in crate::defaults::collect_path_var_refs(s) {
+            for referenced in crate::standards::defaults::collect_path_var_refs(s) {
                 if !declared.contains(&referenced) {
                     return Err(ConfigError::Invalid {
                         source_path: source_path.to_owned(),
@@ -488,8 +492,8 @@ fn post_validate(cfg: &VaultConfig, source_path: &Utf8Path) -> Result<(), Config
             let Some(s) = value.as_str() else {
                 continue;
             };
-            for t in crate::defaults::collect_transform_refs(s) {
-                if !crate::defaults::KNOWN_TRANSFORMS.contains(&t.as_str()) {
+            for t in crate::standards::defaults::collect_transform_refs(s) {
+                if !crate::standards::defaults::KNOWN_TRANSFORMS.contains(&t.as_str()) {
                     return Err(ConfigError::Invalid {
                         source_path: source_path.to_owned(),
                         message: format!(

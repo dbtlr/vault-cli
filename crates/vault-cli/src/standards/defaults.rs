@@ -4,7 +4,7 @@
 //! [`applicable_rules`] + [`merge_defaults`] for the match-to-defaults pass,
 //! and [`resolve_to_fixpoint`] for the iterative resolver used by `vault new`.
 
-use crate::config::{CompiledConfig, CompiledRule, ValidateRule, VaultConfig};
+use crate::standards::config::{CompiledConfig, CompiledRule, ValidateRule, VaultConfig};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Iterate `{{…}}` substitution groups in a template, yielding the inner
@@ -89,7 +89,7 @@ pub(crate) const KNOWN_TRANSFORMS: &[&str] = &[
 /// pattern against `path`. Returns an empty map if the rule has no path
 /// pattern or if the path does not match.
 ///
-/// The rule's pattern is the pre-compiled [`crate::path_match::PathPattern`]
+/// The rule's pattern is the pre-compiled [`crate::standards::path_match::PathPattern`]
 /// stored on [`CompiledRule`]. Pre-compilation happens at config-load time,
 /// so this helper is cheap to call repeatedly within a single `vault new`
 /// invocation.
@@ -188,7 +188,7 @@ pub fn resolve_to_fixpoint(
     let mut frontmatter: BTreeMap<String, serde_json::Value> = operator_overrides.clone();
     let mut applied_rules: Vec<String> = Vec::new();
 
-    let sub_ctx = crate::substitution::Context {
+    let sub_ctx = crate::standards::substitution::Context {
         now: Local::now().naive_local(),
         title: path
             .rsplit('/')
@@ -220,7 +220,7 @@ pub fn resolve_to_fixpoint(
                 continue;
             }
             let resolved = if let Some(s) = raw_value.as_str() {
-                let rendered = crate::substitution::render(s, &sub_ctx)
+                let rendered = crate::standards::substitution::render(s, &sub_ctx)
                     .map_err(|e| ResolveError::Substitution(format!("rule pass {pass}: {e}")))?;
                 serde_json::Value::String(rendered)
             } else {
@@ -246,10 +246,10 @@ pub fn resolve_to_fixpoint(
 #[cfg(test)]
 mod api_tests {
     use super::*;
-    use crate::config::{parse_config_compiled, VaultConfig};
+    use crate::standards::config::{parse_config_compiled, VaultConfig};
     use camino::Utf8Path;
 
-    fn build(yaml: &str) -> (VaultConfig, crate::config::CompiledConfig) {
+    fn build(yaml: &str) -> (VaultConfig, crate::standards::config::CompiledConfig) {
         parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap()
     }
 
@@ -367,10 +367,10 @@ validate:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::parse_config_compiled;
+    use crate::standards::config::parse_config_compiled;
     use camino::Utf8Path;
 
-    fn compile(yaml: &str) -> crate::config::CompiledConfig {
+    fn compile(yaml: &str) -> crate::standards::config::CompiledConfig {
         let (_, compiled) =
             parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap();
         compiled
@@ -459,7 +459,7 @@ validate:
         // Pin: every name in KNOWN_TRANSFORMS must be accepted by apply_transform
         // in substitution.rs. If apply_transform stops recognizing one or gains
         // a new one without updating this list, this test surfaces the drift.
-        use crate::substitution::{render, Context, RenderError};
+        use crate::standards::substitution::{render, Context, RenderError};
         use chrono::{NaiveDate, NaiveTime};
 
         let ctx = Context {
@@ -488,10 +488,10 @@ validate:
 #[cfg(test)]
 mod fixpoint_tests {
     use super::*;
-    use crate::config::{parse_config_compiled, VaultConfig};
+    use crate::standards::config::{parse_config_compiled, VaultConfig};
     use camino::Utf8Path;
 
-    fn build(yaml: &str) -> (VaultConfig, crate::config::CompiledConfig) {
+    fn build(yaml: &str) -> (VaultConfig, crate::standards::config::CompiledConfig) {
         parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap()
     }
 

@@ -3,12 +3,12 @@
 // These functions are pub for Phase 5 wiring; the binary doesn't call them yet.
 #![allow(dead_code)]
 
+use crate::standards::PlannedChange;
+use crate::standards::VaultConfig;
 use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
 use vault_core::Document;
-use vault_standards::PlannedChange;
-use vault_standards::VaultConfig;
 
 // ── Warning types ────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ pub struct SynthResult {
 /// None when no matching rule declares a type for the field.
 pub fn lookup_field_type(cfg: &VaultConfig, doc: &Document, field: &str) -> Option<String> {
     for rule in &cfg.validate.rules {
-        if !vault_standards::engine::rule_matches(doc, rule) {
+        if !crate::standards::engine::rule_matches(doc, rule) {
             continue;
         }
         if let Some(ty) = rule.field_types.get(field) {
@@ -64,7 +64,7 @@ pub fn lookup_field_type(cfg: &VaultConfig, doc: &Document, field: &str) -> Opti
 pub fn coerce_value_for_type(field_type: &str, raw: &str) -> Result<Value> {
     match field_type {
         "datetime" => {
-            if vault_standards::predicates::is_datetime_string(raw) {
+            if crate::standards::predicates::is_datetime_string(raw) {
                 Ok(Value::String(raw.to_string()))
             } else {
                 anyhow::bail!(
@@ -73,7 +73,7 @@ pub fn coerce_value_for_type(field_type: &str, raw: &str) -> Result<Value> {
             }
         }
         "date" => {
-            if vault_standards::predicates::is_date_string(raw) {
+            if crate::standards::predicates::is_date_string(raw) {
                 Ok(Value::String(raw.to_string()))
             } else {
                 anyhow::bail!("value '{raw}' is not a valid date (expected YYYY-MM-DD)")
@@ -81,7 +81,7 @@ pub fn coerce_value_for_type(field_type: &str, raw: &str) -> Result<Value> {
         }
         "wikilink" => {
             let wrapped = wrap_wikilink(raw);
-            if !vault_standards::predicates::is_wikilink_string(&wrapped) {
+            if !crate::standards::predicates::is_wikilink_string(&wrapped) {
                 anyhow::bail!(
                     "value '{raw}' is not shape-valid as a wikilink (need non-empty stem inside [[…]])"
                 )
@@ -90,7 +90,7 @@ pub fn coerce_value_for_type(field_type: &str, raw: &str) -> Result<Value> {
         }
         "wikilink_or_list" => {
             let wrapped = wrap_wikilink(raw);
-            if !vault_standards::predicates::is_wikilink_string(&wrapped) {
+            if !crate::standards::predicates::is_wikilink_string(&wrapped) {
                 anyhow::bail!(
                     "value '{raw}' is not shape-valid as a wikilink (need non-empty stem inside [[…]])"
                 )
@@ -114,7 +114,7 @@ fn wrap_wikilink(raw: &str) -> String {
 /// matches this document.
 pub fn is_required_field(cfg: &VaultConfig, doc: &Document, field: &str) -> bool {
     for rule in &cfg.validate.rules {
-        if !vault_standards::engine::rule_matches(doc, rule) {
+        if !crate::standards::engine::rule_matches(doc, rule) {
             continue;
         }
         if rule.required_frontmatter.iter().any(|f| f == field) {
@@ -199,7 +199,7 @@ pub fn synth_with_schema(
         let parsed: Value = serde_json::from_str(&raw_json)
             .map_err(|e| anyhow::anyhow!("--field-json value is not valid JSON ({key}): {e}"))?;
         if let Some(ty) = lookup_field_type(cfg, doc, &key) {
-            let valid = vault_standards::predicates::frontmatter_type_matches(&parsed, &ty);
+            let valid = crate::standards::predicates::frontmatter_type_matches(&parsed, &ty);
             if !valid {
                 if !force {
                     anyhow::bail!(
@@ -331,7 +331,7 @@ validate:
       required_frontmatter:
         - created
 "#;
-        vault_standards::parse_config(yaml, camino::Utf8Path::new("fixture.yaml"))
+        crate::standards::parse_config(yaml, camino::Utf8Path::new("fixture.yaml"))
             .expect("config should parse")
     }
 

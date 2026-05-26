@@ -23,17 +23,18 @@ mod repair_apply;
 mod self_update;
 mod set;
 mod show;
+mod standards;
 mod target;
 mod validate;
 mod validate_filter;
 
 use std::{fs, process};
 
+use crate::standards::{plan_repairs, validate_with_compiled, RepairPlanFilters, SkippedSummary};
 use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches};
 use vault_core::GraphIndex;
 use vault_graph::{concise_diagnostics, has_errors};
-use vault_standards::{plan_repairs, validate_with_compiled, RepairPlanFilters, SkippedSummary};
 
 use crate::cli::{
     CacheSubcommand, Cli, Command, ConfigSubcommand, RepairApplyFormat, RepairPlanFormat,
@@ -183,7 +184,7 @@ fn run(cli: Cli) -> Result<i32> {
                         )
                     }
                 };
-                let plan = serde_json::from_str::<vault_standards::RepairPlan>(&plan_text)
+                let plan = serde_json::from_str::<crate::standards::RepairPlan>(&plan_text)
                     .map_err(|error| match &plan_source {
                         crate::repair::apply_render::PlanSource::Stdin => {
                             anyhow::anyhow!("could not parse plan from stdin: {error}")
@@ -780,7 +781,7 @@ fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
         reason: normalized_filter_values(&args.triage.reason),
         skip_reason: normalized_filter_values(&args.skip_reason),
         confidence: args.confidence.map(|c| match c {
-            crate::cli::ConfidenceArg::High => vault_standards::ConfidenceFilter::High,
+            crate::cli::ConfidenceArg::High => crate::standards::ConfidenceFilter::High,
         }),
     }
 }

@@ -7,13 +7,13 @@
 
 use std::io::Write;
 
-use camino::Utf8PathBuf;
-use serde::Serialize;
-use vault_core::GraphIndex;
-use vault_standards::{
+use crate::standards::{
     classify_link_risk, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary,
     SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
 };
+use camino::Utf8PathBuf;
+use serde::Serialize;
+use vault_core::GraphIndex;
 
 use crate::mutation_report::{LinkFile, LinkSummary};
 
@@ -293,7 +293,7 @@ pub fn collect_warnings(
     index: &GraphIndex,
     vault_root: &Utf8PathBuf,
 ) -> Vec<MoveWarning> {
-    use vault_standards::detect_stem_collision;
+    use crate::standards::detect_stem_collision;
 
     let mut warnings = Vec::new();
 
@@ -311,7 +311,7 @@ pub fn collect_warnings(
     // 1. Stem collision: destination stem already exists elsewhere.
     if let Some(warn) = detect_stem_collision(src_rel, dst_rel, &index.documents) {
         match warn {
-            vault_standards::PlanWarning::StemCollisionAfterMove {
+            crate::standards::PlanWarning::StemCollisionAfterMove {
                 new_stem,
                 collides_with,
                 ..

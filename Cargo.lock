@@ -1661,6 +1661,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "strsim",
  "tar",
  "tempfile",
  "terminal_size",
@@ -1669,7 +1670,6 @@ dependencies = [
  "vault-core",
  "vault-frontmatter",
  "vault-graph",
- "vault-standards",
  "xz2",
 ]
 
@@ -1719,27 +1719,6 @@ dependencies = [
  "serde_json",
  "vault-core",
  "vault-frontmatter",
-]
-
-[[package]]
-name = "vault-standards"
-version = "0.33.0"
-dependencies = [
- "anyhow",
- "camino",
- "chrono",
- "globset",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "strsim",
- "tempfile",
- "thiserror",
- "vault-core",
- "vault-frontmatter",
- "vault-graph",
 ]
 
 [[package]]

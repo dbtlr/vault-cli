@@ -10,10 +10,10 @@
 use std::fs;
 use std::io::{IsTerminal, Write};
 
+use crate::standards::{parse_config, VaultConfig};
 use anyhow::{anyhow, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{json, Value};
-use vault_standards::{parse_config, VaultConfig};
 
 use crate::cli::{ConfigFormat, ConfigShowArgs};
 use crate::config::{discover, Discovery};

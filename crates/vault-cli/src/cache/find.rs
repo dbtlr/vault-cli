@@ -73,10 +73,10 @@ impl crate::cache::Cache {
         query: &FindQuery,
     ) -> Result<FindResult, crate::cache::error::CacheError> {
         use crate::cache::query_documents::build_documents_matching_sql_parts;
+        use crate::standards::path_match::PathPattern;
         use camino::Utf8PathBuf;
         use rusqlite::params_from_iter;
         use rusqlite::types::Value as SqlValue;
-        use vault_standards::path_match::PathPattern;
 
         let (where_sql, where_binds) = build_documents_matching_sql_parts(&query.predicates);
 

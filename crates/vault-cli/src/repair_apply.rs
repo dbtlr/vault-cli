@@ -1,14 +1,14 @@
 use std::fs;
 
-use anyhow::{Context, Result};
-use camino::Utf8PathBuf;
-use vault_core::GraphIndex;
-use vault_standards::apply::{
+use crate::standards::apply::{
     apply_delete, apply_file_changes, apply_link_rewrites, apply_move, apply_rewrite_link,
     changes_by_path, validate_plan_for_apply, ApplyError, CreateDocumentResult, DeleteResult,
     LinkRewriteResult, MoveResult, RepairApplyWarning,
 };
-use vault_standards::{Finding, PlannedChange, RepairPlan};
+use crate::standards::{Finding, PlannedChange, RepairPlan};
+use anyhow::{Context, Result};
+use camino::Utf8PathBuf;
+use vault_core::GraphIndex;
 
 /// Context passed to `apply_repair_plan` for flags that only affect specific
 /// orchestrator passes (currently, `create_document` Pass 1e).
@@ -21,7 +21,7 @@ pub struct CreateApplyContext {
 }
 
 #[allow(unused_imports)]
-pub use vault_standards::apply::{
+pub use crate::standards::apply::{
     RepairApplyPlanContext, RepairApplyReport, RepairApplyVerification,
 };
 
@@ -216,7 +216,7 @@ pub fn apply_repair_plan_with_context(
         let absolute_path = cwd.join(&change.path);
         let content =
             fs::read_to_string(&absolute_path).with_context(|| format!("read {absolute_path}"))?;
-        let updated = vault_standards::apply::apply_replace_body(&content, change)?;
+        let updated = crate::standards::apply::apply_replace_body(&content, change)?;
         if updated != content {
             fs::write(&absolute_path, &updated)
                 .with_context(|| format!("write {absolute_path}"))?;
@@ -388,7 +388,7 @@ pub fn with_verification(report: RepairApplyReport, findings: &[Finding]) -> Rep
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vault_standards::{
+    use crate::standards::{
         PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary,
         REPAIR_PLAN_SCHEMA_VERSION,
     };
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn delete_pass_with_rewrite_to_rewrites_then_deletes() {
-        use vault_standards::classify_link_risk;
+        use crate::standards::classify_link_risk;
         let tmp = tempfile::Builder::new()
             .prefix("vault-cli-orch-delete-rewrite-")
             .tempdir()

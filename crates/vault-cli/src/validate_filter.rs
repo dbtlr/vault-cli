@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
+use crate::standards::path_match::PathPattern;
+use crate::standards::{Finding, FindingBody};
 use anyhow::{bail, Result};
 use vault_core::display;
-use vault_standards::path_match::PathPattern;
-use vault_standards::{Finding, FindingBody};
 
 use crate::cli::{RepairPlanArgs, ValidateArgs};
 
@@ -234,8 +234,8 @@ fn finding_reason(finding: &Finding) -> Option<&'static str> {
 #[cfg(test)]
 mod glob_match_tests {
     use super::*;
+    use crate::standards::{Finding, FindingBody};
     use vault_core::{Link, LinkKind, LinkStatus, Severity, UnresolvedReason};
-    use vault_standards::{Finding, FindingBody};
 
     fn link_finding(code: &str) -> Finding {
         Finding {

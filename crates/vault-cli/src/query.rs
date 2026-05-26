@@ -2,7 +2,7 @@
 //! `ValidateRule.match` into `crate::cache::DocumentQuery`.
 
 use crate::cache::DocumentQuery;
-use vault_standards::ValidateRule;
+use crate::standards::ValidateRule;
 
 use crate::filter::DocumentFilterOptions;
 
@@ -99,8 +99,8 @@ mod tests {
 
     #[test]
     fn rule_scope_picks_up_match_path_and_frontmatter() {
+        use crate::standards::{RuleExclude, RuleSelector, ValidateRule};
         use std::collections::HashMap;
-        use vault_standards::{RuleExclude, RuleSelector, ValidateRule};
 
         let mut fm = HashMap::new();
         fm.insert("type".to_string(), json!("note"));

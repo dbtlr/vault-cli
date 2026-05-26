@@ -8,7 +8,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
 
-use crate::config::DestinationSpec;
+use crate::standards::config::DestinationSpec;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum SubstitutionError {

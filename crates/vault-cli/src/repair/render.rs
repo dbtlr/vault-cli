@@ -5,8 +5,8 @@
 use std::collections::BTreeSet;
 use std::io::Write;
 
+use crate::standards::{Confidence, RepairPlan};
 use anyhow::Result;
-use vault_standards::{Confidence, RepairPlan};
 
 use crate::cli::{ColorWhen, RepairPlanArgs};
 use crate::output::palette;

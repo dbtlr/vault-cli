@@ -1,14 +1,21 @@
 use vault_core::{Document, DocumentSummary, GraphIndex};
 
-use crate::config::{CompiledConfig, CompiledRule, ValidateConfig, ValidateRule};
-use crate::findings::Finding;
-use crate::path_match::PathPattern;
-use crate::predicates::frontmatter_predicates_match;
+use crate::standards::config::{CompiledConfig, CompiledRule, ValidateConfig, ValidateRule};
+use crate::standards::findings::Finding;
+use crate::standards::path_match::PathPattern;
+use crate::standards::predicates::frontmatter_predicates_match;
 
+// Superseded by validate_with_compiled (hot path); retained for the in-file
+// test mod which exercises the default-CompiledConfig path. Safe to delete in
+// a cleanup pass once those tests migrate.
+#[allow(dead_code)]
 pub fn validate(index: &GraphIndex, config: &ValidateConfig) -> Vec<Finding> {
     validate_with_alias_field(index, config, None)
 }
 
+// Superseded by validate_with_compiled; retained as a test-only convenience
+// wrapper. Safe to delete in a cleanup pass.
+#[allow(dead_code)]
 pub fn validate_with_alias_field(
     index: &GraphIndex,
     config: &ValidateConfig,
@@ -33,34 +40,34 @@ pub fn validate_with_compiled(
             continue;
         }
 
-        findings.extend(crate::checks::check_graph_diagnostics(document));
+        findings.extend(crate::standards::checks::check_graph_diagnostics(document));
 
-        findings.extend(crate::checks::check_required_frontmatter(
+        findings.extend(crate::standards::checks::check_required_frontmatter(
             document,
             &config.required_frontmatter,
             None,
         ));
 
         for (rule, compiled_rule) in matching_rules_compiled(document, &config.rules, compiled) {
-            findings.extend(crate::checks::check_required_frontmatter(
+            findings.extend(crate::standards::checks::check_required_frontmatter(
                 document,
                 &rule.required_frontmatter,
                 rule.name.as_deref(),
             ));
 
-            findings.extend(crate::checks::check_field_types(
+            findings.extend(crate::standards::checks::check_field_types(
                 document,
                 &rule.field_types,
                 rule.name.as_deref(),
             ));
 
-            findings.extend(crate::checks::check_forbidden_frontmatter(
+            findings.extend(crate::standards::checks::check_forbidden_frontmatter(
                 document,
                 &rule.forbidden_frontmatter,
                 rule.name.as_deref(),
             ));
 
-            if let Some(finding) = crate::checks::check_allowed_paths_compiled(
+            if let Some(finding) = crate::standards::checks::check_allowed_paths_compiled(
                 document,
                 &compiled_rule.allowed_paths,
                 &rule.allowed_paths,
@@ -69,15 +76,18 @@ pub fn validate_with_compiled(
                 findings.push(finding);
             }
 
-            findings.extend(crate::checks::check_allowed_values(
+            findings.extend(crate::standards::checks::check_allowed_values(
                 document,
                 &rule.allowed_values,
                 rule.name.as_deref(),
             ));
         }
 
-        findings.extend(crate::checks::check_links(document));
-        findings.extend(crate::checks::check_alias_malformed(document, alias_field));
+        findings.extend(crate::standards::checks::check_links(document));
+        findings.extend(crate::standards::checks::check_alias_malformed(
+            document,
+            alias_field,
+        ));
     }
 
     // Cross-doc alias checks (after per-doc loop).
@@ -87,11 +97,11 @@ pub fn validate_with_compiled(
             .iter()
             .filter(|d| !document_ignored_compiled(d, compiled, &config.ignore))
             .collect();
-        findings.extend(crate::checks::check_alias_shadowed_by_stem(
+        findings.extend(crate::standards::checks::check_alias_shadowed_by_stem(
             &non_ignored,
             alias_field,
         ));
-        findings.extend(crate::checks::check_alias_duplicate_across_docs(
+        findings.extend(crate::standards::checks::check_alias_duplicate_across_docs(
             &non_ignored,
             alias_field,
         ));
@@ -109,11 +119,18 @@ pub fn validate_with_compiled(
 /// Internally lifts each `DocumentSummary` to a `Document` with empty
 /// joined tables so the existing per-doc check helpers can be reused
 /// without signature changes.
+// Superseded by validate_with_compiled (which inlines per-rule application);
+// retained for tests that exercise the per-rule path. Safe to delete in a
+// cleanup pass.
+#[allow(dead_code)]
 pub fn validate_rule(rule: &ValidateRule, scope: &[DocumentSummary]) -> Vec<Finding> {
     validate_rule_compiled(rule, None, scope)
 }
 
 /// Same as `validate_rule` but uses pre-compiled path patterns when available.
+// Superseded by validate_with_compiled; only `validate_rule` (above) and the
+// in-file test mod call this. Safe to delete in a cleanup pass.
+#[allow(dead_code)]
 pub fn validate_rule_compiled(
     rule: &ValidateRule,
     compiled: Option<&CompiledRule>,
@@ -123,40 +140,42 @@ pub fn validate_rule_compiled(
     for summary in scope {
         let doc = summary_to_document(summary);
 
-        findings.extend(crate::checks::check_required_frontmatter(
+        findings.extend(crate::standards::checks::check_required_frontmatter(
             &doc,
             &rule.required_frontmatter,
             rule.name.as_deref(),
         ));
 
-        findings.extend(crate::checks::check_field_types(
+        findings.extend(crate::standards::checks::check_field_types(
             &doc,
             &rule.field_types,
             rule.name.as_deref(),
         ));
 
-        findings.extend(crate::checks::check_forbidden_frontmatter(
+        findings.extend(crate::standards::checks::check_forbidden_frontmatter(
             &doc,
             &rule.forbidden_frontmatter,
             rule.name.as_deref(),
         ));
 
         let allowed_finding = match compiled {
-            Some(c) => crate::checks::check_allowed_paths_compiled(
+            Some(c) => crate::standards::checks::check_allowed_paths_compiled(
                 &doc,
                 &c.allowed_paths,
                 &rule.allowed_paths,
                 rule.name.as_deref(),
             ),
-            None => {
-                crate::checks::check_allowed_paths(&doc, &rule.allowed_paths, rule.name.as_deref())
-            }
+            None => crate::standards::checks::check_allowed_paths(
+                &doc,
+                &rule.allowed_paths,
+                rule.name.as_deref(),
+            ),
         };
         if let Some(finding) = allowed_finding {
             findings.push(finding);
         }
 
-        findings.extend(crate::checks::check_allowed_values(
+        findings.extend(crate::standards::checks::check_allowed_values(
             &doc,
             &rule.allowed_values,
             rule.name.as_deref(),
@@ -165,6 +184,9 @@ pub fn validate_rule_compiled(
     findings
 }
 
+// Only called by validate_rule_compiled (above), itself dead. Safe to delete
+// in a cleanup pass.
+#[allow(dead_code)]
 fn summary_to_document(summary: &DocumentSummary) -> Document {
     Document {
         path: summary.path.clone(),
@@ -290,7 +312,7 @@ fn rule_matches_compiled(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{RuleExclude, RuleSelector, ValidateConfig, ValidateRule};
+    use crate::standards::config::{RuleExclude, RuleSelector, ValidateConfig, ValidateRule};
     use serde_json::json;
     use vault_core::{Document, GraphIndex};
 
@@ -711,7 +733,7 @@ mod tests {
 #[cfg(test)]
 mod validate_rule_tests {
     use super::*;
-    use crate::config::{RuleExclude, RuleSelector, ValidateRule};
+    use crate::standards::config::{RuleExclude, RuleSelector, ValidateRule};
     use serde_json::json;
     use std::collections::HashMap;
     use vault_core::DocumentSummary;

@@ -167,14 +167,14 @@ fn apply_and_render(
     use camino::Utf8PathBuf;
 
     // Build the single-change RepairPlan expected by apply_repair_plan_with_context.
-    let repair_plan = vault_standards::RepairPlan {
-        schema_version: vault_standards::REPAIR_PLAN_SCHEMA_VERSION,
+    let repair_plan = crate::standards::RepairPlan {
+        schema_version: crate::standards::REPAIR_PLAN_SCHEMA_VERSION,
         vault_root: Utf8PathBuf::from(vault_root.as_str()),
-        source_filters: vault_standards::RepairPlanFilters::default(),
-        summary: vault_standards::RepairPlanSummary {
+        source_filters: crate::standards::RepairPlanFilters::default(),
+        summary: crate::standards::RepairPlanSummary {
             findings: 1,
             planned_changes: 1,
-            skipped: vault_standards::SkippedSummary::default(),
+            skipped: crate::standards::SkippedSummary::default(),
         },
         changes: vec![plan.change.clone()],
         skipped_findings: vec![],
@@ -257,7 +257,7 @@ fn post_create_validate(
         /*no_cache_refresh=*/ false,
     )?;
 
-    let findings = vault_standards::validate_with_compiled(
+    let findings = crate::standards::validate_with_compiled(
         &index,
         &loaded.vault_config.validate,
         &loaded.compiled,
@@ -282,7 +282,7 @@ fn post_create_validate(
 
     let mut extra = Vec::new();
     for f in relevant {
-        if let vault_standards::FindingBody::RequiredFrontmatterMissing { field, rule } = &f.body {
+        if let crate::standards::FindingBody::RequiredFrontmatterMissing { field, rule } = &f.body {
             // Deduplicate with synth-phase warnings.
             if !already_warned.contains(field) {
                 extra.push(Warning::MissingRequiredField {

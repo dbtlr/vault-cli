@@ -1,11 +1,11 @@
 use std::fs;
 
+use crate::standards::{
+    parse_config_compiled, CompiledConfig, RepairConfig, ValidateConfig, VaultConfig,
+};
 use anyhow::Result;
 use camino::Utf8PathBuf;
 use vault_graph::IndexOptions;
-use vault_standards::{
-    parse_config_compiled, CompiledConfig, RepairConfig, ValidateConfig, VaultConfig,
-};
 
 pub struct LoadedConfig {
     pub index_options: IndexOptions,

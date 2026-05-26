@@ -3,10 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cache::Cache;
+use crate::standards::PlannedChange;
 use anyhow::{anyhow, bail, Result};
 use camino::Utf8PathBuf;
 use serde_json::Value;
-use vault_standards::PlannedChange;
 
 /// Resolve the user-supplied DOC argument into a vault-relative path.
 /// Accepts path, stem, or wikilink-shaped input (with or without [[]]).
@@ -417,7 +417,7 @@ pub fn synth_frontmatter_ops_typed(
 /// Outcome of a successful preflight: a ready-to-apply RepairPlan plus metadata
 /// needed for rendering (warnings, body-change sizing).
 pub struct PreflightOutcome {
-    pub plan: vault_standards::RepairPlan,
+    pub plan: crate::standards::RepairPlan,
     pub warnings: Vec<crate::set::validate::SetWarning>,
     pub target: camino::Utf8PathBuf,
     pub body_changed: bool,
@@ -433,7 +433,7 @@ pub fn preflight_and_plan(
     cwd: &camino::Utf8Path,
     cache: &crate::cache::Cache,
     index: &vault_core::GraphIndex,
-    cfg: &vault_standards::VaultConfig,
+    cfg: &crate::standards::VaultConfig,
     args: &crate::cli::SetArgs,
 ) -> anyhow::Result<PreflightOutcome> {
     use std::io::Read as _;
@@ -556,14 +556,14 @@ pub fn preflight_and_plan(
 
     // 10. Wrap into RepairPlan.
     let n_changes = all_changes.len();
-    let plan = vault_standards::RepairPlan {
-        schema_version: vault_standards::REPAIR_PLAN_SCHEMA_VERSION,
+    let plan = crate::standards::RepairPlan {
+        schema_version: crate::standards::REPAIR_PLAN_SCHEMA_VERSION,
         vault_root: cwd.to_path_buf(),
-        source_filters: vault_standards::RepairPlanFilters::default(),
-        summary: vault_standards::RepairPlanSummary {
+        source_filters: crate::standards::RepairPlanFilters::default(),
+        summary: crate::standards::RepairPlanSummary {
             findings: n_changes,
             planned_changes: n_changes,
-            skipped: vault_standards::SkippedSummary::default(),
+            skipped: crate::standards::SkippedSummary::default(),
         },
         changes: all_changes,
         skipped_findings: Vec::new(),

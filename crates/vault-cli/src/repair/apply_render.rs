@@ -8,8 +8,8 @@
 /// Format a `PlanWarning` into a human-readable string for TTY rendering.
 ///
 /// `PlanWarning` does not derive `Display`, so each variant is matched explicitly.
-fn format_plan_warning(w: &vault_standards::PlanWarning) -> String {
-    use vault_standards::PlanWarning::*;
+fn format_plan_warning(w: &crate::standards::PlanWarning) -> String {
+    use crate::standards::PlanWarning::*;
     match w {
         StemCollisionAfterMove {
             new_stem,
@@ -45,8 +45,8 @@ pub(crate) fn operation_code(op: &str) -> &str {
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 
+use crate::standards::apply::RepairApplyReport;
 use camino::Utf8PathBuf;
-use vault_standards::apply::RepairApplyReport;
 
 use crate::output::palette;
 use crate::output::primitives::tally_group;
@@ -81,7 +81,7 @@ impl PlanSource {
 /// plus inline severity tally and footer logic. Empty-plan short-circuit handled here.
 pub(crate) fn render_report(
     report: &RepairApplyReport,
-    plan: &vault_standards::RepairPlan,
+    plan: &crate::standards::RepairPlan,
     source: PlanSource,
     out: &mut dyn Write,
 ) -> io::Result<()> {
@@ -205,9 +205,9 @@ pub(crate) fn render_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::standards::apply::RepairApplyReport;
+    use crate::standards::{RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary};
     use camino::Utf8PathBuf;
-    use vault_standards::apply::RepairApplyReport;
-    use vault_standards::{RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary};
 
     #[test]
     fn render_report_with_empty_plan_emits_nothing_to_do_line() {
@@ -240,7 +240,7 @@ mod tests {
     }
 
     fn fixture_report(changes: usize, dry_run: bool) -> (RepairPlan, RepairApplyReport) {
-        use vault_standards::{
+        use crate::standards::{
             PlannedChange, RepairPlanFilters, RepairPlanSummary, SkippedSummary,
         };
         let plan = RepairPlan {
@@ -372,8 +372,8 @@ mod tests {
 
     #[test]
     fn severity_tally_with_warnings_shows_both_rows() {
-        use vault_standards::apply::RepairApplyWarning;
-        use vault_standards::PlanWarning;
+        use crate::standards::apply::RepairApplyWarning;
+        use crate::standards::PlanWarning;
         let (plan, mut report) = fixture_report(134, false);
         report.warnings = vec![
             RepairApplyWarning {
@@ -484,8 +484,8 @@ mod tests {
     }
 
     // Helpers for by-operation task fixtures
-    fn make_plan_with_mixed_operations() -> vault_standards::RepairPlan {
-        use vault_standards::{
+    fn make_plan_with_mixed_operations() -> crate::standards::RepairPlan {
+        use crate::standards::{
             PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary,
         };
         let make_change = |path: &str, op: &str| PlannedChange {
@@ -524,8 +524,8 @@ mod tests {
         }
     }
 
-    fn empty_plan() -> vault_standards::RepairPlan {
-        use vault_standards::{RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary};
+    fn empty_plan() -> crate::standards::RepairPlan {
+        use crate::standards::{RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary};
         RepairPlan {
             schema_version: 6,
             vault_root: Utf8PathBuf::from("/tmp"),
@@ -587,8 +587,8 @@ mod tests {
 
     #[test]
     fn footer_includes_warnings_count_when_present() {
-        use vault_standards::apply::RepairApplyWarning;
-        use vault_standards::PlanWarning;
+        use crate::standards::apply::RepairApplyWarning;
+        use crate::standards::PlanWarning;
         let (plan, mut report) = fixture_report(1, false);
         report.changed_files = vec![Utf8PathBuf::from("a.md")];
         report.warnings = vec![RepairApplyWarning {
@@ -617,10 +617,10 @@ mod tests {
 
     #[test]
     fn footer_includes_verify_inline_when_verification_present() {
-        use vault_standards::apply::RepairApplyVerification;
+        use crate::standards::apply::RepairApplyVerification;
         let (plan, mut report) = fixture_report(1, false);
         report.changed_files = vec![Utf8PathBuf::from("a.md")];
-        let summary = vault_standards::summarize(&[]);
+        let summary = crate::standards::summarize(&[]);
         report.verification = Some(RepairApplyVerification {
             remaining_findings: 23,
             summary,
@@ -667,9 +667,9 @@ mod tests {
 
     #[test]
     fn warnings_sub_block_renders_each_warning_with_kebab_op() {
-        use vault_standards::apply::RepairApplyWarning;
-        use vault_standards::PlanWarning;
-        use vault_standards::PlannedChange;
+        use crate::standards::apply::RepairApplyWarning;
+        use crate::standards::PlanWarning;
+        use crate::standards::PlannedChange;
         let mut plan = empty_plan();
         plan.changes.push(PlannedChange {
             change_id: "c1".into(),

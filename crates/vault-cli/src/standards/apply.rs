@@ -11,11 +11,13 @@ use vault_frontmatter::{
     top_level_property_spans, QuoteError, ValueStyle,
 };
 
-use crate::findings::Finding;
-use crate::repair::warnings::PlanWarning;
-use crate::repair::{PlannedChange, RepairPlan, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION};
-use crate::summarize;
-use crate::summary::Summary;
+use crate::standards::findings::Finding;
+use crate::standards::repair::warnings::PlanWarning;
+use crate::standards::repair::{
+    PlannedChange, RepairPlan, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
+};
+use crate::standards::summarize;
+use crate::standards::summary::Summary;
 
 #[derive(Debug, Error)]
 pub enum ApplyError {
@@ -779,7 +781,7 @@ fn split_target_suffix(s: &str) -> (&str, Option<&str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repair::{RepairPlanFilters, RepairPlanSummary, SkippedSummary};
+    use crate::standards::repair::{RepairPlanFilters, RepairPlanSummary, SkippedSummary};
     use serde_json::json;
 
     fn empty_plan(schema_version: u32, vault_root: &str) -> RepairPlan {

@@ -1,12 +1,12 @@
 //! SQL-direct document query — `Cache::documents_matching` and
 //! `Cache::document_by_path`.
 
+use crate::standards::path_match::PathPattern;
 use camino::{Utf8Path, Utf8PathBuf};
 use rusqlite::params_from_iter;
 use rusqlite::types::Value as SqlValue;
 use rusqlite::OptionalExtension;
 use vault_core::DocumentSummary;
-use vault_standards::path_match::PathPattern;
 
 use crate::cache::error::CacheError;
 use crate::cache::query::{json_path_for, DocumentQuery};
@@ -17,7 +17,7 @@ impl crate::cache::Cache {
     ///
     /// Frontmatter predicates push into SQL via `json_extract` with the JSON
     /// path bound as a parameter; path globs post-filter via
-    /// `vault_standards::path_match::PathPattern`.
+    /// `crate::standards::path_match::PathPattern`.
     pub fn documents_matching(
         &self,
         query: &DocumentQuery,
