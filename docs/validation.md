@@ -120,7 +120,7 @@ vault repair plan --code frontmatter-disallowed-value --field status --out repai
 
 ```json
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "vault_root": "/abs/path/to/vault",
   "source_filters": { "...": "..." },
   "summary": {

@@ -87,7 +87,7 @@ These commands never write to the vault. An agent can run them with confidence:
 
 ```json
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "vault_root": "/abs/path/to/vault",
   "source_filters": { "code": "frontmatter-disallowed-value", "field": "status" },
   "summary": {
@@ -157,7 +157,7 @@ repair rule (e.g. updating body content with `--body-from-stdin`).
 ## Common pitfalls
 
 - **Don't filter by un-indexed fields.** `vault find` predicates match frontmatter scalar or list values only for field-equality flags; `--text` is for full-text substring search.
-- **Honor schema versions.** Repair plans have `schema_version: 8` as of v0.32. Older plans are rejected by apply.
+- **Honor schema versions.** Repair plans have `schema_version: 9` as of v0.32. Older plans are rejected by apply.
 - **Don't auto-pick ambiguous link candidates.** `link-ambiguous` findings carry a `candidates` list, but the CLI does not automatically resolve them. An agent should surface the ambiguity to the human or apply a deterministic disambiguation rule documented in the vault's config.
 - **Don't redirect to a file when `--out` exists.** `vault repair plan --out repair.json` is the file-first form; shell redirection works too but `--out` makes the intent explicit and avoids partial-write footguns.
 - **User-specific vault doctrine lives in `.vault/config.yaml`.** Don't hardcode vault-specific rule names or field shapes in agent prompts; read them from the config.

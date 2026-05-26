@@ -539,7 +539,7 @@ fn apply_guidance_suppresses_apply_block_when_skip_reason_active() {
 }
 
 /// Subprocess stdout is a pipe, not a tty, so omitting `--format` should default
-/// to JSON output (schema_version 7). Explicit `--format report` still wins.
+/// to JSON output (schema_version 9). Explicit `--format report` still wins.
 #[test]
 fn piped_default_is_json_explicit_format_overrides() {
     let (root, config_path) = build_plan_with_proposals_fixture();
