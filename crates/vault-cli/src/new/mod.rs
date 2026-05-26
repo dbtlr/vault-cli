@@ -488,4 +488,41 @@ validate:
             "expected missing-required-field for description in warnings: {warnings:?}"
         );
     }
+
+    // ── Task 8.4: Stem-collision warning end-to-end ────────────────────────────
+
+    #[test]
+    fn stem_collision_warning_surfaces_in_envelope() {
+        let root = vault();
+        write_config(root.path(), "validate: {}\n");
+        // Pre-create a file with the same stem in a different directory.
+        std::fs::create_dir_all(root.path().join("notes")).unwrap();
+        std::fs::write(root.path().join("notes/foo.md"), "---\ntype: note\n---\n").unwrap();
+
+        let cwd = camino::Utf8Path::from_path(root.path()).unwrap();
+        // Now create other-dir/foo.md — same stem "foo", different path.
+        let mut args = args_for("other-dir/foo.md");
+        args.dry_run = true; // dry-run is enough; stem-collision warning comes from synth
+        args.format = crate::cli::NewFormat::Json;
+        // Need other-dir to exist for the preflight to pass without -p.
+        std::fs::create_dir_all(root.path().join("other-dir")).unwrap();
+        let bundle = preflight_and_plan(&args, cwd).unwrap();
+        assert_eq!(bundle.exit_code, 0);
+        let v: serde_json::Value = serde_json::from_str(&bundle.rendered).unwrap();
+
+        let warnings = v["warnings"].as_array().unwrap();
+        let stem_warn = warnings.iter().find(|w| w["kind"] == "stem-collision");
+        assert!(
+            stem_warn.is_some(),
+            "expected stem-collision warning in envelope, warnings: {warnings:?}"
+        );
+        let sw = stem_warn.unwrap();
+        assert_eq!(sw["stem"], serde_json::json!("foo"));
+        let locs = sw["locations"].as_array().unwrap();
+        assert!(
+            locs.iter()
+                .any(|l| l.as_str().unwrap_or("").contains("notes/foo.md")),
+            "expected notes/foo.md in collision locations: {locs:?}"
+        );
+    }
 }
