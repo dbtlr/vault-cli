@@ -215,7 +215,7 @@ fn matching_rules_compiled<'a>(
                 // but if it does we need a dummy. Use a static empty compiled rule
                 // via a leaked allocation. In practice this path is only hit in
                 // tests that call validate_with_alias_field (which passes default compiled).
-                // We use a thread-local to avoid repeated allocation.
+                // We use a global OnceLock to avoid repeated allocation.
                 static EMPTY: std::sync::OnceLock<CompiledRule> = std::sync::OnceLock::new();
                 let empty = EMPTY.get_or_init(|| CompiledRule {
                     path: None,
