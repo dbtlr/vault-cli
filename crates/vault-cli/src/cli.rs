@@ -125,7 +125,9 @@ substitution (date/time/title/path variables), and writes the new document atomi
 \n\
 Operator overrides via --field always win over schema defaults. Refuses if path exists (unless\n\
 --force) or parent directory missing (unless -p). Safe-by-default apply model with TTY confirm,\n\
-non-TTY implicit dry-run, --yes, and --dry-run."
+non-TTY implicit dry-run, --yes, and --dry-run.\n\
+\n\
+After write, `vault validate` runs against the new doc; findings surface as envelope warnings."
     )]
     New(NewArgs),
     #[command(disable_help_flag = true, about = "Scaffold .vault/config.yaml")]

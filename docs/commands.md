@@ -189,7 +189,7 @@ TTY shows a preview and prompts; non-TTY without `--yes` dry-runs. Post-create
 `vault new`, `vault get`, `vault set`, `vault move`, and `vault delete` form a
 CRUD-shaped surface for working with vault documents without touching the
 filesystem directly.
-All mutation commands (`set`, `move`, `delete`) are safe-by-default: TTY runs
+All mutation commands (`set`, `new`, `move`, `delete`) are safe-by-default: TTY runs
 prompt for confirmation, non-TTY runs without `--yes` print a dry-run summary
 and exit. `--yes` skips the prompt and applies; `--dry-run` previews and
 exits explicitly; `--format json` is implicitly non-interactive.
