@@ -1,8 +1,8 @@
 use vault_core::{Document, DocumentSummary, GraphIndex};
-use vault_graph::pattern_matches_path;
 
 use crate::config::{ValidateConfig, ValidateRule};
 use crate::findings::Finding;
+use crate::path_match::PathPattern;
 use crate::predicates::frontmatter_predicates_match;
 
 pub fn validate(index: &GraphIndex, config: &ValidateConfig) -> Vec<Finding> {
@@ -154,7 +154,7 @@ pub(crate) fn document_ignored(document: &Document, config: &ValidateConfig) -> 
     config
         .ignore
         .iter()
-        .any(|pattern| pattern_matches_path(pattern, &document.path))
+        .any(|pattern| path_pattern_matches(pattern, document.path.as_str()))
 }
 
 pub(crate) fn matching_rules<'a>(
@@ -169,21 +169,27 @@ pub(crate) fn matching_rules<'a>(
 
 pub fn rule_matches(document: &Document, rule: &ValidateRule) -> bool {
     if let Some(path_pattern) = &rule.r#match.path {
-        if !pattern_matches_path(path_pattern, &document.path) {
+        if !path_pattern_matches(path_pattern, document.path.as_str()) {
             return false;
         }
     }
     if let Some(path_not_pattern) = &rule.r#match.path_not {
-        if pattern_matches_path(path_not_pattern, &document.path) {
+        if path_pattern_matches(path_not_pattern, document.path.as_str()) {
             return false;
         }
     }
     if let Some(exclude_path) = &rule.exclude.path {
-        if pattern_matches_path(exclude_path, &document.path) {
+        if path_pattern_matches(exclude_path, document.path.as_str()) {
             return false;
         }
     }
     frontmatter_predicates_match(document, &rule.r#match.frontmatter)
+}
+
+fn path_pattern_matches(pattern: &str, path: &str) -> bool {
+    PathPattern::parse(pattern)
+        .map(|p| p.match_path(path).is_some())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
