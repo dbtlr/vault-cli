@@ -103,12 +103,18 @@ pub fn classify(
                     }
                 }
                 LinkKind::Markdown => {
+                    // Use the translated source_path (post-move location for
+                    // self-references) when computing the relative-path
+                    // rewrite. Otherwise a sibling self-link would be turned
+                    // into a dangling cross-directory traversal.
+                    let rewritten =
+                        rewrite_markdown_link(&link.raw, source_path.as_path(), new_path);
                     risk.markdown_links.push(AffectedLink {
                         source_path,
                         raw: link.raw.clone(),
                         kind: link.kind.clone(),
                         source_span: link.source_span.clone(),
-                        rewritten: rewrite_markdown_link(&link.raw, &link.source_path, new_path),
+                        rewritten,
                     });
                 }
             }
@@ -430,6 +436,39 @@ mod tests {
         assert_eq!(
             affected.source_path,
             Utf8PathBuf::from("Workspaces/vault-cli/norn.md"),
+        );
+    }
+
+    #[test]
+    fn self_referencing_markdown_link_rewritten_relative_to_new_location() {
+        // The moved doc contains a CommonMark link to itself by file name.
+        // After the move, the file lives at the new path, so its sibling
+        // self-link should still resolve to the (now-new) sibling — i.e. the
+        // relative path must be computed from the NEW source directory, not
+        // the OLD one. Otherwise the rewrite turns a self-stable link into a
+        // dangling cross-directory traversal.
+        let old = Utf8PathBuf::from("Inbox/task.md");
+        let new = Utf8PathBuf::from("Workspaces/x/tasks/task.md");
+        let mut src_doc = make_doc("Inbox/task.md");
+        src_doc.links.push(markdown_link_resolved(
+            "Inbox/task.md",
+            "task.md",
+            Some("Inbox/task.md"),
+        ));
+
+        let documents = vec![src_doc];
+        let files = vec![];
+        let risk = classify(&old, &new, &documents, &files);
+
+        assert_eq!(risk.markdown_links.len(), 1);
+        let affected = &risk.markdown_links[0];
+        assert_eq!(
+            affected.source_path,
+            Utf8PathBuf::from("Workspaces/x/tasks/task.md")
+        );
+        assert_eq!(
+            affected.rewritten, "[](task.md)",
+            "sibling self-link should stay sibling-relative after move"
         );
     }
 
