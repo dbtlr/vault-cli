@@ -478,10 +478,16 @@ fn run(cli: Cli) -> Result<i32> {
                     }
                 }
             } else {
-                // --dry-run: render preview only (records format; JSON and non-TTY
-                // no-flag paths already returned above).
+                // --dry-run: render preview respecting --format.
                 let preview = crate::move_doc::build_report(&plan, false, warnings);
-                crate::move_doc::render_records(&mut out, &preview)?;
+                match args.format {
+                    crate::cli::MoveFormat::Records => {
+                        crate::move_doc::render_records(&mut out, &preview)?;
+                    }
+                    crate::cli::MoveFormat::Json => {
+                        crate::move_doc::render_json(&mut out, &preview)?;
+                    }
+                }
             }
 
             Ok(0)
@@ -563,10 +569,16 @@ fn run(cli: Cli) -> Result<i32> {
                     }
                 }
             } else {
-                // --dry-run: render preview only (records format; JSON and non-TTY
-                // no-flag paths already returned above).
+                // --dry-run: render preview respecting --format.
                 let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                crate::delete_doc::render_records(&mut out, &preview)?;
+                match args.format {
+                    crate::cli::DeleteFormat::Records => {
+                        crate::delete_doc::render_records(&mut out, &preview)?;
+                    }
+                    crate::cli::DeleteFormat::Json => {
+                        crate::delete_doc::render_json(&mut out, &preview)?;
+                    }
+                }
             }
 
             Ok(0)

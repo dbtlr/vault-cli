@@ -119,6 +119,48 @@ fn move_format_json_emits_envelope() {
 }
 
 #[test]
+fn move_dry_run_format_json_emits_envelope() {
+    let tmp = synth();
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(tmp.path().join("vault"))
+        .args([
+            "move",
+            "b.md",
+            "renamed.md",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let trimmed = stdout.trim();
+    let v: serde_json::Value = serde_json::from_str(trimmed).unwrap_or_else(|e| {
+        panic!("--dry-run --format json must emit a JSON envelope: {e}\ngot: {trimmed}")
+    });
+    assert_eq!(v["operation"], "move");
+    assert_eq!(v["source"], "b.md");
+    assert_eq!(v["destination"], "renamed.md");
+    assert_eq!(v["applied"], false);
+    assert_eq!(v["link_rewrites"]["total"], 1);
+    // Dry-run must not mutate the filesystem.
+    assert!(
+        tmp.path().join("vault/b.md").exists(),
+        "b.md should not be moved"
+    );
+    assert!(
+        !tmp.path().join("vault/renamed.md").exists(),
+        "renamed.md should not exist"
+    );
+}
+
+#[test]
 fn move_destination_exists_refused() {
     let tmp = synth();
     let out = Command::new(norn_bin())

@@ -174,6 +174,35 @@ fn delete_yes_format_json_emits_single_json_object() {
 }
 
 #[test]
+fn delete_dry_run_format_json_emits_envelope() {
+    let tmp = synth();
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(tmp.path().join("vault"))
+        .args(["delete", "d.md", "--dry-run", "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let trimmed = stdout.trim();
+    let v: serde_json::Value = serde_json::from_str(trimmed).unwrap_or_else(|e| {
+        panic!("--dry-run --format json must emit a JSON envelope: {e}\ngot: {trimmed}")
+    });
+    assert_eq!(v["operation"], "delete");
+    assert_eq!(v["target"], "d.md");
+    assert_eq!(v["applied"], false);
+    // Dry-run must not mutate the filesystem.
+    assert!(
+        tmp.path().join("vault/d.md").exists(),
+        "d.md should not be deleted on dry-run"
+    );
+}
+
+#[test]
 fn delete_format_json_emits_envelope() {
     let tmp = synth();
     let out = Command::new(norn_bin())
