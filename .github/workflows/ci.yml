@@ -35,32 +35,32 @@ jobs:
       - name: cargo test --workspace --locked
         run: cargo test --workspace --locked
 
-      - name: cargo build -p vault-cli --release --locked
-        run: cargo build -p vault-cli --release --locked
+      - name: cargo build -p norn-run --release --locked
+        run: cargo build -p norn-run --release --locked
 
       - name: cargo install --path . --locked
         run: cargo install --path . --locked
 
-      - name: vault --help
-        run: vault --help
+      - name: norn --help
+        run: norn --help
 
       - name: completions bash smoke
-        run: vault completions init bash > /tmp/vault.bash && test -s /tmp/vault.bash
+        run: norn completions init bash > /tmp/norn.bash && test -s /tmp/norn.bash
 
       - name: completions zsh smoke
-        run: vault completions init zsh > /tmp/_vault && test -s /tmp/_vault
+        run: norn completions init zsh > /tmp/_norn && test -s /tmp/_norn
 
       - name: completions fish smoke
-        run: vault completions init fish > /tmp/vault.fish && test -s /tmp/vault.fish
+        run: norn completions init fish > /tmp/norn.fish && test -s /tmp/norn.fish
 
       - name: manpage smoke
-        run: vault manpage > /tmp/vault.1 && test -s /tmp/vault.1
+        run: norn manpage > /tmp/norn.1 && test -s /tmp/norn.1
 
       - name: fixture validate
-        run: vault -C fixtures/basic validate --summary --format json
+        run: norn -C fixtures/basic validate --summary --format json
 
       - name: repo self-validate
-        run: vault -C . validate --summary --format json
+        run: norn -C . validate --summary --format json
 
       - name: cargo audit
         run: cargo install --locked cargo-audit && cargo audit

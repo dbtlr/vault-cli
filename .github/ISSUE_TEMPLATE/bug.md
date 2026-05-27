@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug or unexpected behavior in vault-cli
+about: Report a bug or unexpected behavior in Norn
 title: "Bug: "
 labels: ["bug"]
 assignees: []
