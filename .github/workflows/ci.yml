@@ -15,11 +15,15 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
 
       - name: Install shellcheck (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -63,10 +67,10 @@ jobs:
         run: norn -C . validate --summary --format json
 
       - name: cargo audit
-        run: cargo install --locked cargo-audit && cargo audit
+        run: cargo audit
 
       - name: cargo deny check
-        run: cargo install --locked cargo-deny && cargo deny check
+        run: cargo deny check
 
       - name: shellcheck
         run: shellcheck examples/repair-recipe.sh
