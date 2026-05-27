@@ -64,7 +64,7 @@ script. This binary does not have an install receipt.
 To update, either:
   • Re-run the installer:
       curl --proto '=https' --tlsv1.2 -LsSf \\
-        https://github.com/dbtlr/norn/releases/latest/download/vault-installer.sh | sh
+        https://github.com/dbtlr/norn/releases/latest/download/norn-run-installer.sh | sh
 
   • Update via the package manager you originally used (cargo, homebrew, etc.)";
 
@@ -212,8 +212,8 @@ mod run_tests {
             "announcement_tag": "v0.33.1",
             "announcement_title": "v0.33.1",
             "artifacts": {
-                "vault-aarch64-apple-darwin.tar.xz": {
-                    "name": "vault-aarch64-apple-darwin.tar.xz",
+                "norn-run-aarch64-apple-darwin.tar.xz": {
+                    "name": "norn-run-aarch64-apple-darwin.tar.xz",
                     "kind": "executable-zip",
                     "target_triples": ["aarch64-apple-darwin"],
                     "checksums": { "sha256": "abc123" }
@@ -227,7 +227,7 @@ mod run_tests {
         std::fs::write(
             &path,
             r#"{
-                "binaries": ["vault"],
+                "binaries": ["norn"],
                 "version": "0.32.0",
                 "target": "aarch64-apple-darwin"
             }"#,
@@ -386,8 +386,8 @@ mod run_tests {
                 "announcement_tag": "v0.30.0",
                 "announcement_title": "v0.30.0",
                 "artifacts": {
-                    "vault-aarch64-apple-darwin.tar.xz": {
-                        "name": "vault-aarch64-apple-darwin.tar.xz",
+                    "norn-run-aarch64-apple-darwin.tar.xz": {
+                        "name": "norn-run-aarch64-apple-darwin.tar.xz",
                         "kind": "executable-zip",
                         "target_triples": ["aarch64-apple-darwin"],
                         "checksums": { "sha256": "xyz" }

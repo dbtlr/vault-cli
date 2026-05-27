@@ -86,10 +86,7 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "norn validate --severity error",
                 "errors only; skip warnings",
             ),
-            (
-                "norn validate --code 'link-*'",
-                "broken + ambiguous links (replaces `norn links unresolved`)",
-            ),
+            ("norn validate --code 'link-*'", "broken + ambiguous links"),
             (
                 "norn validate --code 'link-*' --format paths",
                 "unique source paths only; pipe-friendly",

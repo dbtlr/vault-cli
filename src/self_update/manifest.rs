@@ -78,24 +78,24 @@ mod tests {
         "announcement_tag": "v0.33.1",
         "announcement_title": "Version 0.33.1",
         "artifacts": {
-            "vault-aarch64-apple-darwin.tar.xz": {
-                "name": "vault-aarch64-apple-darwin.tar.xz",
+            "norn-run-aarch64-apple-darwin.tar.xz": {
+                "name": "norn-run-aarch64-apple-darwin.tar.xz",
                 "kind": "executable-zip",
                 "target_triples": ["aarch64-apple-darwin"],
                 "checksums": {
                     "sha256": "abc123def456"
                 }
             },
-            "vault-x86_64-apple-darwin.tar.xz": {
-                "name": "vault-x86_64-apple-darwin.tar.xz",
+            "norn-run-x86_64-apple-darwin.tar.xz": {
+                "name": "norn-run-x86_64-apple-darwin.tar.xz",
                 "kind": "executable-zip",
                 "target_triples": ["x86_64-apple-darwin"],
                 "checksums": {
                     "sha256": "deadbeef"
                 }
             },
-            "vault-aarch64-apple-darwin.tar.xz.sha256": {
-                "name": "vault-aarch64-apple-darwin.tar.xz.sha256",
+            "norn-run-aarch64-apple-darwin.tar.xz.sha256": {
+                "name": "norn-run-aarch64-apple-darwin.tar.xz.sha256",
                 "kind": "checksum"
             }
         }

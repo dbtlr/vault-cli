@@ -70,7 +70,7 @@ mod tests {
     use super::*;
 
     const SAMPLE_RECEIPT: &str = r#"{
-        "binaries": ["vault"],
+        "binaries": ["norn"],
         "install_prefix": "/Users/drew/.cargo",
         "binary_aliases": {},
         "cargo_dist_version": "0.32.0",
