@@ -8,8 +8,8 @@ use std::fs;
 use std::process::Command;
 use tempfile::Builder;
 
-fn vault_bin() -> &'static str {
-    env!("CARGO_BIN_EXE_vault")
+fn norn_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_norn")
 }
 
 /// Create a minimal tempdir vault with the given YAML in `.vault/config.yaml`.
@@ -26,7 +26,7 @@ fn build_vault(config_yaml: &str) -> tempfile::TempDir {
 
 /// Build a `vault` Command with `--cwd` pointing at the vault tempdir.
 fn vault_cmd(vault: &tempfile::TempDir) -> Command {
-    let mut c = Command::new(vault_bin());
+    let mut c = Command::new(norn_bin());
     c.arg("--cwd").arg(vault.path());
     c
 }

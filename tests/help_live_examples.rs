@@ -3,7 +3,7 @@
 //! Drives the real `vault` binary against on-disk fixture vaults so the full
 //! interceptor path (arg parse → cwd resolve → cache open → generator →
 //! renderer) is exercised. The existing test convention uses
-//! `env!("CARGO_BIN_EXE_vault")` to locate the binary; this file follows
+//! `env!("CARGO_BIN_EXE_norn")` to locate the binary; this file follows
 //! the same pattern.
 
 use std::process::Command;
@@ -11,8 +11,8 @@ use std::process::Command;
 use camino::Utf8PathBuf;
 use tempfile::TempDir;
 
-fn vault_bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_vault"))
+fn norn_bin() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_norn"))
 }
 
 /// Build a small fixture vault on disk: empty `.vault/` so it's recognized
@@ -52,7 +52,7 @@ fn fixture_vault() -> TempDir {
     for (path, body) in docs {
         std::fs::write(root.join(path).as_std_path(), body).unwrap();
     }
-    let out = vault_bin()
+    let out = norn_bin()
         .args(["--cwd", tmp.path().to_str().unwrap(), "cache", "rebuild"])
         .output()
         .unwrap();
@@ -67,7 +67,7 @@ fn fixture_vault() -> TempDir {
 #[test]
 fn long_help_inside_vault_emits_live_examples_block() {
     let vault = fixture_vault();
-    let out = vault_bin()
+    let out = norn_bin()
         .env("NO_COLOR", "1")
         .env("PAGER", "cat")
         .args(["--cwd", vault.path().to_str().unwrap(), "find", "--help"])
@@ -91,7 +91,7 @@ fn long_help_inside_vault_emits_live_examples_block() {
     // So workspace wins P1, type wins P2.
     assert!(
         stdout.contains(
-            "vault find --eq workspace:vault-cli --eq type:note --sort modified --limit 5"
+            "norn find --eq workspace:vault-cli --eq type:note --sort modified --limit 5"
         ),
         "expected composed query; got:\n{stdout}"
     );
@@ -105,7 +105,7 @@ fn long_help_inside_vault_emits_live_examples_block() {
 fn long_help_deterministic_across_runs() {
     let vault = fixture_vault();
     let run = || {
-        let out = vault_bin()
+        let out = norn_bin()
             .env("NO_COLOR", "1")
             .env("PAGER", "cat")
             .args(["--cwd", vault.path().to_str().unwrap(), "find", "--help"])
@@ -128,7 +128,7 @@ fn long_help_outside_vault_has_no_live_examples() {
         .prefix("vault-cli-help-no-vault-")
         .tempdir()
         .unwrap();
-    let out = vault_bin()
+    let out = norn_bin()
         .env("NO_COLOR", "1")
         .env("PAGER", "cat")
         .args(["--cwd", tmp.path().to_str().unwrap(), "find", "--help"])
@@ -145,7 +145,7 @@ fn long_help_outside_vault_has_no_live_examples() {
 #[test]
 fn short_help_never_emits_live_examples() {
     let vault = fixture_vault();
-    let out = vault_bin()
+    let out = norn_bin()
         .env("NO_COLOR", "1")
         .args(["--cwd", vault.path().to_str().unwrap(), "find", "-h"])
         .output()
@@ -161,7 +161,7 @@ fn short_help_never_emits_live_examples() {
 #[test]
 fn long_help_ascii_marker_under_norn_ascii() {
     let vault = fixture_vault();
-    let out = vault_bin()
+    let out = norn_bin()
         .env("NO_COLOR", "1")
         .env("NORN_ASCII", "1")
         .env("PAGER", "cat")
@@ -171,11 +171,11 @@ fn long_help_ascii_marker_under_norn_ascii() {
     assert!(out.status.success());
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(
-        stdout.contains("> vault find"),
+        stdout.contains("> norn find"),
         "expected '> vault find' under NORN_ASCII; got:\n{stdout}"
     );
     assert!(
-        !stdout.contains("▸ vault find"),
+        !stdout.contains("▸ norn find"),
         "must not emit UTF marker under NORN_ASCII; got:\n{stdout}"
     );
 }
@@ -183,7 +183,7 @@ fn long_help_ascii_marker_under_norn_ascii() {
 #[test]
 fn long_help_no_color_includes_live_tag() {
     let vault = fixture_vault();
-    let out = vault_bin()
+    let out = norn_bin()
         .env("NO_COLOR", "1")
         .env("PAGER", "cat")
         .args(["--cwd", vault.path().to_str().unwrap(), "find", "--help"])

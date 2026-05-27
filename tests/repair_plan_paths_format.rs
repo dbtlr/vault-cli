@@ -25,7 +25,7 @@ fn run_command(root: &Path, config_path: &Path, extra_args: &[&str]) -> Output {
         .tempdir()
         .expect("cache temp dir should be created");
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"));
     cmd.args([
         "-C",
         root.to_str().unwrap(),

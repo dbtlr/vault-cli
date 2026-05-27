@@ -23,7 +23,7 @@ fn vault_root() -> PathBuf {
 /// Runs `vault` with the given args. Isolates the XDG cache so tests don't
 /// share SQLite state.
 fn vault_json(args: &[&str]) -> Value {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     // Isolate cache per run.
     let cache_dir = tempfile::Builder::new()

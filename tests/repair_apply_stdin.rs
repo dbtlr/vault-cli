@@ -42,7 +42,7 @@ fn empty_plan_json(vault_root: &str) -> String {
 fn apply_reads_plan_from_stdin_when_no_positional() {
     let vault = fixture_vault();
     let plan_json = empty_plan_json(vault.path().to_str().unwrap());
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),
@@ -74,7 +74,7 @@ fn apply_reads_plan_from_stdin_when_no_positional() {
 fn apply_reads_plan_from_stdin_when_dash_positional() {
     let vault = fixture_vault();
     let plan_json = empty_plan_json(vault.path().to_str().unwrap());
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),
@@ -106,7 +106,7 @@ fn apply_reads_plan_from_stdin_when_dash_positional() {
 fn apply_with_malformed_stdin_exits_non_zero() {
     let vault = fixture_vault();
     // vault path not needed — parse fails before vault-root check
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["--cwd", vault.path().to_str().unwrap(), "repair", "apply"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

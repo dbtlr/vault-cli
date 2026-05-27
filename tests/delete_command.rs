@@ -20,18 +20,18 @@ fn synth() -> TempDir {
     tmp
 }
 
-fn vault_bin() -> std::path::PathBuf {
+fn norn_bin() -> std::path::PathBuf {
     let mut p = std::env::current_exe().unwrap();
     p.pop();
     p.pop();
-    p.push(format!("vault{}", std::env::consts::EXE_SUFFIX));
+    p.push(format!("norn{}", std::env::consts::EXE_SUFFIX));
     p
 }
 
 #[test]
 fn delete_leaf_dry_run_no_op() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["delete", "d.md", "--dry-run"])
@@ -56,7 +56,7 @@ fn delete_leaf_dry_run_no_op() {
 #[test]
 fn delete_leaf_yes_removes_file() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["delete", "d.md", "--yes"])
@@ -81,7 +81,7 @@ fn delete_leaf_yes_removes_file() {
 #[test]
 fn delete_with_incoming_links_refused() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["delete", "b.md", "--yes"])
@@ -98,7 +98,7 @@ fn delete_with_incoming_links_refused() {
 #[test]
 fn delete_with_allow_broken_links_succeeds() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["delete", "b.md", "--yes", "--allow-broken-links"])
@@ -121,7 +121,7 @@ fn delete_with_allow_broken_links_succeeds() {
 #[test]
 fn delete_with_rewrite_to_redirects_backlinks() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["delete", "b.md", "--yes", "--rewrite-to", "c.md"])
@@ -147,7 +147,7 @@ fn delete_with_rewrite_to_redirects_backlinks() {
 #[test]
 fn delete_yes_format_json_emits_single_json_object() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["delete", "d.md", "--yes", "--format", "json"])
@@ -176,7 +176,7 @@ fn delete_yes_format_json_emits_single_json_object() {
 #[test]
 fn delete_format_json_emits_envelope() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["delete", "b.md", "--allow-broken-links", "--format", "json"])

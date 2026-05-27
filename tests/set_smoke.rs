@@ -5,8 +5,8 @@ use std::fs;
 use std::process::{Command, Stdio};
 use tempfile::Builder;
 
-fn vault_bin() -> &'static str {
-    env!("CARGO_BIN_EXE_vault")
+fn norn_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_norn")
 }
 
 fn fixture_tempdir() -> tempfile::TempDir {
@@ -24,7 +24,7 @@ fn set_field_writes_frontmatter_change_in_tempdir() {
     let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\nstatus: draft\n---\nbody\n").unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -68,7 +68,7 @@ fn set_field_writes_frontmatter_change_in_tempdir() {
 #[test]
 fn set_refuses_when_doc_not_found() {
     let tmp = fixture_tempdir();
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -94,7 +94,7 @@ fn set_refuses_cross_class_conflict() {
     let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\ntags:\n- a\n---\nbody\n").unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -127,7 +127,7 @@ fn set_refuses_field_json_with_malformed_json() {
     let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\nstatus: draft\n---\n").unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -159,7 +159,7 @@ fn set_applies_combined_field_push_remove_and_body_atomically() {
     )
     .unwrap();
 
-    let mut child = Command::new(vault_bin())
+    let mut child = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -228,7 +228,7 @@ fn set_body_from_stdin_matching_existing_body_is_noop_write() {
 
     std::thread::sleep(std::time::Duration::from_millis(20));
 
-    let mut child = Command::new(vault_bin())
+    let mut child = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -274,7 +274,7 @@ fn set_push_accumulates_on_existing_block_array() {
     let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\naliases:\n  - existing\n---\nbody\n").unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -317,7 +317,7 @@ fn set_push_accumulates_on_existing_flow_array() {
     let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\naliases: [existing]\n---\nbody\n").unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -354,7 +354,7 @@ fn set_push_creates_new_array_when_field_absent() {
     let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\nstatus: draft\n---\nbody\n").unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -391,7 +391,7 @@ fn set_remove_drops_key() {
     let doc = tmp.path().join("note.md");
     fs::write(&doc, "---\nstatus: draft\npriority: high\n---\nbody\n").unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -429,7 +429,7 @@ fn set_dry_run_does_not_mutate_file() {
     let original = "---\nstatus: draft\n---\nbody\n";
     fs::write(&doc, original).unwrap();
 
-    let output = Command::new(vault_bin())
+    let output = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),

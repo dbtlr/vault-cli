@@ -20,11 +20,11 @@ use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
 
-fn vault_bin() -> std::path::PathBuf {
+fn norn_bin() -> std::path::PathBuf {
     let mut p = std::env::current_exe().unwrap();
     p.pop();
     p.pop();
-    p.push(format!("vault{}", std::env::consts::EXE_SUFFIX));
+    p.push(format!("norn{}", std::env::consts::EXE_SUFFIX));
     p
 }
 
@@ -82,7 +82,7 @@ fn synth_vault_with_ignore() -> TempDir {
 #[test]
 fn validate_respects_validate_ignore_for_link_target_missing() {
     let tmp = synth_vault_with_ignore();
-    let mut cmd = Command::new(vault_bin());
+    let mut cmd = Command::new(norn_bin());
     cmd.args(["--cwd"]).arg(tmp.path().join("vault")).args([
         "validate",
         "--code",
@@ -131,7 +131,7 @@ fn validate_emits_per_occurrence_not_per_unique_pair() {
     let tmp = synth_vault_with_ignore();
 
     // Validate: 2 occurrences from active/a.md
-    let mut cmd = Command::new(vault_bin());
+    let mut cmd = Command::new(norn_bin());
     cmd.args(["--cwd"]).arg(tmp.path().join("vault")).args([
         "validate",
         "--code",

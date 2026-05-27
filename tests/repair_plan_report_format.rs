@@ -25,7 +25,7 @@ fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> String {
         .tempdir()
         .expect("cache temp dir should be created");
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"));
     cmd.args([
         "-C",
         root.to_str().unwrap(),
@@ -549,7 +549,7 @@ fn piped_default_is_json_explicit_format_overrides() {
         .expect("cache temp dir should be created");
 
     // No --format flag → piped → JSON envelope
-    let piped = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let piped = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "-C",
             root.to_str().unwrap(),
@@ -578,7 +578,7 @@ fn piped_default_is_json_explicit_format_overrides() {
     assert_eq!(json["schema_version"], 9);
 
     // Explicit --format report overrides the piped default
-    let report = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let report = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "-C",
             root.to_str().unwrap(),

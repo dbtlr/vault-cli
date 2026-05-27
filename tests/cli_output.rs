@@ -26,7 +26,7 @@ fn vault(args: &[&str]) -> String {
 }
 
 fn vault_success(args: &[&str]) -> (String, String) {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault command should run");
@@ -45,7 +45,7 @@ fn vault_success(args: &[&str]) -> (String, String) {
 }
 
 fn vault_success_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String) {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     let _cache_dir = if envs.iter().any(|(k, _)| *k == "XDG_CACHE_HOME") {
         None
@@ -71,7 +71,7 @@ fn vault_success_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String) {
 }
 
 fn vault_error(args: &[&str]) -> String {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault command should run");
@@ -103,7 +103,7 @@ fn vault_version_reports_package_version() {
 }
 
 #[test]
-fn vault_help_documents_global_cwd() {
+fn norn_help_documents_global_cwd() {
     let output = vault(&["--help"]);
     assert!(output.contains("-C, --cwd"));
     assert!(output.contains("--config"));
@@ -1744,7 +1744,7 @@ fn completions_runs_without_a_vault_root() {
             .as_nanos()
     ));
     fs::create_dir_all(&scratch).expect("create scratch dir");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .current_dir(&scratch)
         .args(["completions", "init", "bash"])
         .output()
@@ -1770,7 +1770,7 @@ fn manpage_runs_without_a_vault_root() {
             .as_nanos()
     ));
     fs::create_dir_all(&scratch).expect("create scratch dir");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .current_dir(&scratch)
         .args(["manpage"])
         .output()
@@ -1855,7 +1855,7 @@ fn completions_install_unsupported_shell_errors_cleanly() {
 
 #[test]
 fn completions_install_no_arg_and_no_shell_env_errors() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install"])
         .env_remove("SHELL")
         .output()
@@ -1876,7 +1876,7 @@ fn install_in_tempdir(
     env_overrides: &[(&str, &str)],
 ) -> (tempfile::TempDir, std::process::Output) {
     let dir = tempfile::TempDir::new().unwrap();
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"));
     cmd.args(["completions", "install", shell]);
     cmd.env("HOME", dir.path());
     cmd.env("XDG_CONFIG_HOME", dir.path().join(".config"));
@@ -1954,7 +1954,7 @@ fn completions_install_is_idempotent() {
     assert_eq!(count_first, 1);
 
     // Re-run install
-    let output2 = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output2 = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "bash"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -1982,7 +1982,7 @@ fn completions_install_force_replaces_marker_block() {
     let tampered = original.replace("vault completions init bash", "OLD_COMMAND");
     fs::write(&bashrc_path, &tampered).unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "bash", "--force"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2043,7 +2043,7 @@ fn completions_install_nushell_idempotent() {
     let config_path = dir.path().join(".config/nushell/config.nu");
     let config_first = fs::read_to_string(&config_path).unwrap();
 
-    let output2 = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output2 = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "nushell"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2065,7 +2065,7 @@ fn completions_install_fish_overwrites_script() {
     let target = fish_completions.join("vault.fish");
     fs::write(&target, "# old stale content").unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "fish"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2106,7 +2106,7 @@ fn completions_install_powershell_writes_marker_block() {
 fn completions_install_powershell_honors_profile_env() {
     let dir = tempfile::TempDir::new().unwrap();
     let custom_profile = dir.path().join("custom_profile.ps1");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "powershell"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2121,7 +2121,7 @@ fn completions_install_powershell_honors_profile_env() {
 #[test]
 fn completions_install_auto_detects_from_shell_env() {
     let dir = tempfile::TempDir::new().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2142,7 +2142,7 @@ fn completions_install_auto_detects_from_shell_env() {
 #[test]
 fn completions_install_print_for_nushell_shows_both_targets() {
     let dir = tempfile::TempDir::new().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "nushell", "--print"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2230,7 +2230,7 @@ fn repair_apply_adds_missing_required_field() {
 #[test]
 fn completions_install_print_does_not_write() {
     let dir = tempfile::TempDir::new().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "bash", "--print"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2693,7 +2693,7 @@ fn vault_success_in_minimal_vault(args: &[&str]) -> (String, String) {
     let mut full = vec!["--cwd", cwd_arg.as_str()];
     full.extend_from_slice(args);
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(&full);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault command should run");
@@ -2753,7 +2753,7 @@ fn find_with_no_predicate_shows_help_on_stderr_exit_2() {
     )
     .unwrap();
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "find"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault find should run");

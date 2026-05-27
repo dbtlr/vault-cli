@@ -28,18 +28,18 @@ fn synth_vault() -> TempDir {
     tmp
 }
 
-fn vault_bin() -> std::path::PathBuf {
+fn norn_bin() -> std::path::PathBuf {
     let mut p = std::env::current_exe().unwrap();
     p.pop();
     p.pop();
-    p.push(format!("vault{}", std::env::consts::EXE_SUFFIX));
+    p.push(format!("norn{}", std::env::consts::EXE_SUFFIX));
     p
 }
 
 #[test]
 fn count_total_only_emits_total() {
     let tmp = synth_vault();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["count", "--format", "json"])
@@ -59,7 +59,7 @@ fn count_total_only_emits_total() {
 #[test]
 fn count_by_field_groups() {
     let tmp = synth_vault();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["count", "--by", "status", "--format", "json"])
@@ -81,7 +81,7 @@ fn count_by_field_groups() {
 #[test]
 fn count_filter_then_by_narrows() {
     let tmp = synth_vault();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args([

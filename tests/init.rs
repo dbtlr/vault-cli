@@ -26,7 +26,7 @@ fn isolate_cache(command: &mut Command) -> TempDir {
 #[test]
 fn init_creates_config_with_default_stubs_and_common_ignores() {
     let tmp = vault_tempdir();
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.args(["--cwd", tmp.path().to_str().unwrap(), "init"]);
     let _cache_dir = isolate_cache(&mut command);
@@ -49,7 +49,7 @@ fn init_refuses_without_force_when_config_exists() {
     fs::create_dir_all(tmp.path().join(".vault")).unwrap();
     fs::write(tmp.path().join(".vault/config.yaml"), "version: 1\n").unwrap();
 
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.args(["--cwd", tmp.path().to_str().unwrap(), "init"]);
     let _cache_dir = isolate_cache(&mut command);
@@ -67,7 +67,7 @@ fn init_force_overwrites_existing_config() {
     fs::create_dir_all(tmp.path().join(".vault")).unwrap();
     fs::write(tmp.path().join(".vault/config.yaml"), "version: 1\n").unwrap();
 
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.args(["--cwd", tmp.path().to_str().unwrap(), "init", "--force"]);
     let _cache_dir = isolate_cache(&mut command);
@@ -88,7 +88,7 @@ fn init_scaffold_records_observed_fields_when_markdown_present() {
     .unwrap();
     fs::write(tmp.path().join("b.md"), "---\ntype: note\n---\nbody\n").unwrap();
 
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.args(["--cwd", tmp.path().to_str().unwrap(), "init"]);
     let _cache_dir = isolate_cache(&mut command);
@@ -107,7 +107,7 @@ fn init_scaffold_records_observed_fields_when_markdown_present() {
 #[test]
 fn init_with_no_markdown_uses_empty_observation_block() {
     let tmp = vault_tempdir();
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.args(["--cwd", tmp.path().to_str().unwrap(), "init"]);
     let _cache_dir = isolate_cache(&mut command);

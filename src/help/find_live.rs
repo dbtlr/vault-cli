@@ -24,7 +24,7 @@ const FIND_LIMIT: usize = 5;
 /// Preference-ordered date-like field names.
 const DATE_LIKE_FIELDS: &[&str] = &["modified", "created", "updated", "published", "date"];
 
-/// Public entry point — wired into `examples::live_examples_fn_for("vault find")`.
+/// Public entry point — wired into `examples::live_examples_fn_for("norn find")`.
 pub fn live_examples_for_find(cache: &Cache) -> Vec<LiveExample> {
     let Ok(stats) = field_statistics(cache) else {
         return Vec::new();

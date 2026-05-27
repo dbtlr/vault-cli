@@ -7,12 +7,12 @@
 
 use std::process::Command;
 
-fn vault_help(args: &[&str]) -> String {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+fn norn_help(args: &[&str]) -> String {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     // NO_COLOR strips ANSI so assertions match against plain text.
     command.env("NO_COLOR", "1");
-    let output = command.output().expect("vault command should run");
+    let output = command.output().expect("norn command should run");
     assert!(
         output.status.success(),
         "vault {} failed\nstdout:\n{}\nstderr:\n{}",
@@ -63,8 +63,8 @@ fn assert_long_help_shape(out: &str, cmd_path: &str) {
 
 #[test]
 fn root_short_help() {
-    let out = vault_help(&["-h"]);
-    assert_short_help_shape(&out, "vault");
+    let out = norn_help(&["-h"]);
+    assert_short_help_shape(&out, "norn");
     // Root help should list subcommands.
     assert!(
         out.contains("COMMANDS\n"),
@@ -76,124 +76,124 @@ fn root_short_help() {
 
 #[test]
 fn root_long_help() {
-    let out = vault_help(&["--help"]);
-    assert_long_help_shape(&out, "vault");
+    let out = norn_help(&["--help"]);
+    assert_long_help_shape(&out, "norn");
 }
 
 #[test]
 fn find_short_help() {
-    let out = vault_help(&["find", "-h"]);
-    assert_short_help_shape(&out, "vault find");
+    let out = norn_help(&["find", "-h"]);
+    assert_short_help_shape(&out, "norn find");
     assert!(out.contains("FILTER")); // some filtering-flavored group exists
 }
 
 #[test]
 fn find_long_help() {
-    let out = vault_help(&["find", "--help"]);
-    assert_long_help_shape(&out, "vault find");
+    let out = norn_help(&["find", "--help"]);
+    assert_long_help_shape(&out, "norn find");
 }
 
 #[test]
 fn init_short_help() {
-    let out = vault_help(&["init", "-h"]);
-    assert_short_help_shape(&out, "vault init");
+    let out = norn_help(&["init", "-h"]);
+    assert_short_help_shape(&out, "norn init");
 }
 
 #[test]
 fn init_long_help() {
-    let out = vault_help(&["init", "--help"]);
-    assert_long_help_shape(&out, "vault init");
+    let out = norn_help(&["init", "--help"]);
+    assert_long_help_shape(&out, "norn init");
 }
 
 #[test]
 fn validate_short_help() {
-    let out = vault_help(&["validate", "-h"]);
-    assert_short_help_shape(&out, "vault validate");
+    let out = norn_help(&["validate", "-h"]);
+    assert_short_help_shape(&out, "norn validate");
 }
 
 #[test]
 fn validate_long_help() {
-    let out = vault_help(&["validate", "--help"]);
-    assert_long_help_shape(&out, "vault validate");
+    let out = norn_help(&["validate", "--help"]);
+    assert_long_help_shape(&out, "norn validate");
 }
 
 #[test]
 fn repair_plan_short_help() {
-    let out = vault_help(&["repair", "plan", "-h"]);
-    assert_short_help_shape(&out, "vault repair plan");
+    let out = norn_help(&["repair", "plan", "-h"]);
+    assert_short_help_shape(&out, "norn repair plan");
 }
 
 #[test]
 fn repair_apply_long_help() {
-    let out = vault_help(&["repair", "apply", "--help"]);
-    assert_long_help_shape(&out, "vault repair apply");
+    let out = norn_help(&["repair", "apply", "--help"]);
+    assert_long_help_shape(&out, "norn repair apply");
 }
 
 // repair_links_short_help: removed — vault repair links retired.
 
 #[test]
 fn config_show_short_help() {
-    let out = vault_help(&["config", "show", "-h"]);
-    assert_short_help_shape(&out, "vault config show");
+    let out = norn_help(&["config", "show", "-h"]);
+    assert_short_help_shape(&out, "norn config show");
 }
 
 #[test]
 fn config_validate_long_help() {
-    let out = vault_help(&["config", "validate", "--help"]);
-    assert_long_help_shape(&out, "vault config validate");
+    let out = norn_help(&["config", "validate", "--help"]);
+    assert_long_help_shape(&out, "norn config validate");
 }
 
 #[test]
 fn config_migrate_short_help() {
-    let out = vault_help(&["config", "migrate", "-h"]);
-    assert_short_help_shape(&out, "vault config migrate");
+    let out = norn_help(&["config", "migrate", "-h"]);
+    assert_short_help_shape(&out, "norn config migrate");
 }
 
 #[test]
 fn config_edit_short_help() {
-    let out = vault_help(&["config", "edit", "-h"]);
-    assert_short_help_shape(&out, "vault config edit");
+    let out = norn_help(&["config", "edit", "-h"]);
+    assert_short_help_shape(&out, "norn config edit");
 }
 
 #[test]
 fn cache_index_short_help() {
-    let out = vault_help(&["cache", "index", "-h"]);
-    assert_short_help_shape(&out, "vault cache index");
+    let out = norn_help(&["cache", "index", "-h"]);
+    assert_short_help_shape(&out, "norn cache index");
 }
 
 #[test]
 fn cache_rebuild_short_help() {
-    let out = vault_help(&["cache", "rebuild", "-h"]);
-    assert_short_help_shape(&out, "vault cache rebuild");
+    let out = norn_help(&["cache", "rebuild", "-h"]);
+    assert_short_help_shape(&out, "norn cache rebuild");
 }
 
 #[test]
 fn cache_clear_short_help() {
-    let out = vault_help(&["cache", "clear", "-h"]);
-    assert_short_help_shape(&out, "vault cache clear");
+    let out = norn_help(&["cache", "clear", "-h"]);
+    assert_short_help_shape(&out, "norn cache clear");
 }
 
 #[test]
 fn cache_status_short_help() {
-    let out = vault_help(&["cache", "status", "-h"]);
-    assert_short_help_shape(&out, "vault cache status");
+    let out = norn_help(&["cache", "status", "-h"]);
+    assert_short_help_shape(&out, "norn cache status");
 }
 
 #[test]
 fn completions_init_short_help() {
-    let out = vault_help(&["completions", "init", "-h"]);
-    assert_short_help_shape(&out, "vault completions init");
+    let out = norn_help(&["completions", "init", "-h"]);
+    assert_short_help_shape(&out, "norn completions init");
 }
 
 #[test]
 fn completions_install_short_help() {
-    let out = vault_help(&["completions", "install", "-h"]);
-    assert_short_help_shape(&out, "vault completions install");
+    let out = norn_help(&["completions", "install", "-h"]);
+    assert_short_help_shape(&out, "norn completions install");
 }
 
 #[test]
 fn no_color_strips_ansi() {
-    let out = vault_help(&["find", "-h"]);
+    let out = norn_help(&["find", "-h"]);
     // NO_COLOR=1 is already set by the helper. Output must contain no ANSI
     // escape sequences.
     assert!(
@@ -204,11 +204,11 @@ fn no_color_strips_ansi() {
 
 #[test]
 fn ascii_fallback_via_env() {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["find", "-h"]);
     command.env("NO_COLOR", "1");
     command.env("NORN_ASCII", "1");
-    let output = command.output().expect("vault command should run");
+    let output = command.output().expect("norn command should run");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     // Phase 1 ships no help-specific glyphs (live examples are Phase 3), so
@@ -219,17 +219,17 @@ fn ascii_fallback_via_env() {
 
 #[test]
 fn root_long_help_has_examples_section() {
-    let out = vault_help(&["--help"]);
+    let out = norn_help(&["--help"]);
     assert!(
         out.contains("EXAMPLES\n"),
         "vault --help should include EXAMPLES; got:\n{out}"
     );
-    assert!(out.contains("vault find"));
+    assert!(out.contains("norn find"));
 }
 
 #[test]
 fn find_long_help_has_examples_with_eq() {
-    let out = vault_help(&["find", "--help"]);
+    let out = norn_help(&["find", "--help"]);
     assert!(out.contains("EXAMPLES\n"));
     assert!(
         out.contains("--eq"),
@@ -239,13 +239,13 @@ fn find_long_help_has_examples_with_eq() {
 
 #[test]
 fn validate_long_help_has_examples() {
-    let out = vault_help(&["validate", "--help"]);
+    let out = norn_help(&["validate", "--help"]);
     assert!(out.contains("EXAMPLES\n"));
 }
 
 #[test]
 fn validate_help_renders_finding_codes_section_with_all_codes() {
-    let stdout = vault_help(&["validate", "--help"]);
+    let stdout = norn_help(&["validate", "--help"]);
     assert!(
         stdout.contains("FINDING CODES"),
         "expected FINDING CODES header in --help output; got:\n{stdout}"
@@ -273,20 +273,20 @@ fn validate_help_renders_finding_codes_section_with_all_codes() {
 
 #[test]
 fn repair_plan_long_help_has_examples() {
-    let out = vault_help(&["repair", "plan", "--help"]);
+    let out = norn_help(&["repair", "plan", "--help"]);
     assert!(out.contains("EXAMPLES\n"));
 }
 
 #[test]
 fn repair_apply_long_help_has_examples() {
-    let out = vault_help(&["repair", "apply", "--help"]);
+    let out = norn_help(&["repair", "apply", "--help"]);
     assert!(out.contains("EXAMPLES\n"));
 }
 
 #[test]
 fn root_short_help_has_no_examples_section() {
     // The short form (-h) must never include EXAMPLES per spec §1.
-    let out = vault_help(&["-h"]);
+    let out = norn_help(&["-h"]);
     assert!(
         !out.contains("EXAMPLES"),
         "vault -h must not include EXAMPLES; got:\n{out}"
@@ -295,21 +295,21 @@ fn root_short_help_has_no_examples_section() {
 
 #[test]
 fn find_short_help_has_no_examples_section() {
-    let out = vault_help(&["find", "-h"]);
+    let out = norn_help(&["find", "-h"]);
     assert!(
         !out.contains("EXAMPLES"),
-        "vault find -h must not include EXAMPLES; got:\n{out}"
+        "norn find -h must not include EXAMPLES; got:\n{out}"
     );
 }
 
 #[test]
-fn examples_command_lines_start_with_vault() {
+fn examples_command_lines_start_with_norn() {
     // Style assertion: every authored example command line begins with the
-    // literal `vault ` token (no shell prompts, no leading dashes, no $).
-    let out = vault_help(&["find", "--help"]);
+    // literal `norn ` token (no shell prompts, no leading dashes, no $).
+    let out = norn_help(&["find", "--help"]);
     let ex_section_start = out
         .find("EXAMPLES\n")
-        .expect("vault find --help has EXAMPLES section");
+        .expect("norn find --help has EXAMPLES section");
     let ex_section = &out[ex_section_start..];
     for line in ex_section.lines().skip(1) {
         let trimmed = line.trim_start();
@@ -320,20 +320,20 @@ fn examples_command_lines_start_with_vault() {
             break; // End of EXAMPLES section.
         }
         assert!(
-            trimmed.starts_with("vault "),
-            "example command lines must start with 'vault '; got: {line:?}"
+            trimmed.starts_with("norn "),
+            "example command lines must start with 'norn '; got: {line:?}"
         );
     }
 }
 
 #[test]
 fn count_short_help() {
-    let out = vault_help(&["count", "-h"]);
+    let out = norn_help(&["count", "-h"]);
     assert!(out.contains("Count documents in the vault"));
 }
 
 #[test]
 fn get_short_help() {
-    let out = vault_help(&["get", "-h"]);
+    let out = norn_help(&["get", "-h"]);
     assert!(out.contains("Get one or more documents"));
 }

@@ -4,8 +4,8 @@ use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-fn vault_bin() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_BIN_EXE_vault"))
+fn norn_bin() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_BIN_EXE_norn"))
 }
 
 /// Build a minimal vault on disk with a `.vault/config.yaml` and one note.
@@ -76,7 +76,7 @@ fn pass_1d_applies_replace_body_via_orchestrator() {
     );
 
     // vault repair apply applies directly when piped (non-TTY).
-    let mut cmd = Command::new(vault_bin())
+    let mut cmd = Command::new(norn_bin())
         .args(["--cwd", tmp.path().to_str().unwrap(), "repair", "apply"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -117,7 +117,7 @@ fn pass_1d_dry_run_does_not_mutate_file() {
         "replaced body\n",
     );
 
-    let mut cmd = Command::new(vault_bin())
+    let mut cmd = Command::new(norn_bin())
         .args([
             "--cwd",
             tmp.path().to_str().unwrap(),
@@ -159,7 +159,7 @@ fn pass_1d_rejects_stale_hash() {
         "new body\n",
     );
 
-    let mut cmd = Command::new(vault_bin())
+    let mut cmd = Command::new(norn_bin())
         .args(["--cwd", tmp.path().to_str().unwrap(), "repair", "apply"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
