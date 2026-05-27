@@ -10,6 +10,12 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+### Fixed
+
+- `norn move` no longer aborts with `read backlinker failed: No such file or directory` (exit 1) when the moved doc contains a wikilink to itself. The Pass 3 cascade now reads each affected file from its post-move location, rewriting self-references in place and exiting 0. Surfaced by the 2026-05-27 atlas migration dogfood, which observed 5 of 212 backlinks silently missed when the moved doc's own body referenced its old stem — every entry iterated after the self-reference was skipped.
+- `norn move --dry-run --format json` and `norn delete --dry-run --format json` now emit the documented `MoveReport` / `DeleteReport` JSON envelope. Previously the dry-run branch short-circuited the format check and unconditionally rendered the human-records format, breaking scripts that piped dry-run output into other tooling.
+- `norn move` on a doc containing a sibling-relative CommonMark self-link (e.g. `[label](file.md)` referring to the moved doc itself) now rewrites the link relative to the destination so it stays self-stable. The previous rewrite computed the relative path from the old source directory, producing a dangling cross-directory traversal after the move.
+
 ## v0.34.0 - 2026-05-27
 
 The Norn rename release. Renames the project identity end-to-end from `vault-cli` to Norn: binary `vault` → `norn`, crate `vault-cli` → `norn-run` (published on crates.io as `norn-run`), config directory `.vault/` → `.norn/`, repository at `dbtlr/norn`. Pre-existing `v0.x` GitHub Releases and tags are deleted; this is the first Norn release with `norn-run-*` cargo-dist asset names. Domain-noun uses of "vault" (the user's Markdown directory; Rust `VaultGraph` / `vault_root` identifiers; README prose like "your Markdown vault") are preserved per the vault-word policy: product = norn, data = vault. Also bundled: the long-deferred 7-crate workspace collapse (commit `38fa0cb`, no user-visible behavior change) and the plan-staleness error-message polish that surfaced post-v0.33.0 grooming. 1,136 tests passing across 21 suites.
