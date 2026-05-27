@@ -72,12 +72,21 @@ pub fn classify(
             if !link_targets_path(link, old_path) {
                 continue;
             }
+            // When the link lives inside the file being moved (a self-
+            // reference), Pass 3 will need to read the file at its post-move
+            // location. Translate the source_path here so the cascade doesn't
+            // try to open the old path that Pass 2 has already cleared.
+            let source_path = if link.source_path == old_path {
+                new_path.to_path_buf()
+            } else {
+                link.source_path.clone()
+            };
             match link.kind {
                 LinkKind::Wikilink | LinkKind::Embed => {
                     let is_path_qualified = link.target.contains('/');
                     if is_path_qualified {
                         risk.path_qualified_wikilinks.push(AffectedLink {
-                            source_path: link.source_path.clone(),
+                            source_path,
                             raw: link.raw.clone(),
                             kind: link.kind.clone(),
                             source_span: link.source_span.clone(),
@@ -85,7 +94,7 @@ pub fn classify(
                         });
                     } else if risk.stem_changed {
                         risk.stem_links.push(AffectedLink {
-                            source_path: link.source_path.clone(),
+                            source_path,
                             raw: link.raw.clone(),
                             kind: link.kind.clone(),
                             source_span: link.source_span.clone(),
@@ -95,7 +104,7 @@ pub fn classify(
                 }
                 LinkKind::Markdown => {
                     risk.markdown_links.push(AffectedLink {
-                        source_path: link.source_path.clone(),
+                        source_path,
                         raw: link.raw.clone(),
                         kind: link.kind.clone(),
                         source_span: link.source_span.clone(),
@@ -372,6 +381,56 @@ mod tests {
             Utf8Path::new("Workspaces/demo/tasks/task.md"),
         );
         assert_eq!(rewritten, "../Workspaces/demo/tasks/task.md#heading");
+    }
+
+    #[test]
+    fn self_referencing_stem_wikilink_uses_new_path_as_source() {
+        // The moved doc references itself in its own body.  The cascade in
+        // Pass 3 reads the file at its post-move location, so the AffectedLink
+        // must record the new path — otherwise it tries to read a file that
+        // Pass 2 just moved out from under it (ENOENT) and the `?` propagation
+        // aborts the entire cascade (Bug 1 + Bug 3 from the 2026-05-27 atlas
+        // dogfood).
+        let old = Utf8PathBuf::from("vault-cli.md");
+        let new = Utf8PathBuf::from("norn.md");
+        let mut src_doc = make_doc("vault-cli.md");
+        src_doc.links.push(wikilink("vault-cli.md", "vault-cli"));
+
+        let documents = vec![src_doc];
+        let files = vec![];
+        let risk = classify(&old, &new, &documents, &files);
+
+        assert_eq!(risk.stem_links.len(), 1);
+        let affected = &risk.stem_links[0];
+        assert_eq!(affected.rewritten, "[[norn]]");
+        assert_eq!(
+            affected.source_path,
+            Utf8PathBuf::from("norn.md"),
+            "self-reference must read from the new path after move"
+        );
+    }
+
+    #[test]
+    fn self_referencing_path_qualified_wikilink_uses_new_path_as_source() {
+        let old = Utf8PathBuf::from("Workspaces/vault-cli/vault-cli.md");
+        let new = Utf8PathBuf::from("Workspaces/vault-cli/norn.md");
+        let mut src_doc = make_doc("Workspaces/vault-cli/vault-cli.md");
+        src_doc.links.push(wikilink(
+            "Workspaces/vault-cli/vault-cli.md",
+            "Workspaces/vault-cli/vault-cli",
+        ));
+
+        let documents = vec![src_doc];
+        let files = vec![];
+        let risk = classify(&old, &new, &documents, &files);
+
+        assert_eq!(risk.path_qualified_wikilinks.len(), 1);
+        let affected = &risk.path_qualified_wikilinks[0];
+        assert_eq!(affected.rewritten, "[[Workspaces/vault-cli/norn]]");
+        assert_eq!(
+            affected.source_path,
+            Utf8PathBuf::from("Workspaces/vault-cli/norn.md"),
+        );
     }
 
     #[test]

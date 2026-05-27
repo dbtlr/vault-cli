@@ -234,6 +234,135 @@ fn move_destination_exists_with_force_succeeds() {
     assert!(tmp.path().join("vault/b.md").exists(), "b.md should exist");
 }
 
+#[test]
+fn move_doc_with_self_reference_cascades_and_exits_clean() {
+    // Regression for the 2026-05-27 atlas migration dogfood: when the moved
+    // doc contains a wikilink to itself, Pass 3 used to try to read the doc
+    // at its old path (Pass 2 had already moved it), error with "read
+    // backlinker failed", abort the cascade, and surface as exit 1. With
+    // classify_link_risk translating self-references to the new path, the
+    // cascade rewrites the self-link in place and the move exits 0.
+    let tmp = tempfile::Builder::new()
+        .prefix("norn-move-self-ref-")
+        .tempdir()
+        .unwrap();
+    let root = tmp.path().join("vault");
+    std::fs::create_dir(&root).unwrap();
+    // The moved doc references itself (twice, to test multi-occurrence).
+    std::fs::write(
+        root.join("vault-cli.md"),
+        "---\ntype: note\n---\n# vault-cli\n\nThe [[vault-cli]] tool is a CLI.\nSee also [[vault-cli|the vault-cli root]] for context.\n",
+    )
+    .unwrap();
+    // An external doc that also links to it.
+    std::fs::write(
+        root.join("intro.md"),
+        "---\ntype: note\n---\n# Intro\n\nLearn more in [[vault-cli]].\n",
+    )
+    .unwrap();
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&root)
+        .args(["move", "vault-cli.md", "norn.md", "--yes"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "expected exit 0, got {:?}; stderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // External backlink rewritten.
+    let intro = std::fs::read_to_string(root.join("intro.md")).unwrap();
+    assert!(
+        intro.contains("[[norn]]"),
+        "intro.md should reference [[norn]]: {intro}"
+    );
+    assert!(
+        !intro.contains("[[vault-cli]]"),
+        "intro.md should no longer reference [[vault-cli]]: {intro}"
+    );
+
+    // Self-references in the moved doc also rewritten — this is the
+    // regression the dogfood surfaced.
+    let moved = std::fs::read_to_string(root.join("norn.md")).unwrap();
+    assert!(
+        moved.contains("[[norn]]"),
+        "norn.md should have rewritten self-references to [[norn]]: {moved}"
+    );
+    assert!(
+        moved.contains("[[norn|the vault-cli root]]"),
+        "norn.md should preserve the display text in piped self-ref: {moved}"
+    );
+    assert!(
+        !moved.contains("[[vault-cli]]") && !moved.contains("[[vault-cli|"),
+        "norn.md should no longer reference [[vault-cli]]: {moved}"
+    );
+}
+
+#[test]
+fn move_cascade_covers_mixed_contexts_with_self_reference() {
+    // Multi-context cascade completeness: backlinks in frontmatter, inline
+    // body prose, list items, and a self-reference. All must rewrite.
+    let tmp = tempfile::Builder::new()
+        .prefix("norn-move-cascade-")
+        .tempdir()
+        .unwrap();
+    let root = tmp.path().join("vault");
+    std::fs::create_dir(&root).unwrap();
+    // Source doc with a self-reference in its own body.
+    std::fs::write(
+        root.join("source.md"),
+        "---\ntype: note\n---\n# Source\n\nA self-link: [[source]].\n",
+    )
+    .unwrap();
+    // External docs with backlinks in varied contexts.
+    std::fs::write(
+        root.join("with_fm_link.md"),
+        "---\ntype: note\nrelated: \"[[source]]\"\n---\n# Has frontmatter link\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("inline.md"),
+        "---\ntype: note\n---\n# Inline\n\nProse with [[source]] inline.\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("list.md"),
+        "---\ntype: note\n---\n# List\n\n- bullet one\n- see [[source]]\n- bullet three\n",
+    )
+    .unwrap();
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&root)
+        .args(["move", "source.md", "renamed.md", "--yes"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "expected exit 0; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    for (file, label) in [
+        ("with_fm_link.md", "frontmatter"),
+        ("inline.md", "inline prose"),
+        ("list.md", "list item"),
+        ("renamed.md", "self-reference"),
+    ] {
+        let content = std::fs::read_to_string(root.join(file)).unwrap();
+        assert!(
+            content.contains("[[renamed]]"),
+            "{file} should reference [[renamed]] ({label} context): {content}"
+        );
+        assert!(
+            !content.contains("[[source]]"),
+            "{file} should no longer reference [[source]] ({label} context): {content}"
+        );
+    }
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn move_case_only_difference_refuses_same_path() {
