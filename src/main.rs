@@ -51,7 +51,7 @@ use clap::{CommandFactory, FromArgMatches};
 
 fn main() {
     // Intercept -h / --help before Cli::parse() so that subcommands with
-    // required positionals (e.g. `vault completions init --help`) can render
+    // required positionals (e.g. `norn completions init --help`) can render
     // help without clap erroring out on the missing positional arg.
     if let Some(exit_code) = help::intercept_from_args() {
         process::exit(exit_code);
@@ -721,7 +721,7 @@ fn run_self_update_command(args: cli::SelfUpdateArgs, color: cli::ColorWhen) -> 
         pinned_version: args.version.clone(),
         receipt_path_override: None,
         install_path,
-        releases_url: "https://github.com/dbtlr/vault-cli/releases".to_string(),
+        releases_url: "https://github.com/dbtlr/norn/releases".to_string(),
         target_triple: self_update::resolve::TARGET_TRIPLE.map(str::to_string),
         current_version: env!("CARGO_PKG_VERSION").to_string(),
     };

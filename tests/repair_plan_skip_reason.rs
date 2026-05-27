@@ -11,7 +11,7 @@ use serde_json::Value;
 /// since we need the directory to persist beyond the `TempDir` scope.
 fn vault_root() -> PathBuf {
     let dir = tempfile::Builder::new()
-        .prefix("vault-cli-skip-reason-")
+        .prefix("norn-skip-reason-")
         .tempdir()
         .expect("temp dir should be created");
     // Keep the directory on disk — we manage lifetime manually.
@@ -23,11 +23,11 @@ fn vault_root() -> PathBuf {
 /// Runs `vault` with the given args. Isolates the XDG cache so tests don't
 /// share SQLite state.
 fn vault_json(args: &[&str]) -> Value {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     // Isolate cache per run.
     let cache_dir = tempfile::Builder::new()
-        .prefix("vault-cli-cache-")
+        .prefix("norn-cache-")
         .tempdir()
         .expect("cache temp dir should be created");
     command.env("XDG_CACHE_HOME", cache_dir.path());

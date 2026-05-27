@@ -1,4 +1,4 @@
-//! `vault move` command: pre-flight validation, plan synthesis, render, dispatch.
+//! `norn move` command: pre-flight validation, plan synthesis, render, dispatch.
 //!
 //! Plan synthesis builds a RepairPlan with a single move_document op. The
 //! link_risk field on that op carries all affected backlinks; the existing
@@ -76,7 +76,7 @@ pub fn render_records<W: Write>(out: &mut W, report: &MoveReport) -> std::io::Re
             )?;
         }
     } else {
-        writeln!(out, "vault move {} → {}", report.source, report.destination)?;
+        writeln!(out, "norn move {} → {}", report.source, report.destination)?;
         if report.link_rewrites.total > 0 {
             writeln!(
                 out,
@@ -478,7 +478,7 @@ mod tests {
     ///   b.md  — no outgoing links
     fn fixture_vault() -> (tempfile::TempDir, Utf8PathBuf, GraphIndex) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-move-preflight-")
+            .prefix("norn-move-preflight-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())
@@ -486,8 +486,8 @@ mod tests {
             .to_path_buf();
 
         // Minimal vault config required by build_index.
-        std::fs::create_dir_all(tmp.path().join(".vault")).unwrap();
-        std::fs::write(tmp.path().join(".vault/config.yaml"), "validate: {}\n").unwrap();
+        std::fs::create_dir_all(tmp.path().join(".norn")).unwrap();
+        std::fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
 
         std::fs::write(root.join("a.md"), "---\ntype: note\n---\n# A\n[[b]]\n").unwrap();
         std::fs::write(root.join("b.md"), "---\ntype: note\n---\n# B\n").unwrap();
@@ -668,7 +668,7 @@ mod tests {
         let mut buf = Vec::new();
         render_records(&mut buf, &report).unwrap();
         let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("vault move foo.md → notes/bar.md"));
+        assert!(out.contains("norn move foo.md → notes/bar.md"));
         assert!(out.contains("3 backlinks to rewrite across 2 files"));
     }
 
@@ -761,14 +761,14 @@ mod tests {
     #[test]
     fn collect_warnings_stem_collision_when_destination_stem_exists_elsewhere() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-move-warn-stem-")
+            .prefix("norn-move-warn-stem-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())
             .unwrap()
             .to_path_buf();
-        std::fs::create_dir_all(tmp.path().join(".vault")).unwrap();
-        std::fs::write(tmp.path().join(".vault/config.yaml"), "validate: {}\n").unwrap();
+        std::fs::create_dir_all(tmp.path().join(".norn")).unwrap();
+        std::fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
         std::fs::create_dir(root.join("subdir")).unwrap();
         std::fs::write(root.join("source.md"), "---\ntype: note\n---\n# S\n").unwrap();
         std::fs::write(root.join("renamed.md"), "---\ntype: note\n---\n# R1\n").unwrap();

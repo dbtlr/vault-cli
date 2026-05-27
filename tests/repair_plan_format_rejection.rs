@@ -2,7 +2,7 @@ use std::process::Command;
 
 #[test]
 fn repair_plan_rejects_format_jsonl_with_migration_message() {
-    let out = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let out = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["repair", "plan", "--format", "jsonl"])
         .output()
         .unwrap();
@@ -20,7 +20,7 @@ fn repair_plan_rejects_format_jsonl_with_migration_message() {
 
 #[test]
 fn repair_plan_rejects_format_table_with_migration_message() {
-    let out = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let out = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["repair", "plan", "--format", "table"])
         .output()
         .unwrap();
@@ -33,7 +33,7 @@ fn repair_plan_rejects_format_table_with_migration_message() {
 #[test]
 fn repair_plan_accepts_report_json_paths() {
     for fmt in ["report", "json", "paths"] {
-        let out = Command::new(env!("CARGO_BIN_EXE_vault"))
+        let out = Command::new(env!("CARGO_BIN_EXE_norn"))
             .args(["repair", "plan", "--format", fmt, "--help"])
             .output()
             .unwrap();

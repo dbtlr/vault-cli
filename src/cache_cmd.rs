@@ -1,4 +1,4 @@
-//! `vault cache` subcommand handlers and the cache-backed read path for
+//! `norn cache` subcommand handlers and the cache-backed read path for
 //! query commands.
 
 use crate::cache::{Cache, CacheError, ChangeDetectOptions};

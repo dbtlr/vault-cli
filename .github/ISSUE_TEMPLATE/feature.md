@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a new capability or behavior change for vault-cli
+about: Suggest a new capability or behavior change for Norn
 title: "Feature: "
 labels: ["enhancement"]
 assignees: []
@@ -16,7 +16,7 @@ The shape of the feature, ideally a sketch of the CLI surface (command name, fla
 
 ```bash
 # Example:
-vault <new-subcommand> --flag <value>
+norn <new-subcommand> --flag <value>
 ```
 
 ## Alternatives considered
@@ -26,7 +26,7 @@ Workarounds, similar features in other tools, or other shapes you considered. Us
 ## Compatibility
 
 - Does this change existing output (JSON, JSONL, table) or existing exit codes?
-- Does it require new config in `.vault/config.yaml`?
+- Does it require new config in `.norn/config.yaml`?
 - Does it intersect with the repair plan schema?
 
 ## Additional context

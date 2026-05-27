@@ -1,4 +1,4 @@
-//! `vault config show` — render the effective config: discovery paths plus
+//! `norn config show` — render the effective config: discovery paths plus
 //! per-section counts.
 //!
 //! Supported formats via `ConfigFormat`: `records` (default TTY), `json`
@@ -20,7 +20,7 @@ use crate::config::{discover, Discovery};
 use crate::output::palette::{self, Palette};
 use crate::output::primitives::{record_block, Field};
 
-/// Snapshot of everything `vault config show` reports, decoupled from the
+/// Snapshot of everything `norn config show` reports, decoupled from the
 /// renderer choice. Building this once means records / json / jsonl all
 /// pull from the same source-of-truth instead of re-deriving counts.
 struct ShowSnapshot {
@@ -66,7 +66,7 @@ impl ShowSnapshot {
     }
 }
 
-/// Run `vault config show`. Returns the process exit code.
+/// Run `norn config show`. Returns the process exit code.
 pub fn run(
     cwd: &Utf8Path,
     config_override: Option<&Utf8PathBuf>,
@@ -108,7 +108,7 @@ pub fn run(
             &buffer,
             &mut stdout_lock,
             &mut stderr_lock,
-            "vault config show",
+            "norn config show",
         )?;
     } else {
         stdout_lock.write_all(&buffer)?;
@@ -117,7 +117,7 @@ pub fn run(
     Ok(0)
 }
 
-/// Default to records — `vault config show` always describes a single config,
+/// Default to records — `norn config show` always describes a single config,
 /// so path-style listing has no meaning, and JSON is only chosen explicitly.
 /// TTY/pipe doesn't change the shape here.
 fn resolve_format(explicit: Option<ConfigFormat>) -> ConfigFormat {
@@ -197,7 +197,7 @@ fn render_json(snapshot: &ShowSnapshot, out: &mut dyn Write) -> std::io::Result<
 }
 
 /// JSONL: the same JSON payload emitted as a single line (no indentation).
-/// Standard NDJSON contract: one record per line. `vault config show` has
+/// Standard NDJSON contract: one record per line. `norn config show` has
 /// one record, so JSONL output is exactly one line.
 fn render_jsonl(snapshot: &ShowSnapshot, out: &mut dyn Write) -> std::io::Result<()> {
     let payload = json_payload(snapshot);
@@ -210,7 +210,7 @@ mod tests {
 
     fn sample_snapshot() -> ShowSnapshot {
         ShowSnapshot {
-            file: Utf8PathBuf::from("/v/.vault/config.yaml"),
+            file: Utf8PathBuf::from("/v/.norn/config.yaml"),
             vault_root: Utf8PathBuf::from("/v"),
             cache: Utf8PathBuf::from("/c/cache.db"),
             version: 1,
@@ -232,7 +232,7 @@ mod tests {
         let lines: Vec<&str> = text.lines().collect();
         // lines[0] = leading blank; lines[1] = header (config file path).
         assert_eq!(lines[0], "");
-        assert_eq!(lines[1], "/v/.vault/config.yaml");
+        assert_eq!(lines[1], "/v/.norn/config.yaml");
         // Subsequent lines are 2-indent fields.
         assert!(
             lines[2].starts_with("  "),
@@ -257,7 +257,7 @@ mod tests {
         let mut buf = Vec::new();
         render_json(&snapshot, &mut buf).unwrap();
         let parsed: serde_json::Value = serde_json::from_slice(&buf).unwrap();
-        assert_eq!(parsed["file"], "/v/.vault/config.yaml");
+        assert_eq!(parsed["file"], "/v/.norn/config.yaml");
         assert_eq!(parsed["vault_root"], "/v");
         assert_eq!(parsed["cache"], "/c/cache.db");
         assert_eq!(parsed["version"], 1);
@@ -309,11 +309,11 @@ mod tests {
         render_jsonl(&snapshot, &mut buf).unwrap();
         let text = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = text.lines().collect();
-        // NDJSON: one record per line; `vault config show` has one record.
+        // NDJSON: one record per line; `norn config show` has one record.
         assert_eq!(lines.len(), 1, "jsonl should emit exactly one line");
         let parsed: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
         // Shape matches `render_json` output exactly.
-        assert_eq!(parsed["file"], "/v/.vault/config.yaml");
+        assert_eq!(parsed["file"], "/v/.norn/config.yaml");
         assert_eq!(parsed["vault_root"], "/v");
         assert_eq!(parsed["cache"], "/c/cache.db");
         assert_eq!(parsed["version"], 1);

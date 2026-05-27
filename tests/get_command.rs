@@ -5,7 +5,7 @@ use tempfile::TempDir;
 
 fn synth() -> TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-get-int-")
+        .prefix("norn-get-int-")
         .tempdir()
         .unwrap();
     let root = tmp.path().join("vault");
@@ -19,18 +19,18 @@ fn synth() -> TempDir {
     tmp
 }
 
-fn vault_bin() -> std::path::PathBuf {
+fn norn_bin() -> std::path::PathBuf {
     let mut p = std::env::current_exe().unwrap();
     p.pop();
     p.pop();
-    p.push(format!("vault{}", std::env::consts::EXE_SUFFIX));
+    p.push(format!("norn{}", std::env::consts::EXE_SUFFIX));
     p
 }
 
 #[test]
 fn get_single_target_json() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["get", "a.md", "--format", "json"])
@@ -51,7 +51,7 @@ fn get_single_target_json() {
 #[test]
 fn get_wikilink_target() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["get", "[[a]]", "--format", "json"])
@@ -70,7 +70,7 @@ fn get_wikilink_target() {
 #[test]
 fn get_multiple_targets_returns_array() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["get", "a.md", "b.md", "--format", "json"])
@@ -89,7 +89,7 @@ fn get_multiple_targets_returns_array() {
 #[test]
 fn get_col_narrows_output() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["get", "a.md", "--col", "incoming_links", "--format", "json"])
@@ -110,7 +110,7 @@ fn get_col_narrows_output() {
 #[test]
 fn get_body_flag_includes_content() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["get", "a.md", "--body", "--format", "json"])
@@ -129,7 +129,7 @@ fn get_body_flag_includes_content() {
 #[test]
 fn get_unknown_col_warns_on_stderr() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args([
@@ -159,7 +159,7 @@ fn get_unknown_col_warns_on_stderr() {
 #[test]
 fn get_missing_target_partial_failure_exit() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["get", "a.md", "nonexistent", "--format", "json"])

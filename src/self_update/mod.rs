@@ -1,4 +1,4 @@
-//! Self-update subcommand: refreshes the running `vault` binary from the
+//! Self-update subcommand: refreshes the running `norn` binary from the
 //! latest GitHub release (or a pinned version).
 
 pub mod download;
@@ -12,7 +12,7 @@ use serde::Serialize;
 
 use self::resolve::Action;
 
-/// JSON envelope for `vault self-update`. Independent of other report
+/// JSON envelope for `norn self-update`. Independent of other report
 /// schemas; `schema_version` bumps when this shape changes.
 #[derive(Debug, Serialize)]
 pub struct SelfUpdateReport {
@@ -37,7 +37,7 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 
-/// Configuration for a single `vault self-update` invocation.
+/// Configuration for a single `norn self-update` invocation.
 pub struct RunConfig {
     pub dry_run: bool,
     pub pinned_version: Option<String>,
@@ -48,7 +48,7 @@ pub struct RunConfig {
     /// passes `std::env::current_exe()` result.
     pub install_path: PathBuf,
     /// URL prefix for the releases endpoint. Tests pass mock server URL;
-    /// production passes `https://github.com/dbtlr/vault-cli/releases`.
+    /// production passes `https://github.com/dbtlr/norn/releases`.
     pub releases_url: String,
     /// Override compile-time target triple. Tests pass a deterministic value;
     /// production passes `resolve::TARGET_TRIPLE` (None → exit 2).
@@ -58,13 +58,13 @@ pub struct RunConfig {
 }
 
 pub const BLOCK_MESSAGE: &str = "\
-vault self-update only works for installs from the official GitHub install
+norn self-update only works for installs from the official GitHub install
 script. This binary does not have an install receipt.
 
 To update, either:
   • Re-run the installer:
       curl --proto '=https' --tlsv1.2 -LsSf \\
-        https://github.com/dbtlr/vault-cli/releases/latest/download/vault-installer.sh | sh
+        https://github.com/dbtlr/norn/releases/latest/download/norn-run-installer.sh | sh
 
   • Update via the package manager you originally used (cargo, homebrew, etc.)";
 
@@ -88,7 +88,7 @@ pub fn run(cfg: &RunConfig) -> Result<(SelfUpdateReport, i32)> {
     // 2. Target triple.
     let triple = cfg.target_triple.as_deref().ok_or_else(|| {
         anyhow!(
-            "BLOCK::unknown_target: vault was built for a target cargo-dist \
+            "BLOCK::unknown_target: norn was built for a target cargo-dist \
             does not produce a release artifact for (receipt says {})",
             receipt.target
         )
@@ -212,8 +212,8 @@ mod run_tests {
             "announcement_tag": "v0.33.1",
             "announcement_title": "v0.33.1",
             "artifacts": {
-                "vault-aarch64-apple-darwin.tar.xz": {
-                    "name": "vault-aarch64-apple-darwin.tar.xz",
+                "norn-run-aarch64-apple-darwin.tar.xz": {
+                    "name": "norn-run-aarch64-apple-darwin.tar.xz",
                     "kind": "executable-zip",
                     "target_triples": ["aarch64-apple-darwin"],
                     "checksums": { "sha256": "abc123" }
@@ -227,7 +227,7 @@ mod run_tests {
         std::fs::write(
             &path,
             r#"{
-                "binaries": ["vault"],
+                "binaries": ["norn"],
                 "version": "0.32.0",
                 "target": "aarch64-apple-darwin"
             }"#,
@@ -386,8 +386,8 @@ mod run_tests {
                 "announcement_tag": "v0.30.0",
                 "announcement_title": "v0.30.0",
                 "artifacts": {
-                    "vault-aarch64-apple-darwin.tar.xz": {
-                        "name": "vault-aarch64-apple-darwin.tar.xz",
+                    "norn-run-aarch64-apple-darwin.tar.xz": {
+                        "name": "norn-run-aarch64-apple-darwin.tar.xz",
                         "kind": "executable-zip",
                         "target_triples": ["aarch64-apple-darwin"],
                         "checksums": { "sha256": "xyz" }

@@ -14,7 +14,7 @@ pub(crate) use config::{
     parse_config, parse_config_compiled, CompiledConfig, RepairConfig, ValidateConfig,
     ValidateRule, VaultConfig, CURRENT_SCHEMA_VERSION,
 };
-// Test-only re-exports for fixtures inside vault-cli tests.
+// Test-only re-exports for fixtures inside norn tests.
 #[cfg(test)]
 pub(crate) use config::{RuleExclude, RuleSelector};
 pub(crate) use defaults::{applicable_rules, path_variables, resolve_to_fixpoint};

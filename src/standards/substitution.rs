@@ -213,7 +213,7 @@ const DOW_FULL: [&str; 7] = [
 
 // ── Variable resolution ────────────────────────────────────────────────────
 
-/// Substitution context: resolved once per `vault new` invocation.
+/// Substitution context: resolved once per `norn new` invocation.
 #[derive(Debug, Clone)]
 pub struct Context {
     pub now: NaiveDateTime,
@@ -468,11 +468,8 @@ mod var_tests {
     #[test]
     fn renders_path_var() {
         let mut ctx = ctx_for("foo");
-        ctx.path_vars.insert("workspace".into(), "vault-cli".into());
-        assert_eq!(
-            render("[[{{path.workspace}}]]", &ctx).unwrap(),
-            "[[vault-cli]]"
-        );
+        ctx.path_vars.insert("workspace".into(), "norn".into());
+        assert_eq!(render("[[{{path.workspace}}]]", &ctx).unwrap(), "[[norn]]");
     }
 
     #[test]

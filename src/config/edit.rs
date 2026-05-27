@@ -16,7 +16,7 @@ pub fn run(
         .ok()
         .or_else(|| std::env::var("EDITOR").ok())
         .ok_or_else(|| {
-            anyhow!("set EDITOR or VISUAL to edit (e.g., EDITOR=nano vault config edit)")
+            anyhow!("set EDITOR or VISUAL to edit (e.g., EDITOR=nano norn config edit)")
         })?;
 
     let (program, leading_args) = parse_editor(&editor);

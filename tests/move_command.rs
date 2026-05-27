@@ -5,7 +5,7 @@ use tempfile::TempDir;
 
 fn synth() -> TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-move-int-")
+        .prefix("norn-move-int-")
         .tempdir()
         .unwrap();
     let root = tmp.path().join("vault");
@@ -15,18 +15,18 @@ fn synth() -> TempDir {
     tmp
 }
 
-fn vault_bin() -> std::path::PathBuf {
+fn norn_bin() -> std::path::PathBuf {
     let mut p = std::env::current_exe().unwrap();
     p.pop();
     p.pop();
-    p.push(format!("vault{}", std::env::consts::EXE_SUFFIX));
+    p.push(format!("norn{}", std::env::consts::EXE_SUFFIX));
     p
 }
 
 #[test]
 fn move_dry_run_prints_preview_and_exits_clean() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["move", "b.md", "renamed.md", "--dry-run"])
@@ -39,7 +39,7 @@ fn move_dry_run_prints_preview_and_exits_clean() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("vault move b.md → renamed.md"),
+        stdout.contains("norn move b.md → renamed.md"),
         "unexpected stdout: {stdout}"
     );
     assert!(
@@ -59,7 +59,7 @@ fn move_dry_run_prints_preview_and_exits_clean() {
 #[test]
 fn move_yes_applies_and_rewrites_backlinks() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["move", "b.md", "renamed.md", "--yes"])
@@ -93,7 +93,7 @@ fn move_yes_applies_and_rewrites_backlinks() {
 #[test]
 fn move_format_json_emits_envelope() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["move", "b.md", "renamed.md", "--format", "json"])
@@ -121,7 +121,7 @@ fn move_format_json_emits_envelope() {
 #[test]
 fn move_destination_exists_refused() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["move", "a.md", "b.md"])
@@ -134,7 +134,7 @@ fn move_destination_exists_refused() {
 #[test]
 fn move_yes_format_json_emits_single_json_object() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["move", "b.md", "renamed.md", "--yes", "--format", "json"])
@@ -173,7 +173,7 @@ fn move_destination_exists_with_force_succeeds() {
         "---\ntype: note\n---\n# C\n[[a]]\n",
     )
     .unwrap();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["move", "a.md", "b.md", "--force", "--yes"])
@@ -196,7 +196,7 @@ fn move_destination_exists_with_force_succeeds() {
 #[test]
 fn move_case_only_difference_refuses_same_path() {
     let tmp = synth();
-    let out = Command::new(vault_bin())
+    let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
         .args(["move", "a.md", "A.md"])

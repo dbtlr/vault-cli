@@ -14,6 +14,6 @@ targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-d
 # Whether to install an updater program
 install-updater = false
 # Extra static files to include in each App (path relative to this Cargo.toml's dir)
-include = ["target/completions/vault.bash", "target/completions/_vault", "target/completions/vault.fish", "target/man/vault.1"]
+include = ["target/completions/norn.bash", "target/completions/_norn", "target/completions/norn.fish", "target/man/norn.1"]
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"

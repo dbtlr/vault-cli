@@ -17,15 +17,15 @@ fn vault_root(prefix: &str) -> PathBuf {
     path
 }
 
-/// Runs `vault repair plan --format report` with isolated cache and NO_COLOR.
+/// Runs `norn repair plan --format report` with isolated cache and NO_COLOR.
 /// Returns the raw stdout string.
 fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> String {
     let cache_dir = tempfile::Builder::new()
-        .prefix("vault-cli-cache-")
+        .prefix("norn-cache-")
         .tempdir()
         .expect("cache temp dir should be created");
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"));
     cmd.args([
         "-C",
         root.to_str().unwrap(),
@@ -57,7 +57,7 @@ fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> String {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_mixed_skips_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-mixed-");
+    let root = vault_root("norn-report-mixed-");
     let config_path = root.with_extension("yaml");
 
     // Config: require `status` on all docs; no repair rules (so MissingDefault is the skip path).
@@ -109,7 +109,7 @@ fn build_mixed_skips_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_multi_file_changes_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-multifile-");
+    let root = vault_root("norn-report-multifile-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -170,7 +170,7 @@ fn build_multi_file_changes_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_only_skips_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-only-skips-");
+    let root = vault_root("norn-report-only-skips-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -195,7 +195,7 @@ fn build_only_skips_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_tied_files_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-tied-");
+    let root = vault_root("norn-report-tied-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -250,7 +250,7 @@ fn build_tied_files_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_report_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-");
+    let root = vault_root("norn-report-");
     let config_path = root.with_extension("yaml");
 
     // Minimal config: no required fields, no repair rules (built-in closest-match handles links).
@@ -457,11 +457,11 @@ fn apply_guidance_unfiltered_suggests_high_confidence_narrowing() {
         "expected To inspect block; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("vault repair plan --confidence high --format json"),
+        stdout.contains("norn repair plan --confidence high --format json"),
         "expected high-confidence narrowing suggestion; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("vault repair plan --format json"),
+        stdout.contains("norn repair plan --format json"),
         "expected unfiltered inspect baseline; full stdout:\n{stdout}"
     );
     assert!(
@@ -469,12 +469,12 @@ fn apply_guidance_unfiltered_suggests_high_confidence_narrowing() {
         "expected To apply block; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("vault repair apply --dry-run"),
+        stdout.contains("norn repair apply --dry-run"),
         "expected dry-run suggestion; full stdout:\n{stdout}"
     );
     // Bare apply also present
     assert!(
-        stdout.contains("| vault repair apply"),
+        stdout.contains("| norn repair apply"),
         "expected bare apply suggestion; full stdout:\n{stdout}"
     );
 
@@ -489,13 +489,13 @@ fn apply_guidance_echoes_active_confidence_filter() {
     let stdout = run_plan(&root, &config_path, &["--confidence", "high"]);
 
     assert!(
-        stdout.contains("vault repair plan --confidence high --format json"),
+        stdout.contains("norn repair plan --confidence high --format json"),
         "expected confidence echoed in command; full stdout:\n{stdout}"
     );
     // The unfiltered baseline should not appear in the apply section when --confidence is active
     let apply_section = stdout.split("To apply").nth(1).unwrap_or("");
     assert!(
-        !apply_section.contains("vault repair plan --format json |"),
+        !apply_section.contains("norn repair plan --format json |"),
         "unfiltered apply suggestion should be dropped when --confidence is active. stdout:\n{stdout}"
     );
 
@@ -544,12 +544,12 @@ fn apply_guidance_suppresses_apply_block_when_skip_reason_active() {
 fn piped_default_is_json_explicit_format_overrides() {
     let (root, config_path) = build_plan_with_proposals_fixture();
     let cache_dir = tempfile::Builder::new()
-        .prefix("vault-cli-piped-default-")
+        .prefix("norn-piped-default-")
         .tempdir()
         .expect("cache temp dir should be created");
 
     // No --format flag → piped → JSON envelope
-    let piped = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let piped = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "-C",
             root.to_str().unwrap(),
@@ -578,7 +578,7 @@ fn piped_default_is_json_explicit_format_overrides() {
     assert_eq!(json["schema_version"], 9);
 
     // Explicit --format report overrides the piped default
-    let report = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let report = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "-C",
             root.to_str().unwrap(),

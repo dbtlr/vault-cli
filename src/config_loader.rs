@@ -12,7 +12,7 @@ pub struct LoadedConfig {
     pub validate: ValidateConfig,
     pub repair: RepairConfig,
     /// Full parsed vault config. Commands that need the whole VaultConfig
-    /// (e.g. `vault set`'s schema-aware path) should use this field.
+    /// (e.g. `norn set`'s schema-aware path) should use this field.
     pub vault_config: VaultConfig,
     /// Pre-compiled path patterns for hot-path matching (validate engine).
     pub compiled: CompiledConfig,
@@ -51,7 +51,7 @@ pub fn load_config(cwd: &Utf8PathBuf, config_path: Option<&Utf8PathBuf>) -> Resu
     let resolved_config_path = config_path
         .map(|config_path| resolve_path(cwd, config_path))
         .or_else(|| {
-            let discovered = cwd.join(".vault/config.yaml");
+            let discovered = cwd.join(".norn/config.yaml");
             discovered.exists().then_some(discovered)
         });
 
@@ -89,11 +89,11 @@ mod tests {
     #[test]
     fn alias_field_propagates_from_config_to_index_options() {
         let dir = tempfile::Builder::new()
-            .prefix("vault-cli-alias-")
+            .prefix("norn-alias-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-        let config_dir = root.join(".vault");
+        let config_dir = root.join(".norn");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(
             config_dir.join("config.yaml"),
@@ -108,11 +108,11 @@ mod tests {
     #[test]
     fn alias_field_absent_in_config_yields_none() {
         let dir = tempfile::Builder::new()
-            .prefix("vault-cli-alias-none-")
+            .prefix("norn-alias-none-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-        let config_dir = root.join(".vault");
+        let config_dir = root.join(".norn");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("config.yaml"), "files:\n  ignore: []\n").unwrap();
 

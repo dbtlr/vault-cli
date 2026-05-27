@@ -2,7 +2,7 @@
 //!
 //! Exposes [`path_variables`] for extracting named path-variable bindings,
 //! [`applicable_rules`] + [`merge_defaults`] for the match-to-defaults pass,
-//! and [`resolve_to_fixpoint`] for the iterative resolver used by `vault new`.
+//! and [`resolve_to_fixpoint`] for the iterative resolver used by `norn new`.
 
 use crate::standards::config::{CompiledConfig, CompiledRule, ValidateRule, VaultConfig};
 use std::collections::{BTreeMap, BTreeSet};
@@ -91,7 +91,7 @@ pub(crate) const KNOWN_TRANSFORMS: &[&str] = &[
 ///
 /// The rule's pattern is the pre-compiled [`crate::standards::path_match::PathPattern`]
 /// stored on [`CompiledRule`]. Pre-compilation happens at config-load time,
-/// so this helper is cheap to call repeatedly within a single `vault new`
+/// so this helper is cheap to call repeatedly within a single `norn new`
 /// invocation.
 pub fn path_variables(rule: &CompiledRule, path: &str) -> BTreeMap<String, String> {
     rule.path
@@ -250,7 +250,7 @@ mod api_tests {
     use camino::Utf8Path;
 
     fn build(yaml: &str) -> (VaultConfig, crate::standards::config::CompiledConfig) {
-        parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap()
+        parse_config_compiled(yaml, Utf8Path::new(".norn/config.yaml")).unwrap()
     }
 
     #[test]
@@ -372,7 +372,7 @@ mod tests {
 
     fn compile(yaml: &str) -> crate::standards::config::CompiledConfig {
         let (_, compiled) =
-            parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap();
+            parse_config_compiled(yaml, Utf8Path::new(".norn/config.yaml")).unwrap();
         compiled
     }
 
@@ -387,8 +387,8 @@ validate:
         path: "Workspaces/{{workspace}}/tasks/*.md"
 "#,
         );
-        let vars = path_variables(&compiled.rules[0], "Workspaces/vault-cli/tasks/foo.md");
-        assert_eq!(vars.get("workspace"), Some(&"vault-cli".to_string()));
+        let vars = path_variables(&compiled.rules[0], "Workspaces/norn/tasks/foo.md");
+        assert_eq!(vars.get("workspace"), Some(&"norn".to_string()));
         assert_eq!(vars.len(), 1);
     }
 
@@ -492,7 +492,7 @@ mod fixpoint_tests {
     use camino::Utf8Path;
 
     fn build(yaml: &str) -> (VaultConfig, crate::standards::config::CompiledConfig) {
-        parse_config_compiled(yaml, Utf8Path::new(".vault/config.yaml")).unwrap()
+        parse_config_compiled(yaml, Utf8Path::new(".norn/config.yaml")).unwrap()
     }
 
     #[test]
@@ -573,11 +573,11 @@ validate:
         title: "{{title | titlecase}}"
 "#,
         );
-        let path_vars = BTreeMap::from([("workspace".to_string(), "vault-cli".to_string())]);
+        let path_vars = BTreeMap::from([("workspace".to_string(), "norn".to_string())]);
         let (frontmatter, _rules) = resolve_to_fixpoint(
             &cfg,
             &compiled,
-            "Workspaces/vault-cli/tasks/design-foo.md",
+            "Workspaces/norn/tasks/design-foo.md",
             &BTreeMap::new(),
             &path_vars,
         )
@@ -585,7 +585,7 @@ validate:
 
         assert_eq!(
             frontmatter.get("workspace"),
-            Some(&serde_json::json!("[[vault-cli]]"))
+            Some(&serde_json::json!("[[norn]]"))
         );
         assert_eq!(
             frontmatter.get("title"),

@@ -1,4 +1,4 @@
-//! `vault init` — scaffold `.vault/config.yaml` for a fresh vault.
+//! `norn init` — scaffold `.norn/config.yaml` for a fresh vault.
 //!
 //! This is the bootstrap command. It runs in folders that may or may not
 //! contain Markdown, and crucially runs WITHOUT a config (it's creating
@@ -23,11 +23,11 @@ use crate::output::primitives::{self, NoteLabel};
 
 const SCAFFOLD_TOP: &str = r#"version: 1
 
-# Files inventoried by vault-cli. Patterns here are excluded from
+# Files inventoried by norn. Patterns here are excluded from
 # the graph AND from all validation.
 files:
   # Pre-filled with universally-ignorable patterns.
-  # Remove any you actually want vault-cli to track.
+  # Remove any you actually want norn to track.
   ignore:
     - .obsidian/
     - .git/
@@ -62,7 +62,7 @@ repair:
 
 const TOP_N: usize = 30;
 
-/// Run `vault init`. Returns the process exit code.
+/// Run `norn init`. Returns the process exit code.
 pub fn run(cwd: &Utf8Path, args: &InitArgs) -> Result<i32> {
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
@@ -77,12 +77,12 @@ pub(crate) fn run_capturing_output(cwd: &Utf8Path, args: &InitArgs) -> Result<St
 }
 
 fn run_to(cwd: &Utf8Path, args: &InitArgs, out: &mut dyn Write) -> Result<i32> {
-    let vault_dir = cwd.join(".vault");
+    let vault_dir = cwd.join(".norn");
     let config_path = vault_dir.join("config.yaml");
 
     if config_path.exists() && !args.force {
         return Err(anyhow!(
-            ".vault/config.yaml already exists at {}\nhint: pass --force to overwrite",
+            ".norn/config.yaml already exists at {}\nhint: pass --force to overwrite",
             config_path
         ));
     }
@@ -121,7 +121,7 @@ fn run_to(cwd: &Utf8Path, args: &InitArgs, out: &mut dyn Write) -> Result<i32> {
         out,
         &palette,
         NoteLabel::Tip,
-        &format!("edit `{config_path}`, then run `vault validate`"),
+        &format!("edit `{config_path}`, then run `norn validate`"),
     )?;
     Ok(0)
 }
@@ -131,7 +131,7 @@ fn run_to(cwd: &Utf8Path, args: &InitArgs, out: &mut dyn Write) -> Result<i32> {
 /// incremental refresh path), then enumerate every document and tally the
 /// top-level frontmatter keys. A fresh rebuild is the cleanest approach:
 /// it's deterministic and the resulting cache is immediately reusable by
-/// the operator's next `vault find` / `validate` invocation.
+/// the operator's next `norn find` / `validate` invocation.
 fn scan_vault(cwd: &Utf8Path) -> Result<ScanResult> {
     let mut cache = Cache::open(cwd)?;
     cache.rebuild(cwd)?;
@@ -208,7 +208,7 @@ mod tests {
             "actual: {outcome:?}"
         );
         assert!(outcome.contains("tip: edit "), "actual: {outcome:?}");
-        assert!(outcome.contains("vault validate"), "actual: {outcome:?}");
+        assert!(outcome.contains("norn validate"), "actual: {outcome:?}");
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn scaffold_contains_commented_links_alias_field_hint() {
         let dir = tempfile::Builder::new()
-            .prefix("vault-cli-init-alias-")
+            .prefix("norn-init-alias-")
             .tempdir()
             .unwrap();
         let cwd = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
@@ -265,7 +265,7 @@ mod tests {
         let args = super::InitArgs { force: false };
         super::run_capturing_output(&cwd, &args).unwrap();
 
-        let config = std::fs::read_to_string(cwd.join(".vault/config.yaml")).unwrap();
+        let config = std::fs::read_to_string(cwd.join(".norn/config.yaml")).unwrap();
 
         // Commented section header
         assert!(

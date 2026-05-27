@@ -22,7 +22,7 @@ pub enum CacheError {
         current: Utf8PathBuf,
     },
 
-    #[error("cache schema version {found} is newer than this binary supports (expected {expected}); upgrade vault-cli")]
+    #[error("cache schema version {found} is newer than this binary supports (expected {expected}); upgrade norn")]
     SchemaNewer { found: u32, expected: u32 },
 
     #[error("vault root could not be canonicalized: {path}")]

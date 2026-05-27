@@ -23,7 +23,7 @@ pub(crate) struct IndexOptions {
 pub(crate) use aliases::parse_aliases;
 pub(crate) use build::{build_index_with_options, concise_diagnostics, has_errors};
 // Test-only re-export: build_index is a default-options convenience used solely
-// in #[cfg(test)] callers across vault-cli (move_doc, delete_doc, set/validate,
+// in #[cfg(test)] callers across norn (move_doc, delete_doc, set/validate,
 // repair_apply, cache/reader).
 #[cfg(test)]
 pub(crate) use build::build_index;

@@ -1,4 +1,4 @@
-//! Schema-aware pre-flight validation for `vault set`.
+//! Schema-aware pre-flight validation for `norn set`.
 
 // These functions are pub for Phase 5 wiring; the binary doesn't call them yet.
 #![allow(dead_code)]
@@ -58,7 +58,7 @@ pub fn lookup_field_type(cfg: &VaultConfig, doc: &Document, field: &str) -> Opti
 /// Coerce a raw CLI value string into a typed JSON Value matching the declared
 /// schema type. Refuses when the input cannot be expressed as the type.
 ///
-/// Wikilink-typed values are auto-wrapped: `vault-cli` becomes `[[vault-cli]]`.
+/// Wikilink-typed values are auto-wrapped: `norn` becomes `[[norn]]`.
 /// Already-bracketed input passes through. Empty-stem wikilinks (`[[]]`) are
 /// refused as shape-invalid.
 pub fn coerce_value_for_type(field_type: &str, raw: &str) -> Result<Value> {
@@ -398,14 +398,14 @@ validate:
 
     #[test]
     fn coerce_value_wraps_bare_stem_in_wikilink_brackets() {
-        let out = coerce_value_for_type("wikilink", "vault-cli").expect("should wrap");
-        assert_eq!(out, json!("[[vault-cli]]"));
+        let out = coerce_value_for_type("wikilink", "norn").expect("should wrap");
+        assert_eq!(out, json!("[[norn]]"));
     }
 
     #[test]
     fn coerce_value_passes_through_already_bracketed_wikilink() {
-        let out = coerce_value_for_type("wikilink", "[[vault-cli]]").expect("should accept");
-        assert_eq!(out, json!("[[vault-cli]]"));
+        let out = coerce_value_for_type("wikilink", "[[norn]]").expect("should accept");
+        assert_eq!(out, json!("[[norn]]"));
     }
 
     #[test]
@@ -440,7 +440,7 @@ validate:
             &cfg,
             &doc,
             &fm,
-            &["workspace=vault-cli".to_string()],
+            &["workspace=norn".to_string()],
             &[],
             &[],
             &[],
@@ -448,7 +448,7 @@ validate:
             false,
         )
         .unwrap();
-        assert_eq!(result.changes[0].new_value, Some(json!("[[vault-cli]]")));
+        assert_eq!(result.changes[0].new_value, Some(json!("[[norn]]")));
     }
 
     #[test]
@@ -566,14 +566,14 @@ validate:
 
     fn fixture_index_with_docs(paths: &[&str]) -> (tempfile::TempDir, crate::core::GraphIndex) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-set-wikilink-")
+            .prefix("norn-set-wikilink-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())
             .unwrap()
             .to_path_buf();
-        std::fs::create_dir_all(tmp.path().join(".vault")).unwrap();
-        std::fs::write(tmp.path().join(".vault/config.yaml"), "validate: {}\n").unwrap();
+        std::fs::create_dir_all(tmp.path().join(".norn")).unwrap();
+        std::fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
         for p in paths {
             let path = tmp.path().join(p);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();

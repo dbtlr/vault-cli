@@ -1,6 +1,6 @@
 //! Install receipt — written by the cargo-dist shell installer.
 //!
-//! Presence of the receipt is the gate for `vault self-update`:
+//! Presence of the receipt is the gate for `norn self-update`:
 //! its absence means this binary was not installed by the official GitHub
 //! install script, and we cannot safely swap it.
 
@@ -28,10 +28,10 @@ pub fn receipt_path() -> Option<PathBuf> {
 
 fn receipt_path_with_env<F: Fn(&str) -> Option<String>>(get: F) -> Option<PathBuf> {
     if let Some(xdg) = get("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(xdg).join("vault-cli/install-receipt.json"));
+        return Some(PathBuf::from(xdg).join("norn/install-receipt.json"));
     }
     let home = get("HOME").filter(|s| !s.is_empty())?;
-    Some(PathBuf::from(home).join(".config/vault-cli/install-receipt.json"))
+    Some(PathBuf::from(home).join(".config/norn/install-receipt.json"))
 }
 
 /// Cheap, side-effect-free presence check. Runs on every CLI invocation
@@ -70,7 +70,7 @@ mod tests {
     use super::*;
 
     const SAMPLE_RECEIPT: &str = r#"{
-        "binaries": ["vault"],
+        "binaries": ["norn"],
         "install_prefix": "/Users/drew/.cargo",
         "binary_aliases": {},
         "cargo_dist_version": "0.32.0",
@@ -81,8 +81,8 @@ mod tests {
             "version": "v0.32.0"
         },
         "source": {
-            "app_name": "vault-cli",
-            "name": "vault-cli",
+            "app_name": "norn",
+            "name": "norn",
             "owner": "dbtlr",
             "release_type": "github",
             "tag": "v0.32.0",
@@ -112,10 +112,7 @@ mod tests {
             "XDG_CONFIG_HOME" => Some(tmp.path().to_string_lossy().into_owned()),
             _ => None,
         });
-        assert_eq!(
-            path,
-            Some(tmp.path().join("vault-cli/install-receipt.json"))
-        );
+        assert_eq!(path, Some(tmp.path().join("norn/install-receipt.json")));
     }
 
     #[test]
@@ -127,10 +124,7 @@ mod tests {
             "HOME" => Some(home.to_string_lossy().into_owned()),
             _ => None,
         });
-        assert_eq!(
-            path,
-            Some(home.join(".config/vault-cli/install-receipt.json"))
-        );
+        assert_eq!(path, Some(home.join(".config/norn/install-receipt.json")));
     }
 
     #[test]

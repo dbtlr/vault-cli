@@ -7,7 +7,7 @@
 //! the (deleted in v0.30) `vault links unresolved`.
 //!
 //! The key behavioral difference was **path-filter divergence**:
-//! - `vault validate` respects `validate.ignore` patterns in `.vault/config.yaml`.
+//! - `vault validate` respects `validate.ignore` patterns in `.norn/config.yaml`.
 //! - `vault links unresolved` walked all indexed documents regardless of config.
 //!
 //! ## Behavior contracts locked in by these tests
@@ -20,11 +20,11 @@ use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
 
-fn vault_bin() -> std::path::PathBuf {
+fn norn_bin() -> std::path::PathBuf {
     let mut p = std::env::current_exe().unwrap();
     p.pop();
     p.pop();
-    p.push(format!("vault{}", std::env::consts::EXE_SUFFIX));
+    p.push(format!("norn{}", std::env::consts::EXE_SUFFIX));
     p
 }
 
@@ -38,16 +38,16 @@ fn isolate_cache(command: &mut Command) -> TempDir {
 /// - `active/a.md` — two occurrences of `[[missing]]` in an active (non-ignored) path
 /// - `Archive/old.md` — one occurrence of `[[missing]]` in a path matched by `validate.ignore`
 ///
-/// `.vault/config.yaml` sets `validate.ignore: ["Archive/**"]`.
+/// `.norn/config.yaml` sets `validate.ignore: ["Archive/**"]`.
 fn synth_vault_with_ignore() -> TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-parity-")
+        .prefix("norn-parity-")
         .tempdir()
         .unwrap();
     let root = tmp.path().join("vault");
     let active = root.join("active");
     let archive = root.join("Archive");
-    let vault_dir = root.join(".vault");
+    let vault_dir = root.join(".norn");
 
     fs::create_dir_all(&active).unwrap();
     fs::create_dir_all(&archive).unwrap();
@@ -82,7 +82,7 @@ fn synth_vault_with_ignore() -> TempDir {
 #[test]
 fn validate_respects_validate_ignore_for_link_target_missing() {
     let tmp = synth_vault_with_ignore();
-    let mut cmd = Command::new(vault_bin());
+    let mut cmd = Command::new(norn_bin());
     cmd.args(["--cwd"]).arg(tmp.path().join("vault")).args([
         "validate",
         "--code",
@@ -131,7 +131,7 @@ fn validate_emits_per_occurrence_not_per_unique_pair() {
     let tmp = synth_vault_with_ignore();
 
     // Validate: 2 occurrences from active/a.md
-    let mut cmd = Command::new(vault_bin());
+    let mut cmd = Command::new(norn_bin());
     cmd.args(["--cwd"]).arg(tmp.path().join("vault")).args([
         "validate",
         "--code",

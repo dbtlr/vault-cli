@@ -2,7 +2,7 @@
 //!
 //! Returns a single document populated with its headings, outgoing links
 //! (resolved), unresolved links, and incoming links (other documents that
-//! link *to* this one).  Used by `vault show`.
+//! link *to* this one).  Used by `norn show`.
 
 use crate::core::{Heading, Link, LinkStatus};
 use camino::{Utf8Path, Utf8PathBuf};

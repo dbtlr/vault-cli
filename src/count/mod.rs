@@ -1,5 +1,5 @@
-//! `vault count` — grouped or total document counts. Shares the full
-//! filter flag surface with `vault find` via `FilterArgs`; adds `--by`
+//! `norn count` — grouped or total document counts. Shares the full
+//! filter flag surface with `norn find` via `FilterArgs`; adds `--by`
 //! for grouping.
 
 pub mod render;
@@ -74,7 +74,7 @@ mod tests {
     fn synth() -> (TempDir, Utf8PathBuf) {
         // Use a non-hidden prefix; the vault walker prunes ".tmp" paths.
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-count-")
+            .prefix("norn-count-")
             .tempdir()
             .unwrap();
         let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())

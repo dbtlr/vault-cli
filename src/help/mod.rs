@@ -27,7 +27,7 @@ use crate::output::palette;
 /// help. Returns `Some(exit_code)` when help was rendered; `None` otherwise.
 ///
 /// This pre-parse approach is necessary because required positionals (e.g.
-/// `vault completions init --help`) would cause `Cli::parse()` to error out
+/// `norn completions init --help`) would cause `Cli::parse()` to error out
 /// before we get a chance to intercept. By scanning raw args first we can
 /// render help without satisfying required positionals.
 pub fn intercept_from_args() -> Option<i32> {
@@ -63,13 +63,13 @@ pub fn intercept_from_args() -> Option<i32> {
 
     // Phase 3 — materialize live examples on `--help` form only. Gate on the
     // command having a generator AND the effective cwd being a vault root
-    // (`.vault/` present). If `Cache::open` fails for any reason, fall back
+    // (`.norn/` present). If `Cache::open` fails for any reason, fall back
     // silently to the no-live-examples path — help must never error.
     if form == HelpForm::Long {
         if let Some(generator) = model.extras.live_examples_fn {
             let cwd_arg = parse_cwd_from_args(&args);
             if let Ok(root_path) = crate::config_loader::effective_cwd(cwd_arg.as_ref()) {
-                if root_path.join(".vault").as_std_path().is_dir() {
+                if root_path.join(".norn").as_std_path().is_dir() {
                     if let Ok(cache) = crate::cache::Cache::open(&root_path) {
                         model.live_examples = generator(&cache);
                     }
@@ -117,7 +117,7 @@ pub fn intercept_from_args() -> Option<i32> {
 /// flag indicating whether an unknown non-flag token was encountered (i.e. a
 /// token that looks like a subcommand but is not recognised).
 ///
-/// `hit_unknown = true` means the args contain something like `vault graph
+/// `hit_unknown = true` means the args contain something like `norn graph
 /// --help` where `graph` is not a known subcommand. In that case the caller
 /// should NOT intercept, so that clap can produce its normal error.
 ///

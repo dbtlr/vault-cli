@@ -538,27 +538,21 @@ mod span_tests {
 
     #[test]
     fn single_quoted_scalar_span_includes_quotes() {
-        let content = "---\nworkspace: '[[vault-cli]]'\n---\n";
+        let content = "---\nworkspace: '[[norn]]'\n---\n";
         let spans = top_level_property_spans(content, 4..30);
         let span = &spans[0];
         assert_eq!(span.name, "workspace");
         assert_eq!(span.style, ValueStyle::SingleQuoted);
-        assert_eq!(
-            &content[span.value_range.clone().unwrap()],
-            "'[[vault-cli]]'"
-        );
+        assert_eq!(&content[span.value_range.clone().unwrap()], "'[[norn]]'");
     }
 
     #[test]
     fn double_quoted_scalar_span_includes_quotes() {
-        let content = "---\nworkspace: \"[[vault-cli]]\"\n---\n";
+        let content = "---\nworkspace: \"[[norn]]\"\n---\n";
         let spans = top_level_property_spans(content, 4..30);
         let span = &spans[0];
         assert_eq!(span.style, ValueStyle::DoubleQuoted);
-        assert_eq!(
-            &content[span.value_range.clone().unwrap()],
-            "\"[[vault-cli]]\""
-        );
+        assert_eq!(&content[span.value_range.clone().unwrap()], "\"[[norn]]\"");
     }
 
     #[test]

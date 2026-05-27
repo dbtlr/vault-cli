@@ -1,4 +1,4 @@
-//! `vault get` — single-doc detail with multi-target support and
+//! `norn get` — single-doc detail with multi-target support and
 //! wikilink-aware input resolution.
 
 pub mod render;
@@ -80,7 +80,7 @@ mod tests {
 
     fn synth_pair() -> (TempDir, Utf8PathBuf) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-show-run-")
+            .prefix("norn-show-run-")
             .tempdir()
             .unwrap();
         let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())

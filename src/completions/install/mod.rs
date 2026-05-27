@@ -1,6 +1,6 @@
 //! Per-shell completion install support.
 //!
-//! `vault completions install [shell]` wires shell completions into the
+//! `norn completions install [shell]` wires shell completions into the
 //! user's shell config in a single command, idempotently. The dispatch
 //! lives here; each shell's specifics live in a sibling module.
 
@@ -20,8 +20,8 @@ mod powershell;
 mod zsh;
 
 /// Marker comment prefix written into rc files to enable idempotent re-install.
-pub(crate) const MARKER_PREFIX: &str = "# >>> vault completions";
-pub(crate) const MARKER_SUFFIX: &str = "# <<< vault completions <<<";
+pub(crate) const MARKER_PREFIX: &str = "# >>> norn completions";
+pub(crate) const MARKER_SUFFIX: &str = "# <<< norn completions <<<";
 
 /// Outcome of an install run, for reporting and tests.
 #[derive(Debug)]
@@ -130,7 +130,7 @@ fn resolve_shell(explicit: Option<SupportedShell>) -> Result<SupportedShell> {
         return Ok(shell);
     }
     let env_shell = std::env::var("SHELL").context(
-        "could not auto-detect shell: $SHELL is not set. Pass a shell explicitly, e.g. `vault completions install zsh`."
+        "could not auto-detect shell: $SHELL is not set. Pass a shell explicitly, e.g. `norn completions install zsh`."
     )?;
     let name = Utf8Path::new(env_shell.as_str()).file_name().unwrap_or("");
     match name {

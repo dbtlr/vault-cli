@@ -10,10 +10,16 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+### Breaking changes
+
+- **Project renamed from `vault-cli` to Norn.** The binary is now `norn` (was `vault`); the published crate on crates.io is `norn-run`; the repository lives at `https://github.com/dbtlr/norn`. To migrate an existing installation: uninstall the old `vault` binary (`cargo uninstall vault-cli` if installed via cargo, or remove the old install per your installer), install `norn` via the new installer at https://github.com/dbtlr/norn/releases/latest, and run `mv .vault .norn` in any vault that had a `.vault/` config directory. There is no transitional fallback — Norn reads `.norn/config.yaml` only.
+- **Shell-completion fence markers renamed.** `norn completions install` writes `# >>> norn completions ... # <<< norn completions <<<` fences into shell rc files. Existing `# >>> vault completions ...` blocks from the prior binary are not detected by the new uninstaller — remove them manually one time after installing the new completions. The generated completion script filenames also change: `vault.bash` → `norn.bash`, `_vault` → `_norn`, `vault.fish` → `norn.fish`, `vault.1` → `norn.1`.
+- **Pre-existing v0.x GitHub Releases deleted.** Releases `v0.15` through `v0.33.0` are removed from `dbtlr/norn`. The first Norn release is `v0.34.0` with `norn-run-*` cargo-dist asset names (e.g., `norn-run-installer.sh`, `norn-run-aarch64-apple-darwin.tar.xz`). Anyone with an outstanding pin to a deleted tag must repin.
+
 ### Changed
 
-- `vault repair apply`'s plan-staleness errors (schema mismatch, document-hash drift, expected-old-value mismatch) now end with `; regenerate with \`vault repair plan\`` so operators see the next step inline instead of having to consult the CHANGELOG.
-- Internal: collapsed the 7-crate workspace into a single `vault-cli` crate.
+- `norn repair apply`'s plan-staleness errors (schema mismatch, document-hash drift, expected-old-value mismatch) now end with `; regenerate with \`norn repair plan\`` so operators see the next step inline instead of having to consult the CHANGELOG.
+- Internal: collapsed the 7-crate workspace into a single `norn-run` crate.
   No user-visible behavior changes. Enables crates.io publishing without
   registering 6 internal libraries that were never meant as public API.
 

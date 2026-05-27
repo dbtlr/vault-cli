@@ -1,5 +1,5 @@
 //! Read-only SQL primitives that power the LIVE EXAMPLES generator for
-//! `vault find --help`. Aggregates top-level frontmatter field statistics
+//! `norn find --help`. Aggregates top-level frontmatter field statistics
 //! and counts documents matching a conjunction of predicates.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -125,7 +125,7 @@ mod tests {
 
     fn fresh_cache() -> (TempDir, Cache) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-live-examples-")
+            .prefix("norn-live-examples-")
             .tempdir()
             .unwrap();
         let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap();
@@ -226,11 +226,10 @@ mod tests {
     #[test]
     fn count_matching_two_predicates_intersect() {
         let (_tmp, cache) = fresh_cache();
-        insert_doc(&cache, "a.md", r#"{"type":"note","workspace":"vault-cli"}"#);
+        insert_doc(&cache, "a.md", r#"{"type":"note","workspace":"norn"}"#);
         insert_doc(&cache, "b.md", r#"{"type":"note","workspace":"atlas"}"#);
-        insert_doc(&cache, "c.md", r#"{"type":"task","workspace":"vault-cli"}"#);
-        let count =
-            count_matching(&cache, &[("type", "note"), ("workspace", "vault-cli")]).unwrap();
+        insert_doc(&cache, "c.md", r#"{"type":"task","workspace":"norn"}"#);
+        let count = count_matching(&cache, &[("type", "note"), ("workspace", "norn")]).unwrap();
         assert_eq!(count, 1);
     }
 

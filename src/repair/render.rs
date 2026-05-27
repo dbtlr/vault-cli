@@ -136,8 +136,8 @@ pub fn write_report(plan: &RepairPlan, args: &RepairPlanArgs) -> Result<()> {
         };
         let cmd = build_command(&apply_args, &["--format", "json"]);
         writeln!(out, "  To apply")?;
-        writeln!(out, "    {cmd} | vault repair apply --dry-run")?;
-        writeln!(out, "    {cmd} | vault repair apply")?;
+        writeln!(out, "    {cmd} | norn repair apply --dry-run")?;
+        writeln!(out, "    {cmd} | norn repair apply")?;
         writeln!(out)?;
     }
 
@@ -207,7 +207,7 @@ fn quote_if_glob(s: &str) -> String {
 }
 
 fn build_command(filter_flags: &[String], trailing: &[&str]) -> String {
-    let mut parts: Vec<String> = vec!["vault".into(), "repair".into(), "plan".into()];
+    let mut parts: Vec<String> = vec!["norn".into(), "repair".into(), "plan".into()];
     parts.extend(filter_flags.iter().cloned());
     parts.extend(trailing.iter().map(|s| s.to_string()));
     parts.join(" ")

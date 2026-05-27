@@ -26,7 +26,7 @@ fn vault(args: &[&str]) -> String {
 }
 
 fn vault_success(args: &[&str]) -> (String, String) {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault command should run");
@@ -45,7 +45,7 @@ fn vault_success(args: &[&str]) -> (String, String) {
 }
 
 fn vault_success_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String) {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     let _cache_dir = if envs.iter().any(|(k, _)| *k == "XDG_CACHE_HOME") {
         None
@@ -71,7 +71,7 @@ fn vault_success_env(args: &[&str], envs: &[(&str, &str)]) -> (String, String) {
 }
 
 fn vault_error(args: &[&str]) -> String {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(args);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault command should run");
@@ -93,7 +93,7 @@ fn temp_cache_dir() -> PathBuf {
         .as_nanos();
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let process = std::process::id();
-    std::env::temp_dir().join(format!("vault-cli-cache-{process}-{unique}-{counter}"))
+    std::env::temp_dir().join(format!("norn-cache-{process}-{unique}-{counter}"))
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn vault_version_reports_package_version() {
 }
 
 #[test]
-fn vault_help_documents_global_cwd() {
+fn norn_help_documents_global_cwd() {
     let output = vault(&["--help"]);
     assert!(output.contains("-C, --cwd"));
     assert!(output.contains("--config"));
@@ -125,7 +125,7 @@ fn links_list_is_removed() {
         error.contains("unrecognized subcommand 'list'")
             || error.contains("unrecognized subcommand 'links'")
             || error.contains("unexpected argument 'list'"),
-        "expected unrecognized-subcommand error for `vault links list`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links list`; got: {error}"
     );
 }
 
@@ -135,7 +135,7 @@ fn files_subcommand_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'files'")
             || error.contains("unexpected argument 'files'"),
-        "expected unrecognized-subcommand error for `vault files`; got: {error}"
+        "expected unrecognized-subcommand error for `norn files`; got: {error}"
     );
 }
 
@@ -144,7 +144,7 @@ fn docs_namespace_is_removed() {
     let error = vault_error(&["docs", "--help"]);
     assert!(
         error.contains("unrecognized subcommand 'docs'"),
-        "expected unrecognized-subcommand error for `vault docs`; got: {error}"
+        "expected unrecognized-subcommand error for `norn docs`; got: {error}"
     );
 }
 
@@ -154,7 +154,7 @@ fn docs_summary_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'docs'")
             || error.contains("unrecognized subcommand 'summary'"),
-        "expected unrecognized-subcommand error for `vault docs summary`; got: {error}"
+        "expected unrecognized-subcommand error for `norn docs summary`; got: {error}"
     );
 }
 
@@ -164,7 +164,7 @@ fn docs_inspect_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'docs'")
             || error.contains("unrecognized subcommand 'inspect'"),
-        "expected unrecognized-subcommand error for `vault docs inspect`; got: {error}"
+        "expected unrecognized-subcommand error for `norn docs inspect`; got: {error}"
     );
 }
 
@@ -173,7 +173,7 @@ fn links_namespace_is_removed() {
     let error = vault_error(&["links", "--help"]);
     assert!(
         error.contains("unrecognized subcommand 'links'"),
-        "expected unrecognized-subcommand error for `vault links`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links`; got: {error}"
     );
 }
 
@@ -184,7 +184,7 @@ fn links_unresolved_is_removed() {
         error.contains("unrecognized subcommand 'links'")
             || error.contains("unrecognized subcommand 'unresolved'")
             || error.contains("unexpected argument 'unresolved'"),
-        "expected unrecognized-subcommand error for `vault links unresolved`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links unresolved`; got: {error}"
     );
 }
 
@@ -195,7 +195,7 @@ fn links_backlinks_is_removed() {
         error.contains("unrecognized subcommand 'links'")
             || error.contains("unrecognized subcommand 'backlinks'")
             || error.contains("unexpected argument 'backlinks'"),
-        "expected unrecognized-subcommand error for `vault links backlinks`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links backlinks`; got: {error}"
     );
 }
 
@@ -205,7 +205,7 @@ fn repair_links_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'links'")
             || error.contains("unexpected argument 'links'"),
-        "expected unrecognized-subcommand error for `vault repair links`; got: {error}"
+        "expected unrecognized-subcommand error for `norn repair links`; got: {error}"
     );
 }
 
@@ -226,7 +226,7 @@ fn grouped_help_lists_new_surfaces() {
     // apply/plan descriptions, so we check for the subcommand listing token instead.
     assert!(
         !output.contains("  links  ") && !output.contains("  links\n"),
-        "vault repair links subcommand should be retired; got: {output}"
+        "norn repair links subcommand should be retired; got: {output}"
     );
 
     let output = vault(&["repair", "plan", "--help"]);
@@ -614,7 +614,7 @@ fn repair_apply_preserves_double_quoted_workspace_field() {
     let task_path = root.join("task.md");
     fs::write(
         &task_path,
-        "---\ntype: task\ntitle: Test task\nstatus: someday\nworkspace: \"[[vault-cli]]\"\n---\n# body\n",
+        "---\ntype: task\ntitle: Test task\nstatus: someday\nworkspace: \"[[norn]]\"\n---\n# body\n",
     )
     .expect("task should write");
 
@@ -645,7 +645,7 @@ fn repair_apply_preserves_double_quoted_workspace_field() {
         "status should be repaired, got:\n{after}"
     );
     assert!(
-        after.contains("workspace: \"[[vault-cli]]\""),
+        after.contains("workspace: \"[[norn]]\""),
         "workspace double-quoted style should be preserved, got:\n{after}"
     );
     assert!(after.ends_with("---\n# body\n"));
@@ -766,9 +766,9 @@ fn validate_reports_required_frontmatter_from_config() {
 #[test]
 fn validate_discovers_default_config_from_cwd() {
     let root = temp_cache_dir();
-    fs::create_dir_all(root.join(".vault")).expect("config dir should be created");
+    fs::create_dir_all(root.join(".norn")).expect("config dir should be created");
     fs::write(
-        root.join(".vault/config.yaml"),
+        root.join(".norn/config.yaml"),
         "validate:\n  required_frontmatter:\n    - title\n",
     )
     .expect("config should write");
@@ -803,9 +803,9 @@ fn validate_missing_default_config_uses_defaults() {
 #[test]
 fn validate_invalid_discovered_config_fails() {
     let root = temp_cache_dir();
-    fs::create_dir_all(root.join(".vault")).expect("config dir should be created");
+    fs::create_dir_all(root.join(".norn")).expect("config dir should be created");
     fs::write(
-        root.join(".vault/config.yaml"),
+        root.join(".norn/config.yaml"),
         "validate:\n  rules:\n    - name: bad\n      match:\n        path:\n          - 1\n          - 2\n",
     )
     .expect("config should write");
@@ -814,7 +814,7 @@ fn validate_invalid_discovered_config_fails() {
     let error = vault_error(&["-C", root.to_str().unwrap(), "validate"]);
 
     assert!(error.contains("invalid config"));
-    assert!(error.contains(".vault/config.yaml"));
+    assert!(error.contains(".norn/config.yaml"));
     assert!(error.contains("validate.rules[0].match.path"));
 
     fs::remove_dir_all(root).ok();
@@ -1535,20 +1535,20 @@ fn validate_reports_frontmatter_field_type_findings() {
     fs::create_dir_all(&root).expect("temp dir should be created");
     fs::write(
         root.join("note.md"),
-        "---\ncreated: not-a-date\ndate: 2026-99-99\naliases: alias\nworkspace: vault-cli\ntechnologies:\n  - \"[[Rust]]\"\n  - plain\n---\n# Note\n",
+        "---\ncreated: not-a-date\ndate: 2026-99-99\naliases: alias\nworkspace: norn\ntechnologies:\n  - \"[[Rust]]\"\n  - plain\n---\n# Note\n",
     )
     .expect("note should write");
     fs::write(
         root.join("valid.md"),
-        "---\ncreated: 2026-05-17T10:01\ndate: 2026-05-17\naliases:\n  - Alias\nworkspace: \"[[vault-cli]]\"\ntechnologies:\n  - \"[[Rust]]\"\n---\n# Valid\n",
+        "---\ncreated: 2026-05-17T10:01\ndate: 2026-05-17\naliases:\n  - Alias\nworkspace: \"[[norn]]\"\ntechnologies:\n  - \"[[Rust]]\"\n---\n# Valid\n",
     )
     .expect("valid note should write");
     fs::write(
         root.join("valid-exported.md"),
-        "---\ncreated: 2026-02-13T00:00:00.000Z\ndate: \"2026-03-20 00:00:00+00:00\"\naliases:\n  - Exported\nworkspace: \"[[vault-cli]]\"\ntechnologies: \"[[Rust]]\"\n---\n# Valid Exported\n",
+        "---\ncreated: 2026-02-13T00:00:00.000Z\ndate: \"2026-03-20 00:00:00+00:00\"\naliases:\n  - Exported\nworkspace: \"[[norn]]\"\ntechnologies: \"[[Rust]]\"\n---\n# Valid Exported\n",
     )
     .expect("valid exported note should write");
-    fs::write(root.join("vault-cli.md"), "# vault-cli\n").expect("target note should write");
+    fs::write(root.join("norn.md"), "# norn\n").expect("target note should write");
     fs::write(root.join("Rust.md"), "# Rust\n").expect("target note should write");
 
     let output = vault(&[
@@ -1642,8 +1642,8 @@ fn completions_bash_subcommand_emits_non_empty_script() {
     );
     // Bash completions reference the program name in the generated function.
     assert!(
-        stdout.contains("vault"),
-        "expected bash completion script to reference the program name `vault`, got:\n{stdout}"
+        stdout.contains("norn"),
+        "expected bash completion script to reference the program name `norn`, got:\n{stdout}"
     );
 }
 
@@ -1655,8 +1655,8 @@ fn completions_zsh_subcommand_emits_non_empty_script() {
         "expected non-empty zsh completion script"
     );
     assert!(
-        stdout.contains("#compdef vault") || stdout.contains("_vault"),
-        "expected zsh completion to declare the compdef or _vault function, got:\n{stdout}"
+        stdout.contains("#compdef norn") || stdout.contains("_norn"),
+        "expected zsh completion to declare the compdef or _norn function, got:\n{stdout}"
     );
 }
 
@@ -1718,7 +1718,7 @@ fn completions_bash_writes_clean_stderr() {
     let (_stdout, stderr) = vault_success(&["completions", "init", "bash"]);
     assert!(
         stderr.is_empty(),
-        "expected `vault completions init bash` to write nothing to stderr, got:\n{stderr}"
+        "expected `norn completions init bash` to write nothing to stderr, got:\n{stderr}"
     );
 }
 
@@ -1727,13 +1727,13 @@ fn manpage_writes_clean_stderr() {
     let (_stdout, stderr) = vault_success(&["manpage"]);
     assert!(
         stderr.is_empty(),
-        "expected `vault manpage` to write nothing to stderr, got:\n{stderr}"
+        "expected `norn manpage` to write nothing to stderr, got:\n{stderr}"
     );
 }
 
 #[test]
 fn completions_runs_without_a_vault_root() {
-    // Run from a temp directory with no .vault/config.yaml and no -C flag.
+    // Run from a temp directory with no .norn/config.yaml and no -C flag.
     // The subcommand must succeed without complaining about vault discovery.
     let scratch = std::env::temp_dir().join(format!(
         "vault-completions-no-vault-{}-{}",
@@ -1744,7 +1744,7 @@ fn completions_runs_without_a_vault_root() {
             .as_nanos()
     ));
     fs::create_dir_all(&scratch).expect("create scratch dir");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .current_dir(&scratch)
         .args(["completions", "init", "bash"])
         .output()
@@ -1770,7 +1770,7 @@ fn manpage_runs_without_a_vault_root() {
             .as_nanos()
     ));
     fs::create_dir_all(&scratch).expect("create scratch dir");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .current_dir(&scratch)
         .args(["manpage"])
         .output()
@@ -1798,7 +1798,7 @@ fn completions_rejects_unknown_shell() {
 /// Cargo-dist's `include` directive packages completion scripts and the
 /// man page from a stable path under the workspace `target/` directory.
 /// `build.rs` produces those artifacts as a side effect of any build of
-/// `vault-cli`, so the integration test binary having compiled at all
+/// `norn`, so the integration test binary having compiled at all
 /// implies the files now exist. This guards against silent regressions
 /// where the build script stops emitting one of the expected outputs
 /// (for example after a clap_complete shell list change).
@@ -1808,7 +1808,7 @@ fn build_script_emits_release_artifacts() {
     let completions = workspace_root.join("target").join("completions");
     let man = workspace_root.join("target").join("man");
 
-    for expected in ["vault.bash", "_vault", "vault.fish"] {
+    for expected in ["norn.bash", "_norn", "norn.fish"] {
         let path = completions.join(expected);
         let metadata = fs::metadata(&path).unwrap_or_else(|err| {
             panic!(
@@ -1823,7 +1823,7 @@ fn build_script_emits_release_artifacts() {
         );
     }
 
-    let man_path = man.join("vault.1");
+    let man_path = man.join("norn.1");
     let metadata = fs::metadata(&man_path)
         .unwrap_or_else(|err| panic!("build.rs must emit {}: {err}", man_path.display()));
     assert!(
@@ -1855,7 +1855,7 @@ fn completions_install_unsupported_shell_errors_cleanly() {
 
 #[test]
 fn completions_install_no_arg_and_no_shell_env_errors() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install"])
         .env_remove("SHELL")
         .output()
@@ -1876,7 +1876,7 @@ fn install_in_tempdir(
     env_overrides: &[(&str, &str)],
 ) -> (tempfile::TempDir, std::process::Output) {
     let dir = tempfile::TempDir::new().unwrap();
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_norn"));
     cmd.args(["completions", "install", shell]);
     cmd.env("HOME", dir.path());
     cmd.env("XDG_CONFIG_HOME", dir.path().join(".config"));
@@ -1897,15 +1897,15 @@ fn completions_install_bash_writes_marker_block_to_bashrc() {
     );
     let bashrc = fs::read_to_string(dir.path().join(".bashrc")).unwrap();
     assert!(
-        bashrc.contains("# >>> vault completions"),
+        bashrc.contains("# >>> norn completions"),
         "missing marker: {bashrc}"
     );
     assert!(
-        bashrc.contains("eval \"$(vault completions init bash)\""),
+        bashrc.contains("eval \"$(norn completions init bash)\""),
         "missing eval line: {bashrc}"
     );
     assert!(
-        bashrc.contains("# <<< vault completions <<<"),
+        bashrc.contains("# <<< norn completions <<<"),
         "missing end marker: {bashrc}"
     );
 }
@@ -1919,8 +1919,8 @@ fn completions_install_zsh_writes_marker_block_to_zshrc() {
         String::from_utf8_lossy(&output.stderr)
     );
     let zshrc = fs::read_to_string(dir.path().join(".zshrc")).unwrap();
-    assert!(zshrc.contains("# >>> vault completions"));
-    assert!(zshrc.contains("eval \"$(vault completions init zsh)\""));
+    assert!(zshrc.contains("# >>> norn completions"));
+    assert!(zshrc.contains("eval \"$(norn completions init zsh)\""));
 }
 
 #[test]
@@ -1929,7 +1929,7 @@ fn completions_install_zsh_honors_zdotdir() {
     let (_home, output) = install_in_tempdir("zsh", &[("ZDOTDIR", zdir.path().to_str().unwrap())]);
     assert!(output.status.success());
     let zshrc = fs::read_to_string(zdir.path().join(".zshrc")).unwrap();
-    assert!(zshrc.contains("# >>> vault completions"));
+    assert!(zshrc.contains("# >>> norn completions"));
 }
 
 #[test]
@@ -1941,8 +1941,8 @@ fn completions_install_elvish_writes_marker_block_to_rc_elv() {
         String::from_utf8_lossy(&output.stderr)
     );
     let rc = fs::read_to_string(dir.path().join(".config/elvish/rc.elv")).unwrap();
-    assert!(rc.contains("# >>> vault completions"));
-    assert!(rc.contains("vault completions init elvish"));
+    assert!(rc.contains("# >>> norn completions"));
+    assert!(rc.contains("norn completions init elvish"));
 }
 
 #[test]
@@ -1950,11 +1950,11 @@ fn completions_install_is_idempotent() {
     let (dir, output1) = install_in_tempdir("bash", &[]);
     assert!(output1.status.success());
     let bashrc_first = fs::read_to_string(dir.path().join(".bashrc")).unwrap();
-    let count_first = bashrc_first.matches("# >>> vault completions").count();
+    let count_first = bashrc_first.matches("# >>> norn completions").count();
     assert_eq!(count_first, 1);
 
     // Re-run install
-    let output2 = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output2 = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "bash"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -1979,10 +1979,10 @@ fn completions_install_force_replaces_marker_block() {
     // Tamper with the marker block contents to simulate drift
     let bashrc_path = dir.path().join(".bashrc");
     let original = fs::read_to_string(&bashrc_path).unwrap();
-    let tampered = original.replace("vault completions init bash", "OLD_COMMAND");
+    let tampered = original.replace("norn completions init bash", "OLD_COMMAND");
     fs::write(&bashrc_path, &tampered).unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "bash", "--force"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -1995,7 +1995,7 @@ fn completions_install_force_replaces_marker_block() {
     );
     let final_bashrc = fs::read_to_string(&bashrc_path).unwrap();
     assert!(
-        final_bashrc.contains("vault completions init bash"),
+        final_bashrc.contains("norn completions init bash"),
         "force should restore current line: {final_bashrc}"
     );
     assert!(
@@ -2018,7 +2018,7 @@ fn completions_install_nushell_writes_both_files() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let script = dir.path().join(".config/nushell/completions/vault.nu");
+    let script = dir.path().join(".config/nushell/completions/norn.nu");
     let config = dir.path().join(".config/nushell/config.nu");
 
     assert!(script.exists(), "completion script should be written");
@@ -2026,14 +2026,14 @@ fn completions_install_nushell_writes_both_files() {
 
     let script_content = fs::read_to_string(&script).unwrap();
     assert!(
-        script_content.contains("vault"),
-        "script should reference vault"
+        script_content.contains("norn"),
+        "script should reference norn"
     );
 
     let config_content = fs::read_to_string(&config).unwrap();
-    assert!(config_content.contains("# >>> vault completions"));
+    assert!(config_content.contains("# >>> norn completions"));
     assert!(config_content.contains("source"));
-    assert!(config_content.contains("vault.nu"));
+    assert!(config_content.contains("norn.nu"));
 }
 
 #[test]
@@ -2043,7 +2043,7 @@ fn completions_install_nushell_idempotent() {
     let config_path = dir.path().join(".config/nushell/config.nu");
     let config_first = fs::read_to_string(&config_path).unwrap();
 
-    let output2 = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output2 = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "nushell"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2062,10 +2062,10 @@ fn completions_install_fish_overwrites_script() {
     // Pre-create a stale completion file
     let fish_completions = dir.path().join(".config/fish/completions");
     fs::create_dir_all(&fish_completions).unwrap();
-    let target = fish_completions.join("vault.fish");
+    let target = fish_completions.join("norn.fish");
     fs::write(&target, "# old stale content").unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "fish"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2081,7 +2081,7 @@ fn completions_install_fish_overwrites_script() {
     assert!(!content.contains("# old stale content"));
     // The fish completion script clap_complete produces references the
     // command name and at least one subcommand.
-    assert!(content.contains("vault"));
+    assert!(content.contains("norn"));
 }
 
 #[test]
@@ -2097,8 +2097,8 @@ fn completions_install_powershell_writes_marker_block() {
         .path()
         .join(".config/powershell/Microsoft.PowerShell_profile.ps1");
     let content = fs::read_to_string(&profile).unwrap();
-    assert!(content.contains("# >>> vault completions"));
-    assert!(content.contains("vault completions init powershell"));
+    assert!(content.contains("# >>> norn completions"));
+    assert!(content.contains("norn completions init powershell"));
     assert!(content.contains("Invoke-Expression"));
 }
 
@@ -2106,7 +2106,7 @@ fn completions_install_powershell_writes_marker_block() {
 fn completions_install_powershell_honors_profile_env() {
     let dir = tempfile::TempDir::new().unwrap();
     let custom_profile = dir.path().join("custom_profile.ps1");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "powershell"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2115,13 +2115,13 @@ fn completions_install_powershell_honors_profile_env() {
         .unwrap();
     assert!(output.status.success());
     let content = fs::read_to_string(&custom_profile).unwrap();
-    assert!(content.contains("# >>> vault completions"));
+    assert!(content.contains("# >>> norn completions"));
 }
 
 #[test]
 fn completions_install_auto_detects_from_shell_env() {
     let dir = tempfile::TempDir::new().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2135,14 +2135,14 @@ fn completions_install_auto_detects_from_shell_env() {
         String::from_utf8_lossy(&output.stderr)
     );
     let zshrc = fs::read_to_string(dir.path().join(".zshrc")).unwrap();
-    assert!(zshrc.contains("# >>> vault completions"));
-    assert!(zshrc.contains("eval \"$(vault completions init zsh)\""));
+    assert!(zshrc.contains("# >>> norn completions"));
+    assert!(zshrc.contains("eval \"$(norn completions init zsh)\""));
 }
 
 #[test]
 fn completions_install_print_for_nushell_shows_both_targets() {
     let dir = tempfile::TempDir::new().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "nushell", "--print"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2151,12 +2151,12 @@ fn completions_install_print_for_nushell_shows_both_targets() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     // Both targets named
-    assert!(stdout.contains("vault.nu"));
+    assert!(stdout.contains("norn.nu"));
     assert!(stdout.contains("config.nu"));
     // No files written
     assert!(!dir
         .path()
-        .join(".config/nushell/completions/vault.nu")
+        .join(".config/nushell/completions/norn.nu")
         .exists());
     assert!(!dir.path().join(".config/nushell/config.nu").exists());
 }
@@ -2230,7 +2230,7 @@ fn repair_apply_adds_missing_required_field() {
 #[test]
 fn completions_install_print_does_not_write() {
     let dir = tempfile::TempDir::new().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args(["completions", "install", "bash", "--print"])
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
@@ -2239,7 +2239,7 @@ fn completions_install_print_does_not_write() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("Would write to"));
-    assert!(stdout.contains("# >>> vault completions"));
+    assert!(stdout.contains("# >>> norn completions"));
     // No file should have been created.
     assert!(!dir.path().join(".bashrc").exists());
 }
@@ -2677,10 +2677,10 @@ fn cache_rebuild_repopulates_after_adding_documents() {
 /// causing `vault find` to return zero results.
 fn vault_success_in_minimal_vault(args: &[&str]) -> (String, String) {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-ansi-test")
+        .prefix("norn-ansi-test")
         .tempdir()
         .expect("tempdir");
-    let vault_dir = tmp.path().join(".vault");
+    let vault_dir = tmp.path().join(".norn");
     fs::create_dir_all(&vault_dir).unwrap();
     fs::write(
         vault_dir.join("config.yaml"),
@@ -2693,7 +2693,7 @@ fn vault_success_in_minimal_vault(args: &[&str]) -> (String, String) {
     let mut full = vec!["--cwd", cwd_arg.as_str()];
     full.extend_from_slice(args);
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(&full);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault command should run");
@@ -2742,10 +2742,10 @@ fn find_paths_format_contains_no_ansi_under_color_always() {
 #[test]
 fn find_with_no_predicate_shows_help_on_stderr_exit_2() {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-find-help-test")
+        .prefix("norn-find-help-test")
         .tempdir()
         .expect("tempdir");
-    let vault_dir = tmp.path().join(".vault");
+    let vault_dir = tmp.path().join(".norn");
     fs::create_dir_all(&vault_dir).unwrap();
     fs::write(
         vault_dir.join("config.yaml"),
@@ -2753,7 +2753,7 @@ fn find_with_no_predicate_shows_help_on_stderr_exit_2() {
     )
     .unwrap();
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "find"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault find should run");

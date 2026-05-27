@@ -1,9 +1,9 @@
-//! `vault config validate` — validate the config file itself (distinct
-//! from `vault validate`, which validates vault content against the rules
+//! `norn config validate` — validate the config file itself (distinct
+//! from `norn validate`, which validates vault content against the rules
 //! in the config).
 //!
 //! Findings share the shape `{code, severity, path, message}` with
-//! `vault validate` so agents can handle both with one parser. Exit codes:
+//! `norn validate` so agents can handle both with one parser. Exit codes:
 //!
 //! - `0` — clean (no findings).
 //! - `1` — warnings only.
@@ -27,7 +27,7 @@ use crate::output::glyphs::{self, Glyph};
 use crate::output::palette::{self, Palette};
 use crate::output::primitives;
 
-/// One validation finding. Shape mirrors `vault validate` so agents can
+/// One validation finding. Shape mirrors `norn validate` so agents can
 /// parse output from both commands with the same code path.
 #[derive(Debug, Serialize)]
 struct Finding {
@@ -44,7 +44,7 @@ const SEVERITY_CLEAN: u8 = 0;
 const SEVERITY_WARNING: u8 = 1;
 const SEVERITY_ERROR: u8 = 2;
 
-/// Run `vault config validate`. Returns the process exit code.
+/// Run `norn config validate`. Returns the process exit code.
 pub fn run(
     cwd: &Utf8Path,
     config_override: Option<&Utf8PathBuf>,
@@ -52,7 +52,7 @@ pub fn run(
     color: ColorWhen,
 ) -> Result<i32> {
     // Missing/unreadable config → exit 3 (distinct from error findings).
-    // We deliberately swallow the discover error here; `vault config show`
+    // We deliberately swallow the discover error here; `norn config show`
     // surfaces the same condition as exit 1 via the standard error path,
     // but validate's job is to *report* on the config, so "no config" is a
     // first-class outcome with its own exit code.
@@ -140,7 +140,7 @@ fn render(
         ConfigFormat::Jsonl => {
             // NDJSON: one finding per line. When there are zero findings,
             // jsonl emits zero lines — the absence of output IS the signal,
-            // mirroring how `vault validate --format jsonl` behaves on a
+            // mirroring how `norn validate --format jsonl` behaves on a
             // clean vault.
             for f in findings {
                 writeln!(out, "{}", serde_json::to_string(f)?)?;
@@ -209,9 +209,9 @@ fn render_records(
 
 fn fix_hint(code: &str) -> Option<&'static str> {
     match code {
-        "config-parse-error" => Some("edit the file, then re-run `vault config validate`"),
+        "config-parse-error" => Some("edit the file, then re-run `norn config validate`"),
         "unknown-schema-version" => Some(
-            "run `vault config migrate`, or use the build of vault that matches this schema version",
+            "run `norn config migrate`, or use the build of norn that matches this schema version",
         ),
         _ => None,
     }
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn collect_findings_clean_config_is_empty() {
         let yaml = "version: 1\nfiles:\n  ignore: []\n";
-        let (findings, max) = collect_findings(yaml, Utf8Path::new("/v/.vault/config.yaml"));
+        let (findings, max) = collect_findings(yaml, Utf8Path::new("/v/.norn/config.yaml"));
         assert!(findings.is_empty());
         assert_eq!(max, SEVERITY_CLEAN);
     }
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn collect_findings_unknown_version_emits_unknown_schema_version() {
         let yaml = "version: 99\nfiles:\n  ignore: []\n";
-        let (findings, max) = collect_findings(yaml, Utf8Path::new("/v/.vault/config.yaml"));
+        let (findings, max) = collect_findings(yaml, Utf8Path::new("/v/.norn/config.yaml"));
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "unknown-schema-version");
         assert_eq!(findings[0].severity, "error");
@@ -249,7 +249,7 @@ mod tests {
     #[test]
     fn collect_findings_unknown_field_emits_config_parse_error() {
         let yaml = "version: 1\nbogus: true\n";
-        let (findings, max) = collect_findings(yaml, Utf8Path::new("/v/.vault/config.yaml"));
+        let (findings, max) = collect_findings(yaml, Utf8Path::new("/v/.norn/config.yaml"));
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "config-parse-error");
         assert_eq!(findings[0].severity, "error");
@@ -261,14 +261,14 @@ mod tests {
         let findings = vec![Finding {
             code: "unknown-schema-version",
             severity: "error",
-            path: "/v/.vault/config.yaml".into(),
+            path: "/v/.norn/config.yaml".into(),
             message: "msg".into(),
         }];
         let mut buf = Vec::new();
         let palette = Palette::off();
         render(
             &findings,
-            ".vault/config.yaml",
+            ".norn/config.yaml",
             ConfigFormat::Json,
             &palette,
             &mut buf,
@@ -277,7 +277,7 @@ mod tests {
         let parsed: Value = serde_json::from_slice(&buf).unwrap();
         assert_eq!(parsed["findings"][0]["code"], "unknown-schema-version");
         assert_eq!(parsed["findings"][0]["severity"], "error");
-        assert_eq!(parsed["findings"][0]["path"], "/v/.vault/config.yaml");
+        assert_eq!(parsed["findings"][0]["path"], "/v/.norn/config.yaml");
     }
 
     #[test]
@@ -300,7 +300,7 @@ mod tests {
         let palette = Palette::off();
         render(
             &findings,
-            ".vault/config.yaml",
+            ".norn/config.yaml",
             ConfigFormat::Jsonl,
             &palette,
             &mut buf,
@@ -318,9 +318,9 @@ mod tests {
         let findings: Vec<Finding> = Vec::new();
         let mut buf = Vec::new();
         let palette = Palette::off();
-        render_records(&findings, ".vault/config.yaml", &palette, &mut buf).unwrap();
+        render_records(&findings, ".norn/config.yaml", &palette, &mut buf).unwrap();
         let text = String::from_utf8(buf).unwrap();
-        assert!(text.contains("validating .vault/config.yaml…"));
+        assert!(text.contains("validating .norn/config.yaml…"));
         assert!(text.contains("✓"));
         // No per-finding block on a clean run.
         assert!(!text.contains("config-parse-error"));
@@ -332,19 +332,19 @@ mod tests {
         let findings = vec![Finding {
             code: "unknown-schema-version",
             severity: "error",
-            path: ".vault/config.yaml".into(),
+            path: ".norn/config.yaml".into(),
             message: "config has version 99 but this build only recognizes 1".into(),
         }];
         let mut buf = Vec::new();
         let palette = Palette::off();
-        render_records(&findings, ".vault/config.yaml", &palette, &mut buf).unwrap();
+        render_records(&findings, ".norn/config.yaml", &palette, &mut buf).unwrap();
         let text = String::from_utf8(buf).unwrap();
-        assert!(text.contains("validating .vault/config.yaml…"));
+        assert!(text.contains("validating .norn/config.yaml…"));
         assert!(text.contains("✗"));
         assert!(text.contains("1 error"));
         assert!(text.contains("unknown-schema-version"));
         // 4-indent fix line.
         assert!(text.contains("    fix: "));
-        assert!(text.contains("vault config migrate"));
+        assert!(text.contains("norn config migrate"));
     }
 }

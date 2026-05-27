@@ -15,7 +15,7 @@ fn isolate_cache(command: &mut Command) -> TempDir {
 
 #[test]
 fn config_help_lists_show_validate_migrate_edit() {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["config", "--help"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault config --help should run");
@@ -41,7 +41,7 @@ fn config_help_lists_show_validate_migrate_edit() {
 }
 
 fn write_config(dir: &std::path::Path, body: &str) {
-    let vault_dir = dir.join(".vault");
+    let vault_dir = dir.join(".norn");
     fs::create_dir_all(&vault_dir).unwrap();
     fs::write(vault_dir.join("config.yaml"), body).unwrap();
 }
@@ -49,7 +49,7 @@ fn write_config(dir: &std::path::Path, body: &str) {
 #[test]
 fn config_show_without_config_errors_with_hint() {
     let tmp = TempDir::new().unwrap();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "config", "show"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault config show should run");
@@ -58,10 +58,10 @@ fn config_show_without_config_errors_with_hint() {
     assert_eq!(output.status.code(), Some(1), "expected exit code 1");
     let stderr = String::from_utf8(output.stderr).expect("stderr UTF-8");
     assert!(
-        stderr.contains("no .vault/config.yaml found"),
+        stderr.contains("no .norn/config.yaml found"),
         "stderr={stderr}"
     );
-    assert!(stderr.contains("vault init"), "stderr={stderr}");
+    assert!(stderr.contains("norn init"), "stderr={stderr}");
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn config_show_records_includes_paths_and_counts() {
         tmp.path(),
         "version: 1\nfiles:\n  ignore:\n    - a\n    - b\nvalidate:\n  required_frontmatter: [x]\n  rules: []\nrepair:\n  rules: []\n",
     );
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args([
         "--cwd",
         tmp.path().to_str().unwrap(),
@@ -97,7 +97,7 @@ fn config_show_records_includes_paths_and_counts() {
     assert!(parsed["file"]
         .as_str()
         .unwrap()
-        .ends_with(".vault/config.yaml"));
+        .ends_with(".norn/config.yaml"));
     assert_eq!(parsed["files"]["ignore_count"], 2);
     assert_eq!(parsed["validate"]["required_count"], 1);
     assert_eq!(parsed["validate"]["rule_count"], 0);
@@ -108,7 +108,7 @@ fn config_show_records_includes_paths_and_counts() {
 fn config_show_uses_records_default_on_tty_like_output() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 1\nfiles:\n  ignore: []\n");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args([
         "--cwd",
         tmp.path().to_str().unwrap(),
@@ -134,7 +134,7 @@ fn config_show_uses_records_default_on_tty_like_output() {
     // lines[1] is the header — the config file path.
     let header_line = text.lines().nth(1).unwrap_or("");
     assert!(
-        header_line.ends_with(".vault/config.yaml"),
+        header_line.ends_with(".norn/config.yaml"),
         "expected file path header, got: {header_line:?}"
     );
     // Field rows are 2-indent.
@@ -152,7 +152,7 @@ fn config_show_uses_records_default_on_tty_like_output() {
 fn config_validate_clean_returns_exit_0() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 1\nfiles:\n  ignore: []\n");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "config", "validate"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault config validate should run");
@@ -170,7 +170,7 @@ fn config_validate_clean_returns_exit_0() {
 fn config_validate_unknown_version_reports_error_exit_2() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 99\nfiles:\n  ignore: []\n");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args([
         "--cwd",
         tmp.path().to_str().unwrap(),
@@ -202,7 +202,7 @@ fn config_validate_unknown_version_reports_error_exit_2() {
 fn config_validate_unknown_field_reports_error_exit_2() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 1\nbogus: true\n");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "config", "validate"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault config validate should run");
@@ -219,7 +219,7 @@ fn config_validate_unknown_field_reports_error_exit_2() {
 #[test]
 fn config_validate_missing_file_returns_exit_3() {
     let tmp = TempDir::new().unwrap();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "config", "validate"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault config validate should run");
@@ -237,7 +237,7 @@ fn config_validate_missing_file_returns_exit_3() {
 fn config_migrate_v1_prints_nothing_to_migrate() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 1\nfiles:\n  ignore: []\n");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "config", "migrate"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault config migrate should run");
@@ -259,7 +259,7 @@ fn config_migrate_v1_prints_nothing_to_migrate() {
 #[test]
 fn config_migrate_missing_file_returns_exit_1() {
     let tmp = TempDir::new().unwrap();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vault"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_norn"));
     command.args(["--cwd", tmp.path().to_str().unwrap(), "config", "migrate"]);
     let _cache_dir = isolate_cache(&mut command);
     let output = command.output().expect("vault config migrate should run");
@@ -277,7 +277,7 @@ fn config_migrate_missing_file_returns_exit_1() {
 fn config_edit_no_editor_set_returns_exit_1() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 1\n");
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.env_remove("VISUAL").env_remove("EDITOR").args([
         "--cwd",
@@ -295,7 +295,7 @@ fn config_edit_no_editor_set_returns_exit_1() {
 #[test]
 fn config_edit_no_config_file_returns_exit_1() {
     let tmp = TempDir::new().unwrap();
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.env("EDITOR", "true").env_remove("VISUAL").args([
         "--cwd",
@@ -307,14 +307,14 @@ fn config_edit_no_config_file_returns_exit_1() {
     let out = command.output().unwrap();
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8(out.stderr).unwrap();
-    assert!(stderr.contains("no .vault/config.yaml"), "stderr={stderr}");
+    assert!(stderr.contains("no .norn/config.yaml"), "stderr={stderr}");
 }
 
 #[test]
 fn config_edit_with_true_editor_exits_0_after_post_validate() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 1\nfiles:\n  ignore: []\n");
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.env("EDITOR", "true").env_remove("VISUAL").args([
         "--cwd",
@@ -332,7 +332,7 @@ fn config_edit_visual_takes_precedence_over_editor() {
     let tmp = TempDir::new().unwrap();
     write_config(tmp.path(), "version: 1\n");
     // `false` exits 1; if VISUAL wins, the wrapper sees editor failure.
-    let bin = env!("CARGO_BIN_EXE_vault");
+    let bin = env!("CARGO_BIN_EXE_norn");
     let mut command = Command::new(bin);
     command.env("VISUAL", "false").env("EDITOR", "true").args([
         "--cwd",

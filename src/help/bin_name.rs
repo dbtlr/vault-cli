@@ -11,6 +11,6 @@ mod tests {
 
     #[test]
     fn bin_name_matches_cargo_bin_name() {
-        assert_eq!(BIN_NAME, "vault");
+        assert_eq!(BIN_NAME, "norn");
     }
 }

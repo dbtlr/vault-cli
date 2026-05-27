@@ -113,7 +113,7 @@ fn serialize_array(items: &[Value], original_style: ValueStyle) -> Result<String
 
 /// Serialize a brand-new document with frontmatter and body.
 ///
-/// Used by `vault new` (and any future caller that synthesizes a complete
+/// Used by `norn new` (and any future caller that synthesizes a complete
 /// Markdown file from scratch). Unlike [`serialize_value_preserving_style`]
 /// which operates on individual values for in-place editing, this entry
 /// point emits a full `---` frontmatter block plus body.
@@ -121,7 +121,7 @@ fn serialize_array(items: &[Value], original_style: ValueStyle) -> Result<String
 /// Semantics:
 /// - Fields are emitted in key order (BTreeMap iteration order).
 /// - `Value::Null` fields are skipped (e.g., required-but-undefaulted
-///   fields per the `vault new` warn-don't-block model).
+///   fields per the `norn new` warn-don't-block model).
 /// - Array values use [`serialize_array_block_for_new_field`].
 /// - Scalar values pick a style based on YAML safety: wikilinks / strings
 ///   with `:` / strings starting with YAML indicators are quoted; others
@@ -336,13 +336,12 @@ mod serialize_new_document_tests {
     #[test]
     fn serialize_new_document_quotes_wikilink_values() {
         let mut fm = BTreeMap::new();
-        fm.insert("workspace".into(), json!("[[vault-cli]]"));
+        fm.insert("workspace".into(), json!("[[norn]]"));
 
         let out = serialize_new_document(&fm, "").unwrap();
         // Wikilinks must be quoted — `[` starts a YAML flow sequence otherwise.
         assert!(
-            out.contains("workspace: \"[[vault-cli]]\"\n")
-                || out.contains("workspace: '[[vault-cli]]'\n"),
+            out.contains("workspace: \"[[norn]]\"\n") || out.contains("workspace: '[[norn]]'\n"),
             "expected quoted wikilink, got:\n{out}"
         );
     }

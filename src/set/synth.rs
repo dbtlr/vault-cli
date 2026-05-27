@@ -1,4 +1,4 @@
-//! `vault set` plan synthesis: CLI args → RepairPlan.
+//! `norn set` plan synthesis: CLI args → RepairPlan.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -425,7 +425,7 @@ pub struct PreflightOutcome {
     pub body_bytes_old: usize,
 }
 
-/// End-to-end plan synthesis for `vault set`:
+/// End-to-end plan synthesis for `norn set`:
 /// resolve target → load doc → optionally read stdin → schema-aware synth →
 /// wikilink resolution sweep → optional body op → stamp path/hash → wrap
 /// into a RepairPlan.
@@ -636,15 +636,15 @@ mod tests {
 
     fn fixture_cache() -> (tempfile::TempDir, Cache) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-set-resolve-")
+            .prefix("norn-set-resolve-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())
             .unwrap()
             .to_path_buf();
 
-        std::fs::create_dir_all(tmp.path().join(".vault")).unwrap();
-        std::fs::write(tmp.path().join(".vault/config.yaml"), "validate: {}\n").unwrap();
+        std::fs::create_dir_all(tmp.path().join(".norn")).unwrap();
+        std::fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
         std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
         std::fs::write(tmp.path().join("notes/foo.md"), "---\ntype: note\n---\n").unwrap();
         std::fs::write(tmp.path().join("notes/bar.md"), "---\ntype: note\n---\n").unwrap();
@@ -694,14 +694,14 @@ mod tests {
     #[test]
     fn resolve_target_returns_error_when_ambiguous() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-set-ambig-")
+            .prefix("norn-set-ambig-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())
             .unwrap()
             .to_path_buf();
-        std::fs::create_dir_all(tmp.path().join(".vault")).unwrap();
-        std::fs::write(tmp.path().join(".vault/config.yaml"), "validate: {}\n").unwrap();
+        std::fs::create_dir_all(tmp.path().join(".norn")).unwrap();
+        std::fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
         std::fs::create_dir_all(tmp.path().join("a")).unwrap();
         std::fs::create_dir_all(tmp.path().join("b")).unwrap();
         std::fs::write(tmp.path().join("a/shared.md"), "---\ntype: note\n---\n").unwrap();

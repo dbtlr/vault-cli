@@ -1,4 +1,4 @@
-//! Text + JSON renderers for `vault self-update`.
+//! Text + JSON renderers for `norn self-update`.
 
 use std::io::Write;
 
@@ -41,7 +41,7 @@ pub fn render_text<W: Write>(
             "Dry run — already on {}, no update available",
             report.current_version
         )?,
-        Action::Updated => writeln!(out, "Updated vault to {}", report.target_version)?,
+        Action::Updated => writeln!(out, "Updated norn to {}", report.target_version)?,
         Action::NoOp => writeln!(
             out,
             "Already on {} — no update available",
@@ -149,8 +149,8 @@ mod tests {
         render_text(&mut buf, &palette, &report).unwrap();
         let text = String::from_utf8(buf).unwrap();
         assert!(
-            text.contains("Updated vault to 0.33.1"),
-            "expected 'Updated vault to 0.33.1' in output: {text}"
+            text.contains("Updated norn to 0.33.1"),
+            "expected 'Updated norn to 0.33.1' in output: {text}"
         );
     }
 }

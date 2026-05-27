@@ -189,7 +189,7 @@ pub(crate) fn render_report(
     let action_hint = if report.dry_run {
         "run without --dry-run to apply"
     } else {
-        "run `vault validate` to verify"
+        "run `norn validate` to verify"
     };
 
     // When verify is present, it replaces the action hint (already inline in the parts).
@@ -559,7 +559,7 @@ mod tests {
         let last = out.lines().last().unwrap();
         assert_eq!(
             last,
-            "134 of 134 applied · 75 files changed · run `vault validate` to verify"
+            "134 of 134 applied · 75 files changed · run `norn validate` to verify"
         );
     }
 

@@ -10,7 +10,7 @@ const DEFAULT_FLAG_HEADING: &str = "Options";
 
 /// Walk the given clap `Command` and produce a fully-populated `HelpModel`.
 ///
-/// - `cmd_path` is the user-facing path string, e.g. `"vault find"`. The
+/// - `cmd_path` is the user-facing path string, e.g. `"norn find"`. The
 ///   caller assembles this from `BIN_NAME` and the subcommand chain.
 /// - `root` is the root `Cli::command()`. When `cmd` is a subcommand,
 ///   global options are read from `root` (clap only marks them `global_set`
@@ -178,7 +178,7 @@ mod tests {
                     .short('C')
                     .long("cwd")
                     .global(true)
-                    .help("Run as if vault started in this directory")
+                    .help("Run as if norn started in this directory")
                     .help_heading("Global options"),
             )
             .arg(
@@ -193,28 +193,28 @@ mod tests {
     #[test]
     fn extracts_about() {
         let cmd = sample_command();
-        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "norn find", HelpForm::Short);
         assert_eq!(model.about, "Find documents");
     }
 
     #[test]
     fn short_form_omits_long_about() {
         let cmd = sample_command();
-        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "norn find", HelpForm::Short);
         assert!(model.long_about.is_none());
     }
 
     #[test]
     fn long_form_includes_long_about() {
         let cmd = sample_command();
-        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Long);
+        let model = build_model(&cmd, &cmd, "norn find", HelpForm::Long);
         assert!(model.long_about.as_deref().unwrap().contains("vault"));
     }
 
     #[test]
     fn groups_flags_by_help_heading() {
         let cmd = sample_command();
-        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "norn find", HelpForm::Short);
         let filter = model
             .groups
             .iter()
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn groups_preserve_first_seen_order() {
         let cmd = sample_command();
-        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "norn find", HelpForm::Short);
         let headings: Vec<&str> = model.groups.iter().map(|g| g.heading.as_str()).collect();
         assert_eq!(headings, vec!["Filter options", "Output"]);
     }
@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn globals_are_separated() {
         let cmd = sample_command();
-        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "norn find", HelpForm::Short);
         assert_eq!(model.globals.len(), 1);
         assert_eq!(model.globals[0].long.as_deref(), Some("cwd"));
         // The global should NOT appear inside a group.
@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn value_names_are_captured() {
         let cmd = sample_command();
-        let model = build_model(&cmd, &cmd, "vault find", HelpForm::Short);
+        let model = build_model(&cmd, &cmd, "norn find", HelpForm::Short);
         let text = model
             .groups
             .iter()

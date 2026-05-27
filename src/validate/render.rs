@@ -1,4 +1,4 @@
-//! Format dispatch + per-format renderers for `vault validate`.
+//! Format dispatch + per-format renderers for `norn validate`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;

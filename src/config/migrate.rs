@@ -1,4 +1,4 @@
-//! `vault config migrate` — migrate the config file to the schema version
+//! `norn config migrate` — migrate the config file to the schema version
 //! this build understands. In v1 the only known schema is `1`, so migrate
 //! is a deliberate no-op that reserves the verb for future schema bumps:
 //! a v2 schema can land without users having to learn a new command.
@@ -25,7 +25,7 @@ fn write_noop(out: &mut dyn std::io::Write, version: u32) -> std::io::Result<()>
     writeln!(out, "config is on schema v{version} — nothing to migrate")
 }
 
-/// Run `vault config migrate`. Returns the process exit code.
+/// Run `norn config migrate`. Returns the process exit code.
 pub fn run(cwd: &Utf8Path, config_override: Option<&Utf8PathBuf>) -> Result<i32> {
     let discovery = discover(cwd, config_override)?;
     let yaml = std::fs::read_to_string(&discovery.config_file)?;

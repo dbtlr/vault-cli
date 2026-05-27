@@ -3,11 +3,11 @@ use std::process::Command;
 
 fn fixture_vault() -> tempfile::TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-apply-orthog-")
+        .prefix("norn-apply-orthog-")
         .tempdir()
         .unwrap();
-    fs::create_dir_all(tmp.path().join(".vault")).unwrap();
-    fs::write(tmp.path().join(".vault/config.yaml"), "validate: {}\n").unwrap();
+    fs::create_dir_all(tmp.path().join(".norn")).unwrap();
+    fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
     tmp
 }
 
@@ -41,7 +41,7 @@ fn apply_out_alone_writes_file_and_keeps_stdout_silent() {
     let vault = fixture_vault();
     let plan_path = write_plan_file(&vault);
     let out_path = vault.path().join("report.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),
@@ -78,7 +78,7 @@ fn apply_out_plus_format_report_writes_file_and_emits_report_to_stdout() {
     let vault = fixture_vault();
     let plan_path = write_plan_file(&vault);
     let out_path = vault.path().join("report.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),
@@ -113,7 +113,7 @@ fn apply_out_plus_format_json_writes_json_to_both_streams() {
     let vault = fixture_vault();
     let plan_path = write_plan_file(&vault);
     let out_path = vault.path().join("report.json");
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),
@@ -147,7 +147,7 @@ fn apply_no_out_no_format_uses_tty_vs_piped_default_when_piped() {
     // When stdout is piped (test environment), default is JSON.
     let vault = fixture_vault();
     let plan_path = write_plan_file(&vault);
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),
@@ -175,7 +175,7 @@ fn apply_no_out_no_format_uses_tty_vs_piped_default_when_piped() {
 fn apply_format_report_explicit_emits_report() {
     let vault = fixture_vault();
     let plan_path = write_plan_file(&vault);
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),
@@ -205,7 +205,7 @@ fn apply_format_report_explicit_emits_report() {
 fn apply_format_paths_empty_on_empty_plan() {
     let vault = fixture_vault();
     let plan_path = write_plan_file(&vault);
-    let output = Command::new(env!("CARGO_BIN_EXE_vault"))
+    let output = Command::new(env!("CARGO_BIN_EXE_norn"))
         .args([
             "--cwd",
             vault.path().to_str().unwrap(),

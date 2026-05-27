@@ -243,10 +243,10 @@ mod tests {
     fn captures_single_named_variable() {
         let caps = captures(
             "Workspaces/{{workspace}}/tasks/*.md",
-            "Workspaces/vault-cli/tasks/foo.md",
+            "Workspaces/norn/tasks/foo.md",
         )
         .unwrap();
-        assert_eq!(caps.get("workspace"), Some(&"vault-cli".to_string()));
+        assert_eq!(caps.get("workspace"), Some(&"norn".to_string()));
     }
 
     #[test]
@@ -261,7 +261,7 @@ mod tests {
         // {{name}} matches a single segment; should not match across '/'.
         assert!(captures(
             "Workspaces/{{workspace}}/tasks/*.md",
-            "Workspaces/vault-cli/sub/tasks/foo.md",
+            "Workspaces/norn/sub/tasks/foo.md",
         )
         .is_none());
     }

@@ -10,8 +10,8 @@ use super::palette::Palette;
 /// Returns true when the error chain contains a broken-pipe IO error.
 ///
 /// Used in `main` to suppress the exit-1 that would otherwise fire when
-/// a consumer closes the read end of a pipe before vault finishes writing
-/// (e.g. `vault find … | head -5`).
+/// a consumer closes the read end of a pipe before norn finishes writing
+/// (e.g. `norn find … | head -5`).
 pub fn is_broken_pipe(error: &Error) -> bool {
     error.chain().any(|cause| {
         cause
@@ -310,10 +310,10 @@ mod tests {
     #[test]
     fn status_headline_writes_text_then_ellipsis_and_newline() {
         let mut out = Vec::new();
-        status_headline(&mut out, &Palette::off(), "validating .vault/config.yaml").unwrap();
+        status_headline(&mut out, &Palette::off(), "validating .norn/config.yaml").unwrap();
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            "validating .vault/config.yaml…\n"
+            "validating .norn/config.yaml…\n"
         );
     }
 
@@ -581,12 +581,12 @@ mod tests {
             &mut out,
             &Palette::off(),
             NoteLabel::Tip,
-            "edit then run vault validate",
+            "edit then run norn validate",
         )
         .unwrap();
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            "tip: edit then run vault validate\n"
+            "tip: edit then run norn validate\n"
         );
     }
 

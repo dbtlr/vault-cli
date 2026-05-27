@@ -2,7 +2,7 @@ use camino::Utf8PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(name = "vault")]
+#[command(name = "norn")]
 #[command(about = "Deterministic Markdown vault graph tools")]
 #[command(version)]
 #[command(disable_help_flag = true)]
@@ -13,14 +13,14 @@ pub struct Cli {
         long,
         global = true,
         help_heading = "Global options",
-        help = "Run as if vault started in this directory"
+        help = "Run as if norn started in this directory"
     )]
     pub cwd: Option<Utf8PathBuf>,
     #[arg(
         long,
         global = true,
         help_heading = "Global options",
-        help = "YAML config file. Defaults to <cwd>/.vault/config.yaml when present"
+        help = "YAML config file. Defaults to <cwd>/.norn/config.yaml when present"
     )]
     pub config: Option<Utf8PathBuf>,
     #[arg(
@@ -89,11 +89,11 @@ pub enum Command {
         about = "Update one document — schema-aware frontmatter mutation + wholesale body replacement",
         long_about = "Update one document: mutate frontmatter fields and optionally replace the body.\n\
 \n\
-WORKFLOW: vault set runs schema-aware validation against the configured field_types rules, \
+WORKFLOW: norn set runs schema-aware validation against the configured field_types rules, \
 then applies all ops as a single atomic filesystem write, then emits a SetReport (records on \
 TTY, JSON when piped or --format json is set).\n\
 \n\
-SAFE BY DEFAULT: vault set is destructive. In a TTY, it shows a preview and prompts for \
+SAFE BY DEFAULT: norn set is destructive. In a TTY, it shows a preview and prompts for \
 confirmation. Without --yes (and in a non-TTY context), nothing is written — the preview is \
 your dry-run.\n\
 \n\
@@ -119,25 +119,25 @@ Exit codes: 0 success or dry-run, 1 operator-cancelled, 2 pre-flight refusal."
         about = "Create a new document — schema-aware frontmatter pre-fill from path rules",
         long_about = "Create a new Markdown document with frontmatter pre-filled from the path's schema rules.\n\
 \n\
-`vault new` is the create verb of the CRUD-ish mutation surface (sibling to `vault get`, `vault set`,\n\
-`vault move`, `vault delete`). It infers required-field defaults from matching schema rules, applies\n\
+`norn new` is the create verb of the CRUD-ish mutation surface (sibling to `norn get`, `norn set`,\n\
+`norn move`, `norn delete`). It infers required-field defaults from matching schema rules, applies\n\
 substitution (date/time/title/path variables), and writes the new document atomically.\n\
 \n\
 Operator overrides via --field always win over schema defaults. Refuses if path exists (unless\n\
 --force) or parent directory missing (unless -p). Safe-by-default apply model with TTY confirm,\n\
 non-TTY implicit dry-run, --yes, and --dry-run.\n\
 \n\
-After write, `vault validate` runs against the new doc; findings surface as envelope warnings."
+After write, `norn validate` runs against the new doc; findings surface as envelope warnings."
     )]
     New(NewArgs),
-    #[command(disable_help_flag = true, about = "Scaffold .vault/config.yaml")]
+    #[command(disable_help_flag = true, about = "Scaffold .norn/config.yaml")]
     Init(InitArgs),
     #[command(
         disable_help_flag = true,
         about = "Move/rename a document with cascading backlink rewrites",
         long_about = "Move or rename a document and rewrite incoming wikilinks across the vault.\n\
 \n\
-SAFE BY DEFAULT: vault move is destructive. In a TTY, it shows a preview and prompts for confirmation. \
+SAFE BY DEFAULT: norn move is destructive. In a TTY, it shows a preview and prompts for confirmation. \
 Without --yes (and in a non-TTY context), nothing is written — the preview is your dry-run.\n\
 \n\
 Flags:\n  \
@@ -156,11 +156,11 @@ Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-fli
         about = "Delete a document, optionally redirecting incoming links to an alternate target",
         long_about = "Delete a document, optionally redirecting incoming links to an alternate target.\n\
 \n\
-SAFE BY DEFAULT: vault delete is destructive. In a TTY, it shows a preview and prompts for confirmation. \
+SAFE BY DEFAULT: norn delete is destructive. In a TTY, it shows a preview and prompts for confirmation. \
 Without --yes (and in a non-TTY context), nothing is written — the preview is your dry-run.\n\
 \n\
-Incoming links: vault delete REFUSES (exit 2) when the target has incoming links unless one of these is given:\n  \
---allow-broken-links   Delete and let the broken links surface as link-target-missing findings in vault validate.\n  \
+Incoming links: norn delete REFUSES (exit 2) when the target has incoming links unless one of these is given:\n  \
+--allow-broken-links   Delete and let the broken links surface as link-target-missing findings in norn validate.n  \
 --rewrite-to <ALT>     Redirect every incoming link to <ALT> before deleting. Mutually exclusive with --allow-broken-links.\n\
 \n\
 Flags:\n  \
@@ -195,7 +195,7 @@ Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-fli
     Cache(CacheCommand),
     #[command(
         disable_help_flag = true,
-        about = "Manage the per-vault `.vault/config.yaml`"
+        about = "Manage the per-vault `.norn/config.yaml`"
     )]
     Config(ConfigCommand),
     #[command(
@@ -206,9 +206,9 @@ Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-fli
     Manpage,
     #[command(
         disable_help_flag = true,
-        about = "Update vault to the latest GitHub release",
-        long_about = "Update vault to the latest GitHub release.\n\n\
-            Only works when vault was installed via the official GitHub install \
+        about = "Update norn to the latest GitHub release",
+        long_about = "Update norn to the latest GitHub release.\n\n\
+            Only works when norn was installed via the official GitHub install \
             script. If you installed via `cargo install`, Homebrew, or built \
             from source, use that tool's update mechanism instead.\n\n\
             `--dry-run` resolves the target version and prints the plan without \
@@ -292,7 +292,7 @@ pub enum RepairSubcommand {
     #[command(
         disable_help_flag = true,
         about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.",
-        long_about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.\n\nReads a JSON plan emitted by `vault repair plan` from a file path or stdin (when no positional or `-`). Mutates frontmatter (`set_frontmatter` / `remove_frontmatter` / `add_frontmatter` / `move_document`) and source-doc wikilinks (`rewrite_link`). Plan changes are gated by precondition checks; any failure aborts the whole apply before any partial writes (stderr error, exit 1).\n\nOutput formats: `report` (TTY default, human summary), `json` (pipe default, full RepairApplyReport envelope), `paths` (sorted dedup of changed files). Use `--out <PATH>` to write the JSON report to file independently of `--format` (stdout stays silent when `--out` is set without `--format`)."
+        long_about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.\n\nReads a JSON plan emitted by `norn repair plan` from a file path or stdin (when no positional or `-`). Mutates frontmatter (`set_frontmatter` / `remove_frontmatter` / `add_frontmatter` / `move_document`) and source-doc wikilinks (`rewrite_link`). Plan changes are gated by precondition checks; any failure aborts the whole apply before any partial writes (stderr error, exit 1).\n\nOutput formats: `report` (TTY default, human summary), `json` (pipe default, full RepairApplyReport envelope), `paths` (sorted dedup of changed files). Use `--out <PATH>` to write the JSON report to file independently of `--format` (stdout stays silent when `--out` is set without `--format`)."
     )]
     Apply(RepairApplyArgs),
 }
@@ -431,7 +431,7 @@ pub struct GraphArgs {
     pub format: Option<OutputFormat>,
 }
 
-/// Shared filter-predicate flags used by `vault find` (and, soon, `vault count`).
+/// Shared filter-predicate flags used by `norn find` (and, soon, `norn count`).
 ///
 /// Kept in `cli.rs` so the build script (`build.rs`) can include this file
 /// without intra-crate deps — `FilterArgs` only derives `clap::Args`.
@@ -522,7 +522,7 @@ pub struct FindArgs {
     pub filters: FilterArgs,
 
     /// Return every document — escape hatch when no predicate is specified.
-    /// Without --all and without any predicate, `vault find` prints its help
+    /// Without --all and without any predicate, `norn find` prints its help
     /// page (a full-vault dump is almost always a mistake; require opt-in).
     #[arg(long, help_heading = "Filter options")]
     pub all: bool,
@@ -875,7 +875,7 @@ pub enum CompletionsSubcommand {
     #[command(
         disable_help_flag = true,
         about = "Emit a shell completion script to stdout",
-        long_about = "Emit a shell completion script to stdout.\n\nMeant to be sourced or eval'd by the user's shell at startup. For one-command setup, prefer `vault completions install [shell]`."
+        long_about = "Emit a shell completion script to stdout.\n\nMeant to be sourced or eval'd by the user's shell at startup. For one-command setup, prefer `norn completions install [shell]`."
     )]
     Init(CompletionsInitArgs),
     #[command(
@@ -940,7 +940,7 @@ pub enum OutputFormat {
 pub enum RepairPlanFormat {
     /// Decision-support report for human review. Default for TTY.
     Report,
-    /// Full JSON envelope. Default when piped. Required for `vault repair apply` consumers.
+    /// Full JSON envelope. Default when piped. Required for `norn repair apply` consumers.
     Json,
     /// Affected document paths, one per line, sorted and deduplicated.
     Paths,
@@ -1039,7 +1039,7 @@ pub struct ConfigEditArgs {
 
 #[derive(Debug, Args)]
 pub struct InitArgs {
-    #[arg(long, help = "Overwrite an existing .vault/config.yaml")]
+    #[arg(long, help = "Overwrite an existing .norn/config.yaml")]
     pub force: bool,
 }
 

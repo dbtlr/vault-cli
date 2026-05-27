@@ -1,9 +1,9 @@
-//! Wikilink-input normalization and resolution for `vault show`. Strips
+//! Wikilink-input normalization and resolution for `norn show`. Strips
 //! wikilink syntax to a bare identifier and resolves it against the cache
 //! via exact-path probe then case-insensitive stem scan.
 
 /// Normalize a user-supplied target string. Accepts any of:
-///   - path:        `Workspaces/vault-cli/notes/foo.md`
+///   - path:        `Workspaces/norn/notes/foo.md`
 ///   - stem:        `foo`
 ///   - wikilink:    `[[foo]]`, `[[foo#anchor]]`, `[[foo^block-ref]]`, `[[foo|alias]]`
 ///
@@ -39,8 +39,8 @@ mod tests {
     #[test]
     fn path_passthrough() {
         assert_eq!(
-            normalize_target("Workspaces/vault-cli/notes/foo.md"),
-            "Workspaces/vault-cli/notes/foo.md"
+            normalize_target("Workspaces/norn/notes/foo.md"),
+            "Workspaces/norn/notes/foo.md"
         );
     }
 
@@ -174,7 +174,7 @@ mod resolver_tests {
 
     fn synth() -> (TempDir, Utf8PathBuf) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-show-")
+            .prefix("norn-show-")
             .tempdir()
             .unwrap();
         let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
@@ -238,7 +238,7 @@ mod resolver_tests {
     #[test]
     fn alias_addressing_resolves_when_stem_returns_nothing() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-show-alias-")
+            .prefix("norn-show-alias-")
             .tempdir()
             .unwrap();
         let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
@@ -268,7 +268,7 @@ mod resolver_tests {
     #[test]
     fn alias_addressing_skipped_when_alias_field_unconfigured() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-show-no-alias-")
+            .prefix("norn-show-no-alias-")
             .tempdir()
             .unwrap();
         let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
