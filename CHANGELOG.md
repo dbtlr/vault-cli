@@ -10,6 +10,10 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+## v0.34.0 - 2026-05-27
+
+The Norn rename release. Renames the project identity end-to-end from `vault-cli` to Norn: binary `vault` → `norn`, crate `vault-cli` → `norn-run` (published on crates.io as `norn-run`), config directory `.vault/` → `.norn/`, repository at `dbtlr/norn`. Pre-existing `v0.x` GitHub Releases and tags are deleted; this is the first Norn release with `norn-run-*` cargo-dist asset names. Domain-noun uses of "vault" (the user's Markdown directory; Rust `VaultGraph` / `vault_root` identifiers; README prose like "your Markdown vault") are preserved per the vault-word policy: product = norn, data = vault. Also bundled: the long-deferred 7-crate workspace collapse (commit `38fa0cb`, no user-visible behavior change) and the plan-staleness error-message polish that surfaced post-v0.33.0 grooming. 1,136 tests passing across 21 suites.
+
 ### Breaking changes
 
 - **Project renamed from `vault-cli` to Norn.** The binary is now `norn` (was `vault`); the published crate on crates.io is `norn-run`; the repository lives at `https://github.com/dbtlr/norn`. To migrate an existing installation: uninstall the old `vault` binary (`cargo uninstall vault-cli` if installed via cargo, or remove the old install per your installer), install `norn` via the new installer at https://github.com/dbtlr/norn/releases/latest, and run `mv .vault .norn` in any vault that had a `.vault/` config directory. There is no transitional fallback — Norn reads `.norn/config.yaml` only.
