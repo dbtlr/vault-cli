@@ -1,4 +1,4 @@
-//! Pre-flight checks for `vault new`.
+//! Pre-flight checks for `norn new`.
 //!
 //! Verifies the destination path is valid (`.md` extension, under vault root,
 //! not a dotfile), the destination doesn't exist (unless `--force`), and the

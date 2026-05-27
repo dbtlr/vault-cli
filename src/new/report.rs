@@ -1,4 +1,4 @@
-//! JSON envelope + TTY records rendering for `vault new`.
+//! JSON envelope + TTY records rendering for `norn new`.
 //! Filled in Task 7.5 / 7.6.
 //
 // `dead_code` silenced: public functions will be wired into the orchestrator
@@ -11,7 +11,7 @@ use crate::new::synth::{CreateDocumentPlan, FieldSourceKind, Warning};
 
 // ── Task 7.5: JSON envelope ───────────────────────────────────────────────────
 
-/// Render the `vault new` result as a pretty-printed JSON envelope.
+/// Render the `norn new` result as a pretty-printed JSON envelope.
 ///
 /// The envelope schema_version tracks the envelope shape itself (starts at 1).
 pub fn render_json(
@@ -76,7 +76,7 @@ fn warning_to_json(w: &Warning) -> Value {
 
 // ── Task 7.6: TTY records block ───────────────────────────────────────────────
 
-/// Render the `vault new` result as a human-readable records block.
+/// Render the `norn new` result as a human-readable records block.
 ///
 /// Shape (mirrors `set::report::render_records` conventions):
 /// ```text

@@ -1,4 +1,4 @@
-//! `vault delete` command: pre-flight validation, plan synthesis, render, dispatch.
+//! `norn delete` command: pre-flight validation, plan synthesis, render, dispatch.
 //!
 //! Plan synthesis builds a RepairPlan with one delete_document op. When
 //! --rewrite-to <ALT> is provided, link_risk is attached to the
@@ -75,7 +75,7 @@ pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::
                 if report.incoming_links.total > 0 {
                     writeln!(
                         out,
-                        "⚠ {} {} now broken (surface via vault validate)",
+                        "⚠ {} {} now broken (surface via norn validate)",
                         report.incoming_links.total,
                         plural(report.incoming_links.total, "link", "links"),
                     )?;
@@ -87,7 +87,7 @@ pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::
             (Some(alt), Some(rewrites)) => {
                 writeln!(
                     out,
-                    "vault delete {} → redirects {} incoming {} to {alt}",
+                    "norn delete {} → redirects {} incoming {} to {alt}",
                     report.target,
                     report.incoming_links.total,
                     plural(report.incoming_links.total, "link", "links"),
@@ -102,7 +102,7 @@ pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::
                 )?;
             }
             _ => {
-                writeln!(out, "vault delete {}", report.target)?;
+                writeln!(out, "norn delete {}", report.target)?;
                 if report.incoming_links.total > 0 {
                     writeln!(
                         out,
@@ -117,7 +117,7 @@ pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::
                     }
                     writeln!(
                         out,
-                        "  (broken links will surface as link-target-missing findings in `vault validate`)"
+                        "  (broken links will surface as link-target-missing findings in `norn validate`)"
                     )?;
                 }
             }
@@ -520,7 +520,7 @@ mod tests {
         let mut buf = Vec::new();
         render_records(&mut buf, &report).unwrap();
         let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("vault delete leaf.md"), "unexpected: {out}");
+        assert!(out.contains("norn delete leaf.md"), "unexpected: {out}");
         // No incoming link warning expected.
         assert!(!out.contains("will break"), "unexpected: {out}");
     }
@@ -546,7 +546,7 @@ mod tests {
         let mut buf = Vec::new();
         render_records(&mut buf, &report).unwrap();
         let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("vault delete b.md"), "unexpected: {out}");
+        assert!(out.contains("norn delete b.md"), "unexpected: {out}");
         assert!(
             out.contains("1 incoming link will break"),
             "unexpected: {out}"

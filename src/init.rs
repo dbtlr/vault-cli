@@ -1,4 +1,4 @@
-//! `vault init` — scaffold `.norn/config.yaml` for a fresh vault.
+//! `norn init` — scaffold `.norn/config.yaml` for a fresh vault.
 //!
 //! This is the bootstrap command. It runs in folders that may or may not
 //! contain Markdown, and crucially runs WITHOUT a config (it's creating
@@ -62,7 +62,7 @@ repair:
 
 const TOP_N: usize = 30;
 
-/// Run `vault init`. Returns the process exit code.
+/// Run `norn init`. Returns the process exit code.
 pub fn run(cwd: &Utf8Path, args: &InitArgs) -> Result<i32> {
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
@@ -121,7 +121,7 @@ fn run_to(cwd: &Utf8Path, args: &InitArgs, out: &mut dyn Write) -> Result<i32> {
         out,
         &palette,
         NoteLabel::Tip,
-        &format!("edit `{config_path}`, then run `vault validate`"),
+        &format!("edit `{config_path}`, then run `norn validate`"),
     )?;
     Ok(0)
 }
@@ -131,7 +131,7 @@ fn run_to(cwd: &Utf8Path, args: &InitArgs, out: &mut dyn Write) -> Result<i32> {
 /// incremental refresh path), then enumerate every document and tally the
 /// top-level frontmatter keys. A fresh rebuild is the cleanest approach:
 /// it's deterministic and the resulting cache is immediately reusable by
-/// the operator's next `vault find` / `validate` invocation.
+/// the operator's next `norn find` / `validate` invocation.
 fn scan_vault(cwd: &Utf8Path) -> Result<ScanResult> {
     let mut cache = Cache::open(cwd)?;
     cache.rebuild(cwd)?;
@@ -208,7 +208,7 @@ mod tests {
             "actual: {outcome:?}"
         );
         assert!(outcome.contains("tip: edit "), "actual: {outcome:?}");
-        assert!(outcome.contains("vault validate"), "actual: {outcome:?}");
+        assert!(outcome.contains("norn validate"), "actual: {outcome:?}");
     }
 
     #[test]

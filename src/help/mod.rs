@@ -27,7 +27,7 @@ use crate::output::palette;
 /// help. Returns `Some(exit_code)` when help was rendered; `None` otherwise.
 ///
 /// This pre-parse approach is necessary because required positionals (e.g.
-/// `vault completions init --help`) would cause `Cli::parse()` to error out
+/// `norn completions init --help`) would cause `Cli::parse()` to error out
 /// before we get a chance to intercept. By scanning raw args first we can
 /// render help without satisfying required positionals.
 pub fn intercept_from_args() -> Option<i32> {
@@ -117,7 +117,7 @@ pub fn intercept_from_args() -> Option<i32> {
 /// flag indicating whether an unknown non-flag token was encountered (i.e. a
 /// token that looks like a subcommand but is not recognised).
 ///
-/// `hit_unknown = true` means the args contain something like `vault graph
+/// `hit_unknown = true` means the args contain something like `norn graph
 /// --help` where `graph` is not a known subcommand. In that case the caller
 /// should NOT intercept, so that clap can produce its normal error.
 ///

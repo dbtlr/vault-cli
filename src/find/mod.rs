@@ -1,4 +1,4 @@
-//! `vault find` command implementation.
+//! `norn find` command implementation.
 
 pub mod query;
 pub mod render;
@@ -27,7 +27,7 @@ fn has_predicate(args: &FindArgs) -> bool {
         || !args.filters.path.is_empty()
 }
 
-/// Print `vault find --help` to stderr. Used as the "missing predicate" gate.
+/// Print `norn find --help` to stderr. Used as the "missing predicate" gate.
 fn print_find_help() -> Result<()> {
     use clap::CommandFactory;
     let mut cmd = crate::cli::Cli::command();
@@ -110,7 +110,7 @@ pub fn run(
             &buffer,
             &mut stdout_lock,
             &mut stderr_lock,
-            "vault find",
+            "norn find",
         )?;
     } else {
         stdout_lock.write_all(&buffer)?;

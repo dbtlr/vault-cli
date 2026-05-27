@@ -1,5 +1,5 @@
 //! Read-only SQL primitives that power the LIVE EXAMPLES generator for
-//! `vault find --help`. Aggregates top-level frontmatter field statistics
+//! `norn find --help`. Aggregates top-level frontmatter field statistics
 //! and counts documents matching a conjunction of predicates.
 
 use std::collections::{BTreeMap, BTreeSet};

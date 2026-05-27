@@ -17,7 +17,7 @@ fn vault_root(prefix: &str) -> PathBuf {
     path
 }
 
-/// Runs `vault repair plan --format report` with isolated cache and NO_COLOR.
+/// Runs `norn repair plan --format report` with isolated cache and NO_COLOR.
 /// Returns the raw stdout string.
 fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> String {
     let cache_dir = tempfile::Builder::new()
@@ -457,11 +457,11 @@ fn apply_guidance_unfiltered_suggests_high_confidence_narrowing() {
         "expected To inspect block; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("vault repair plan --confidence high --format json"),
+        stdout.contains("norn repair plan --confidence high --format json"),
         "expected high-confidence narrowing suggestion; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("vault repair plan --format json"),
+        stdout.contains("norn repair plan --format json"),
         "expected unfiltered inspect baseline; full stdout:\n{stdout}"
     );
     assert!(
@@ -469,12 +469,12 @@ fn apply_guidance_unfiltered_suggests_high_confidence_narrowing() {
         "expected To apply block; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("vault repair apply --dry-run"),
+        stdout.contains("norn repair apply --dry-run"),
         "expected dry-run suggestion; full stdout:\n{stdout}"
     );
     // Bare apply also present
     assert!(
-        stdout.contains("| vault repair apply"),
+        stdout.contains("| norn repair apply"),
         "expected bare apply suggestion; full stdout:\n{stdout}"
     );
 
@@ -489,13 +489,13 @@ fn apply_guidance_echoes_active_confidence_filter() {
     let stdout = run_plan(&root, &config_path, &["--confidence", "high"]);
 
     assert!(
-        stdout.contains("vault repair plan --confidence high --format json"),
+        stdout.contains("norn repair plan --confidence high --format json"),
         "expected confidence echoed in command; full stdout:\n{stdout}"
     );
     // The unfiltered baseline should not appear in the apply section when --confidence is active
     let apply_section = stdout.split("To apply").nth(1).unwrap_or("");
     assert!(
-        !apply_section.contains("vault repair plan --format json |"),
+        !apply_section.contains("norn repair plan --format json |"),
         "unfiltered apply suggestion should be dropped when --confidence is active. stdout:\n{stdout}"
     );
 

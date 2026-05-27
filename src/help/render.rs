@@ -298,7 +298,7 @@ fn write_examples_block(
 
 /// Render a single example's command line at 4-space indent with per-token
 /// coloring: tokens starting with `-` render in `thread` (flag tokens);
-/// everything else renders in `bone` (including the literal `vault` prefix
+/// everything else renders in `bone` (including the literal `norn` prefix
 /// and any value tokens).
 fn write_example_command(out: &mut dyn Write, palette: &Palette, cmd: &str) -> io::Result<()> {
     write!(out, "    ")?;
@@ -634,7 +634,7 @@ mod tests {
 
     fn sample_model() -> HelpModel {
         HelpModel {
-            command_path: "vault find".to_string(),
+            command_path: "norn find".to_string(),
             about: "Find documents".to_string(),
             long_about: None,
             positionals: vec![],
@@ -663,7 +663,7 @@ mod tests {
                 short: Some('C'),
                 long: Some("cwd".to_string()),
                 value_name: None,
-                short_desc: "Run as if vault started in this directory".to_string(),
+                short_desc: "Run as if norn started in this directory".to_string(),
             }],
             subcommands: vec![],
             extras: HelpExtras::default(),
@@ -688,7 +688,7 @@ mod tests {
     fn renders_usage_block() {
         let out = render_to_string(&sample_model());
         assert!(out.contains("USAGE\n"));
-        assert!(out.contains("vault find [OPTIONS]"));
+        assert!(out.contains("norn find [OPTIONS]"));
     }
 
     #[test]
@@ -709,13 +709,13 @@ mod tests {
         let out = render_to_string(&sample_model());
         assert!(out.contains("GLOBAL OPTIONS\n"));
         assert!(out.contains("-C, --cwd"));
-        assert!(out.contains("Run as if vault started in this directory"));
+        assert!(out.contains("Run as if norn started in this directory"));
     }
 
     #[test]
     fn renders_long_form_footer_pointer() {
         let out = render_to_string(&sample_model());
-        assert!(out.contains("For full help, run `vault find --help`."));
+        assert!(out.contains("For full help, run `norn find --help`."));
     }
 
     #[test]
@@ -732,7 +732,7 @@ mod tests {
         // Two groups with very different flag lengths — the column must align
         // to the longest across BOTH groups.
         let model = HelpModel {
-            command_path: "vault find".to_string(),
+            command_path: "norn find".to_string(),
             about: String::new(),
             long_about: None,
             positionals: vec![],
@@ -861,7 +861,7 @@ mod tests {
         assert!(out.contains("GLOBAL OPTIONS\n"));
         let lines: Vec<&str> = out.lines().collect();
         let global_line = lines.iter().find(|l| l.contains("-C, --cwd")).unwrap();
-        assert!(global_line.contains("Run as if vault started in this directory"));
+        assert!(global_line.contains("Run as if norn started in this directory"));
     }
 
     #[test]
@@ -876,11 +876,11 @@ mod tests {
         let mut m = sample_model();
         m.extras.canned_examples = vec![
             (
-                "vault find --eq type:note --limit 5".to_string(),
+                "norn find --eq type:note --limit 5".to_string(),
                 "backlog notes — top 5".to_string(),
             ),
             (
-                "vault find --text reorg --format paths".to_string(),
+                "norn find --text reorg --format paths".to_string(),
                 "full-text search; pipe-friendly path list".to_string(),
             ),
         ];
@@ -891,9 +891,9 @@ mod tests {
     fn long_form_emits_examples_section_when_populated() {
         let out = render_long_to_string(&sample_model_with_examples());
         assert!(out.contains("EXAMPLES\n"));
-        assert!(out.contains("vault find --eq type:note --limit 5"));
+        assert!(out.contains("norn find --eq type:note --limit 5"));
         assert!(out.contains("# backlog notes — top 5"));
-        assert!(out.contains("vault find --text reorg --format paths"));
+        assert!(out.contains("norn find --text reorg --format paths"));
         assert!(out.contains("# full-text search; pipe-friendly path list"));
     }
 
@@ -926,10 +926,10 @@ mod tests {
         let lines: Vec<&str> = out.lines().collect();
         let cmd_line = lines
             .iter()
-            .find(|l| l.contains("vault find --eq"))
+            .find(|l| l.contains("norn find --eq"))
             .expect("command line present");
         assert!(
-            cmd_line.starts_with("    vault"),
+            cmd_line.starts_with("    norn"),
             "command line at 4-space indent, got: {cmd_line:?}"
         );
         let comment_line = lines
@@ -953,7 +953,7 @@ mod tests {
             .position(|l| l.contains("# backlog notes"))
             .unwrap();
         assert_eq!(lines[first_comment_idx + 1], "");
-        assert!(lines[first_comment_idx + 2].contains("vault find --text reorg"));
+        assert!(lines[first_comment_idx + 2].contains("norn find --text reorg"));
     }
 
     #[test]
@@ -968,7 +968,7 @@ mod tests {
     fn sample_model_with_live() -> HelpModel {
         let mut m = sample_model();
         m.live_examples = vec![LiveExample {
-            query: "vault find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
+            query: "norn find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
                 .to_string(),
             match_count: 412,
         }];
@@ -992,7 +992,7 @@ mod tests {
     fn long_form_emits_live_examples_query_and_count() {
         let out = render_long_to_string(&sample_model_with_live());
         assert!(out.contains(
-            "vault find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
+            "norn find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
         ));
         assert!(
             out.contains("412 documents match"),
@@ -1018,11 +1018,11 @@ mod tests {
         let out = render_long_to_string(&sample_model_with_live());
         std::env::remove_var("NORN_ASCII");
         assert!(
-            out.contains("> vault find"),
-            "expected '> vault find' under NORN_ASCII; got:\n{out}"
+            out.contains("> norn find"),
+            "expected '> norn find' under NORN_ASCII; got:\n{out}"
         );
         assert!(
-            !out.contains("▸ vault find"),
+            !out.contains("▸ norn find"),
             "ASCII fallback must replace ▸; got:\n{out}"
         );
     }
@@ -1051,7 +1051,7 @@ mod tests {
     fn live_examples_positioned_between_examples_and_globals() {
         let mut m = sample_model_with_live();
         m.extras.canned_examples = vec![(
-            "vault find --eq type:note --limit 5".to_string(),
+            "norn find --eq type:note --limit 5".to_string(),
             "canned".to_string(),
         )];
         let out = render_long_to_string(&m);
@@ -1174,11 +1174,11 @@ mod tests {
     fn conceptual_sections_positioned_between_live_examples_and_globals() {
         let mut m = sample_model_with_conceptual();
         m.extras.canned_examples = vec![(
-            "vault validate".to_string(),
+            "norn validate".to_string(),
             "human-readable findings".to_string(),
         )];
         m.live_examples = vec![LiveExample {
-            query: "vault validate --severity error".to_string(),
+            query: "norn validate --severity error".to_string(),
             match_count: 7,
         }];
         let out = render_long_to_string(&m);

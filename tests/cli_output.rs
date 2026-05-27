@@ -125,7 +125,7 @@ fn links_list_is_removed() {
         error.contains("unrecognized subcommand 'list'")
             || error.contains("unrecognized subcommand 'links'")
             || error.contains("unexpected argument 'list'"),
-        "expected unrecognized-subcommand error for `vault links list`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links list`; got: {error}"
     );
 }
 
@@ -135,7 +135,7 @@ fn files_subcommand_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'files'")
             || error.contains("unexpected argument 'files'"),
-        "expected unrecognized-subcommand error for `vault files`; got: {error}"
+        "expected unrecognized-subcommand error for `norn files`; got: {error}"
     );
 }
 
@@ -144,7 +144,7 @@ fn docs_namespace_is_removed() {
     let error = vault_error(&["docs", "--help"]);
     assert!(
         error.contains("unrecognized subcommand 'docs'"),
-        "expected unrecognized-subcommand error for `vault docs`; got: {error}"
+        "expected unrecognized-subcommand error for `norn docs`; got: {error}"
     );
 }
 
@@ -154,7 +154,7 @@ fn docs_summary_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'docs'")
             || error.contains("unrecognized subcommand 'summary'"),
-        "expected unrecognized-subcommand error for `vault docs summary`; got: {error}"
+        "expected unrecognized-subcommand error for `norn docs summary`; got: {error}"
     );
 }
 
@@ -164,7 +164,7 @@ fn docs_inspect_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'docs'")
             || error.contains("unrecognized subcommand 'inspect'"),
-        "expected unrecognized-subcommand error for `vault docs inspect`; got: {error}"
+        "expected unrecognized-subcommand error for `norn docs inspect`; got: {error}"
     );
 }
 
@@ -173,7 +173,7 @@ fn links_namespace_is_removed() {
     let error = vault_error(&["links", "--help"]);
     assert!(
         error.contains("unrecognized subcommand 'links'"),
-        "expected unrecognized-subcommand error for `vault links`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links`; got: {error}"
     );
 }
 
@@ -184,7 +184,7 @@ fn links_unresolved_is_removed() {
         error.contains("unrecognized subcommand 'links'")
             || error.contains("unrecognized subcommand 'unresolved'")
             || error.contains("unexpected argument 'unresolved'"),
-        "expected unrecognized-subcommand error for `vault links unresolved`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links unresolved`; got: {error}"
     );
 }
 
@@ -195,7 +195,7 @@ fn links_backlinks_is_removed() {
         error.contains("unrecognized subcommand 'links'")
             || error.contains("unrecognized subcommand 'backlinks'")
             || error.contains("unexpected argument 'backlinks'"),
-        "expected unrecognized-subcommand error for `vault links backlinks`; got: {error}"
+        "expected unrecognized-subcommand error for `norn links backlinks`; got: {error}"
     );
 }
 
@@ -205,7 +205,7 @@ fn repair_links_is_removed() {
     assert!(
         error.contains("unrecognized subcommand 'links'")
             || error.contains("unexpected argument 'links'"),
-        "expected unrecognized-subcommand error for `vault repair links`; got: {error}"
+        "expected unrecognized-subcommand error for `norn repair links`; got: {error}"
     );
 }
 
@@ -226,7 +226,7 @@ fn grouped_help_lists_new_surfaces() {
     // apply/plan descriptions, so we check for the subcommand listing token instead.
     assert!(
         !output.contains("  links  ") && !output.contains("  links\n"),
-        "vault repair links subcommand should be retired; got: {output}"
+        "norn repair links subcommand should be retired; got: {output}"
     );
 
     let output = vault(&["repair", "plan", "--help"]);
@@ -1718,7 +1718,7 @@ fn completions_bash_writes_clean_stderr() {
     let (_stdout, stderr) = vault_success(&["completions", "init", "bash"]);
     assert!(
         stderr.is_empty(),
-        "expected `vault completions init bash` to write nothing to stderr, got:\n{stderr}"
+        "expected `norn completions init bash` to write nothing to stderr, got:\n{stderr}"
     );
 }
 
@@ -1727,7 +1727,7 @@ fn manpage_writes_clean_stderr() {
     let (_stdout, stderr) = vault_success(&["manpage"]);
     assert!(
         stderr.is_empty(),
-        "expected `vault manpage` to write nothing to stderr, got:\n{stderr}"
+        "expected `norn manpage` to write nothing to stderr, got:\n{stderr}"
     );
 }
 

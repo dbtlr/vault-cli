@@ -10,7 +10,7 @@ use crate::cli::{ColorWhen, ConfigEditArgs, ConfigShowArgs, ConfigValidateArgs};
 
 /// Resolved discovery paths for the active `.norn/config.yaml` plus the
 /// vault root the command will operate against, plus the per-vault cache
-/// database path. Shared across `vault config show / validate / migrate /
+/// database path. Shared across `norn config show / validate / migrate /
 /// edit` so the four subcommands report consistent resolution.
 pub struct Discovery {
     pub config_file: Utf8PathBuf,
@@ -21,7 +21,7 @@ pub struct Discovery {
 /// Resolve the config file, vault root, and cache path for the current
 /// invocation. With `config_override = Some(path)` the override wins;
 /// otherwise the loader looks for `<cwd>/.norn/config.yaml` and errors
-/// with a `vault init` hint when no config is present.
+/// with a `norn init` hint when no config is present.
 pub fn discover(cwd: &Utf8Path, config_override: Option<&Utf8PathBuf>) -> Result<Discovery> {
     let config_file = match config_override {
         Some(path) => path.clone(),
@@ -29,7 +29,7 @@ pub fn discover(cwd: &Utf8Path, config_override: Option<&Utf8PathBuf>) -> Result
             let candidate = cwd.join(".norn").join("config.yaml");
             if !candidate.exists() {
                 return Err(anyhow!(
-                    "no .norn/config.yaml found in {cwd}\nhint: run `vault init` to scaffold one"
+                    "no .norn/config.yaml found in {cwd}\nhint: run `norn init` to scaffold one"
                 ));
             }
             candidate

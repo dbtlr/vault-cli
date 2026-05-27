@@ -172,7 +172,7 @@ fn long_help_ascii_marker_under_norn_ascii() {
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(
         stdout.contains("> norn find"),
-        "expected '> vault find' under NORN_ASCII; got:\n{stdout}"
+        "expected '> norn find' under NORN_ASCII; got:\n{stdout}"
     );
     assert!(
         !stdout.contains("▸ norn find"),

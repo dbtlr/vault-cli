@@ -2,7 +2,7 @@
 //!
 //! Exposes [`path_variables`] for extracting named path-variable bindings,
 //! [`applicable_rules`] + [`merge_defaults`] for the match-to-defaults pass,
-//! and [`resolve_to_fixpoint`] for the iterative resolver used by `vault new`.
+//! and [`resolve_to_fixpoint`] for the iterative resolver used by `norn new`.
 
 use crate::standards::config::{CompiledConfig, CompiledRule, ValidateRule, VaultConfig};
 use std::collections::{BTreeMap, BTreeSet};
@@ -91,7 +91,7 @@ pub(crate) const KNOWN_TRANSFORMS: &[&str] = &[
 ///
 /// The rule's pattern is the pre-compiled [`crate::standards::path_match::PathPattern`]
 /// stored on [`CompiledRule`]. Pre-compilation happens at config-load time,
-/// so this helper is cheap to call repeatedly within a single `vault new`
+/// so this helper is cheap to call repeatedly within a single `norn new`
 /// invocation.
 pub fn path_variables(rule: &CompiledRule, path: &str) -> BTreeMap<String, String> {
     rule.path

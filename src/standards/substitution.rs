@@ -213,7 +213,7 @@ const DOW_FULL: [&str; 7] = [
 
 // ── Variable resolution ────────────────────────────────────────────────────
 
-/// Substitution context: resolved once per `vault new` invocation.
+/// Substitution context: resolved once per `norn new` invocation.
 #[derive(Debug, Clone)]
 pub struct Context {
     pub now: NaiveDateTime,

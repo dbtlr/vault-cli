@@ -1,4 +1,4 @@
-//! Schema-aware pre-flight validation for `vault set`.
+//! Schema-aware pre-flight validation for `norn set`.
 
 // These functions are pub for Phase 5 wiring; the binary doesn't call them yet.
 #![allow(dead_code)]

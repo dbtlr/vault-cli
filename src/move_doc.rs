@@ -1,4 +1,4 @@
-//! `vault move` command: pre-flight validation, plan synthesis, render, dispatch.
+//! `norn move` command: pre-flight validation, plan synthesis, render, dispatch.
 //!
 //! Plan synthesis builds a RepairPlan with a single move_document op. The
 //! link_risk field on that op carries all affected backlinks; the existing
@@ -76,7 +76,7 @@ pub fn render_records<W: Write>(out: &mut W, report: &MoveReport) -> std::io::Re
             )?;
         }
     } else {
-        writeln!(out, "vault move {} → {}", report.source, report.destination)?;
+        writeln!(out, "norn move {} → {}", report.source, report.destination)?;
         if report.link_rewrites.total > 0 {
             writeln!(
                 out,
@@ -668,7 +668,7 @@ mod tests {
         let mut buf = Vec::new();
         render_records(&mut buf, &report).unwrap();
         let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("vault move foo.md → notes/bar.md"));
+        assert!(out.contains("norn move foo.md → notes/bar.md"));
         assert!(out.contains("3 backlinks to rewrite across 2 files"));
     }
 

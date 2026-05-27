@@ -1,4 +1,4 @@
-//! `vault find` cache-side types and entry point.
+//! `norn find` cache-side types and entry point.
 //!
 //! `FindQuery` wraps `DocumentQuery` (the predicate set) with paging,
 //! sort, and limit. `FindResult` returns matches plus the total count

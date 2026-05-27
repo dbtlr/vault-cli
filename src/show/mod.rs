@@ -1,4 +1,4 @@
-//! `vault get` — single-doc detail with multi-target support and
+//! `norn get` — single-doc detail with multi-target support and
 //! wikilink-aware input resolution.
 
 pub mod render;

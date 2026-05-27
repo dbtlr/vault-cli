@@ -1,4 +1,4 @@
-//! Renderers for `vault show`.
+//! Renderers for `norn show`.
 
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -7,7 +7,7 @@ use std::io::Write;
 use crate::output::palette::Palette;
 use crate::output::primitives::{record_block, separator, Field};
 
-/// The set of field names recognized by `vault show`. Used to warn on unknown
+/// The set of field names recognized by `norn show`. Used to warn on unknown
 /// `--col` values.
 const KNOWN_FIELDS: &[&str] = &[
     "path",
@@ -19,7 +19,7 @@ const KNOWN_FIELDS: &[&str] = &[
     "body",
 ];
 
-/// Warn to `stderr` for any `--col` value that is not a recognized `vault show`
+/// Warn to `stderr` for any `--col` value that is not a recognized `norn show`
 /// field name. Fires once per unknown name, not per record.
 pub fn warn_unknown_cols(cols: &[String], stderr: &mut dyn std::io::Write) -> std::io::Result<()> {
     for col in cols {

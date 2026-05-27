@@ -1,4 +1,4 @@
-//! `vault set` output report: JSON envelope + records-block rendering.
+//! `norn set` output report: JSON envelope + records-block rendering.
 
 // These items are pub for Phase 5.4 wiring; the binary doesn't call them yet.
 #![allow(dead_code)]

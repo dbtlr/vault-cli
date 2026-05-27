@@ -1,4 +1,4 @@
-//! `vault set` plan synthesis: CLI args → RepairPlan.
+//! `norn set` plan synthesis: CLI args → RepairPlan.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -425,7 +425,7 @@ pub struct PreflightOutcome {
     pub body_bytes_old: usize,
 }
 
-/// End-to-end plan synthesis for `vault set`:
+/// End-to-end plan synthesis for `norn set`:
 /// resolve target → load doc → optionally read stdin → schema-aware synth →
 /// wikilink resolution sweep → optional body op → stamp path/hash → wrap
 /// into a RepairPlan.

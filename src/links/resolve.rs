@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn duplicate_aliases_yield_ambiguous() {
-        // Two docs both claim alias `vault memory`; no stem matches. Resolution → Ambiguous.
+        // Two docs both claim alias `norn memory`; no stem matches. Resolution → Ambiguous.
         let files = vec![
             make_file("doc-a.md"),
             make_file("doc-b.md"),

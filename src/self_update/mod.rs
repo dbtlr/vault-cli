@@ -1,4 +1,4 @@
-//! Self-update subcommand: refreshes the running `vault` binary from the
+//! Self-update subcommand: refreshes the running `norn` binary from the
 //! latest GitHub release (or a pinned version).
 
 pub mod download;
@@ -12,7 +12,7 @@ use serde::Serialize;
 
 use self::resolve::Action;
 
-/// JSON envelope for `vault self-update`. Independent of other report
+/// JSON envelope for `norn self-update`. Independent of other report
 /// schemas; `schema_version` bumps when this shape changes.
 #[derive(Debug, Serialize)]
 pub struct SelfUpdateReport {
@@ -37,7 +37,7 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 
-/// Configuration for a single `vault self-update` invocation.
+/// Configuration for a single `norn self-update` invocation.
 pub struct RunConfig {
     pub dry_run: bool,
     pub pinned_version: Option<String>,
@@ -58,7 +58,7 @@ pub struct RunConfig {
 }
 
 pub const BLOCK_MESSAGE: &str = "\
-vault self-update only works for installs from the official GitHub install
+norn self-update only works for installs from the official GitHub install
 script. This binary does not have an install receipt.
 
 To update, either:
@@ -88,7 +88,7 @@ pub fn run(cfg: &RunConfig) -> Result<(SelfUpdateReport, i32)> {
     // 2. Target triple.
     let triple = cfg.target_triple.as_deref().ok_or_else(|| {
         anyhow!(
-            "BLOCK::unknown_target: vault was built for a target cargo-dist \
+            "BLOCK::unknown_target: norn was built for a target cargo-dist \
             does not produce a release artifact for (receipt says {})",
             receipt.target
         )

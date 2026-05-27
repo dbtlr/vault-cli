@@ -1,4 +1,4 @@
-//! Download the release tarball, verify sha256, extract the `vault` binary.
+//! Download the release tarball, verify sha256, extract the `norn` binary.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -69,9 +69,9 @@ fn hex_lower(bytes: &[u8]) -> String {
     s
 }
 
-/// Extract the `vault` binary out of a cargo-dist `.tar.xz` to `dest`.
+/// Extract the `norn` binary out of a cargo-dist `.tar.xz` to `dest`.
 /// Sets the resulting file mode to 0o755. Errors if the archive does not
-/// contain a file whose basename is `vault`.
+/// contain a file whose basename is `norn`.
 pub fn extract_binary(archive: &Path, dest: &Path) -> Result<()> {
     let file =
         fs::File::open(archive).map_err(|e| anyhow!("open archive {}: {e}", archive.display()))?;
@@ -95,7 +95,7 @@ pub fn extract_binary(archive: &Path, dest: &Path) -> Result<()> {
         }
     }
     Err(anyhow!(
-        "archive {} did not contain a vault binary",
+        "archive {} did not contain a norn binary",
         archive.display()
     ))
 }
@@ -194,8 +194,8 @@ mod tests {
         let err = extract_binary(&archive_path, &dest).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
-            msg.contains("vault"),
-            "expected mention of vault binary: {msg}"
+            msg.contains("norn"),
+            "expected mention of norn binary: {msg}"
         );
     }
 }

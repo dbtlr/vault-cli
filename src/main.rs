@@ -51,7 +51,7 @@ use clap::{CommandFactory, FromArgMatches};
 
 fn main() {
     // Intercept -h / --help before Cli::parse() so that subcommands with
-    // required positionals (e.g. `vault completions init --help`) can render
+    // required positionals (e.g. `norn completions init --help`) can render
     // help without clap erroring out on the missing positional arg.
     if let Some(exit_code) = help::intercept_from_args() {
         process::exit(exit_code);

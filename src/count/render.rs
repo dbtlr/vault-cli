@@ -1,4 +1,4 @@
-//! Renderers for `vault count` output.
+//! Renderers for `norn count` output.
 
 use crate::count::CountOutput;
 use std::fmt::Write;

@@ -12,7 +12,7 @@ pub struct LoadedConfig {
     pub validate: ValidateConfig,
     pub repair: RepairConfig,
     /// Full parsed vault config. Commands that need the whole VaultConfig
-    /// (e.g. `vault set`'s schema-aware path) should use this field.
+    /// (e.g. `norn set`'s schema-aware path) should use this field.
     pub vault_config: VaultConfig,
     /// Pre-compiled path patterns for hot-path matching (validate engine).
     pub compiled: CompiledConfig,

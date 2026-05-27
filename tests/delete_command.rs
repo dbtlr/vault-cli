@@ -48,7 +48,7 @@ fn delete_leaf_dry_run_no_op() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("vault delete d.md"),
+        stdout.contains("norn delete d.md"),
         "unexpected stdout: {stdout}"
     );
 }

@@ -1,4 +1,4 @@
-//! Live-examples generator for `vault find --help`.
+//! Live-examples generator for `norn find --help`.
 //!
 //! Composition algorithm (Phase 3 spec §4):
 //! 1. Collect per-field statistics from the cache.

@@ -55,7 +55,7 @@ pub struct GlobalEntry {
 #[derive(Debug, Clone)]
 pub struct LiveExample {
     /// Full command line including the binary name (built with `BIN_NAME`),
-    /// e.g. `"vault find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"`.
+    /// e.g. `"norn find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"`.
     /// The renderer tokenizes this for per-token coloring; no trailing whitespace.
     pub query: String,
     /// Confirmed non-zero match count. Rendered as the tail
@@ -80,7 +80,7 @@ pub struct HelpExtras {
 /// Complete rendering input for one help invocation.
 #[derive(Debug, Clone)]
 pub struct HelpModel {
-    /// e.g. `"vault"`, `"vault find"`, `"vault repair plan"`.
+    /// e.g. `"norn"`, `"norn find"`, `"norn repair plan"`.
     pub command_path: String,
     /// One-line description (from clap `about`).
     pub about: String,
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn live_example_holds_query_and_count() {
         let e = LiveExample {
-            query: "vault find --eq type:note --limit 5".to_string(),
+            query: "norn find --eq type:note --limit 5".to_string(),
             match_count: 412,
         };
         assert_eq!(e.match_count, 412);
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn help_model_default_live_examples_is_empty() {
         let m = HelpModel {
-            command_path: "vault find".to_string(),
+            command_path: "norn find".to_string(),
             about: String::new(),
             long_about: None,
             positionals: vec![],

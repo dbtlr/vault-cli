@@ -1,5 +1,5 @@
-//! `vault count` — grouped or total document counts. Shares the full
-//! filter flag surface with `vault find` via `FilterArgs`; adds `--by`
+//! `norn count` — grouped or total document counts. Shares the full
+//! filter flag surface with `norn find` via `FilterArgs`; adds `--by`
 //! for grouping.
 
 pub mod render;

@@ -1,6 +1,6 @@
 //! Install receipt — written by the cargo-dist shell installer.
 //!
-//! Presence of the receipt is the gate for `vault self-update`:
+//! Presence of the receipt is the gate for `norn self-update`:
 //! its absence means this binary was not installed by the official GitHub
 //! install script, and we cannot safely swap it.
 

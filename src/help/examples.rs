@@ -7,7 +7,7 @@
 //!
 //! Each entry is `(command_line, comment)`. Comments are ≤60 chars, lowercase
 //! except for required literals, no trailing period. The command line uses
-//! the literal `vault` prefix; the renderer styles tokens per palette.
+//! the literal `norn` prefix; the renderer styles tokens per palette.
 
 use crate::help::model::LiveExample;
 
@@ -88,7 +88,7 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
             ),
             (
                 "norn validate --code 'link-*'",
-                "broken + ambiguous links (replaces `vault links unresolved`)",
+                "broken + ambiguous links (replaces `norn links unresolved`)",
             ),
             (
                 "norn validate --code 'link-*' --format paths",
@@ -230,8 +230,8 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
         )],
 
         // Thin commands without arms (intentionally empty — flag block self-explains):
-        // vault cache clear, vault config validate,
-        // vault config migrate, vault config edit
+        // norn cache clear, norn config validate,
+        // norn config migrate, norn config edit
         _ => &[],
     };
     pairs
@@ -280,7 +280,7 @@ pub fn conceptual_sections_for(cmd_path: &str) -> Vec<(String, String)> {
 }
 
 /// Map a command path to its live-examples generator, if any. Phase 3 wires
-/// `vault find`; everything else returns `None` and the LIVE EXAMPLES block
+/// `norn find`; everything else returns `None` and the LIVE EXAMPLES block
 /// is omitted at render time.
 ///
 /// The generator (when present) is invoked by the help interceptor on

@@ -39,7 +39,7 @@ fn move_dry_run_prints_preview_and_exits_clean() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("vault move b.md → renamed.md"),
+        stdout.contains("norn move b.md → renamed.md"),
         "unexpected stdout: {stdout}"
     );
     assert!(

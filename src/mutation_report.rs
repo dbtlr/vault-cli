@@ -1,4 +1,4 @@
-//! Shared report types for document mutation commands (`vault move`, `vault delete`).
+//! Shared report types for document mutation commands (`norn move`, `norn delete`).
 
 use camino::Utf8PathBuf;
 use serde::Serialize;

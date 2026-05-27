@@ -1,4 +1,4 @@
-//! Shared filter-flag translation used by `vault find` and `vault count`.
+//! Shared filter-flag translation used by `norn find` and `norn count`.
 //!
 //! [`FilterArgs`] is defined in `cli.rs` (not here) so that `build.rs` can
 //! include `cli.rs` directly without pulling in intra-crate deps. This module

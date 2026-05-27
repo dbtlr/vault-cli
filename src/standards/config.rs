@@ -811,7 +811,7 @@ repair:
     #[test]
     fn config_with_unknown_version_parses_but_value_preserved() {
         // We intentionally accept unknown versions at parse-time so
-        // `vault config validate` can surface them as findings rather
+        // `norn config validate` can surface them as findings rather
         // than hard parse errors. Reject-at-validate keeps the
         // diagnostic surface uniform.
         let yaml = "version: 99\n";

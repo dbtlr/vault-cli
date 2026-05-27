@@ -1,4 +1,4 @@
-//! Cache status snapshot for `vault cache status`.
+//! Cache status snapshot for `norn cache status`.
 
 use serde::Serialize;
 

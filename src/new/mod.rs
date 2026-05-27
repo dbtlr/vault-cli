@@ -1,4 +1,4 @@
-//! `vault new` orchestration glue. Mirror of `src/set/mod.rs`.
+//! `norn new` orchestration glue. Mirror of `src/set/mod.rs`.
 
 pub mod report;
 pub mod synth;
@@ -21,7 +21,7 @@ pub struct OutputBundle {
     pub exit_code: i32,
 }
 
-/// Orchestration entry for `vault new`.
+/// Orchestration entry for `norn new`.
 ///
 /// Flow:
 /// 1. Load config (`.norn/config.yaml`).

@@ -61,7 +61,7 @@ fn config_show_without_config_errors_with_hint() {
         stderr.contains("no .norn/config.yaml found"),
         "stderr={stderr}"
     );
-    assert!(stderr.contains("vault init"), "stderr={stderr}");
+    assert!(stderr.contains("norn init"), "stderr={stderr}");
 }
 
 #[test]

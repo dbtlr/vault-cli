@@ -40,7 +40,7 @@ impl crate::cache::Cache {
     }
 
     /// Full rebuild: walk the vault, parse every document, replace all rows.
-    /// Used by `vault cache rebuild` and the implicit rebuild after a self-heal trigger.
+    /// Used by `norn cache rebuild` and the implicit rebuild after a self-heal trigger.
     pub fn rebuild(&mut self, vault_root: &Utf8Path) -> Result<IndexReport, CacheError> {
         let _lock = crate::cache::lock::WriteLock::acquire(
             &self.cache_dir,

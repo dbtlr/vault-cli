@@ -1,4 +1,4 @@
-//! Wikilink-input normalization and resolution for `vault show`. Strips
+//! Wikilink-input normalization and resolution for `norn show`. Strips
 //! wikilink syntax to a bare identifier and resolves it against the cache
 //! via exact-path probe then case-insensitive stem scan.
 
