@@ -1,8 +1,11 @@
-use crate::offsets::ValueStyle;
+use super::offsets::ValueStyle;
 use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
 pub enum QuoteError {
+    // Superseded by NonScalarValue / StructuredOriginalStyle / ArrayIntoScalar
+    // (no code path constructs this); safe to delete in a cleanup pass.
+    #[allow(dead_code)]
     #[error("cannot represent value {value:?} in original style {original_style:?}")]
     Unrepresentable {
         value: Value,

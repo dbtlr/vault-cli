@@ -2,14 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::ops::Range;
 
+use crate::frontmatter::{
+    extract_frontmatter, serialize_array_block_for_new_field, serialize_value_preserving_style,
+    top_level_property_spans, QuoteError, ValueStyle,
+};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
-use vault_frontmatter::{
-    extract_frontmatter, serialize_array_block_for_new_field, serialize_value_preserving_style,
-    top_level_property_spans, QuoteError, ValueStyle,
-};
 
 use crate::standards::findings::Finding;
 use crate::standards::repair::warnings::PlanWarning;

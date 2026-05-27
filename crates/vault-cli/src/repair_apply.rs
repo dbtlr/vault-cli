@@ -291,7 +291,7 @@ pub fn apply_repair_plan_with_context(
         // Serialize the document.
         let fm_btree: std::collections::BTreeMap<String, serde_json::Value> =
             fm_obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let contents = vault_frontmatter::serialize_new_document(&fm_btree, body)
+        let contents = crate::frontmatter::serialize_new_document(&fm_btree, body)
             .map_err(|e| anyhow::anyhow!("create_document: serialize failed: {e}"))?;
 
         // Atomic write: write to a sibling temp file, then rename into place.

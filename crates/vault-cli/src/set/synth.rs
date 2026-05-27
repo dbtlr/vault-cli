@@ -586,7 +586,7 @@ pub fn preflight_and_plan(
 fn parse_doc(content: &str) -> anyhow::Result<(serde_json::Value, String)> {
     let mut diagnostics = Vec::new();
     let (frontmatter, _frontmatter_range, _body_str, body_start) =
-        vault_frontmatter::extract_frontmatter(content, &mut diagnostics);
+        crate::frontmatter::extract_frontmatter(content, &mut diagnostics);
 
     if !diagnostics.is_empty() {
         anyhow::bail!(

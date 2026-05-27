@@ -404,23 +404,25 @@ fn classify_value(
 ///
 /// `frontmatter_range` is the byte range of the YAML content between the
 /// opening `---\n` and closing `---\n` markers — the range produced by
-/// [`crate::extract_frontmatter`]. For an empty frontmatter block, the range
+/// [`super::extract_frontmatter`]. For an empty frontmatter block, the range
 /// is empty (e.g., `4..4` for `"---\n---\n..."`).
 ///
-/// The value is rendered via [`crate::quote::serialize_value_preserving_style`]
+/// The value is rendered via [`super::quote::serialize_value_preserving_style`]
 /// starting from [`ValueStyle::Plain`] — meaning plain when safe, upgraded to
 /// single-quoted when the value needs quoting. Never produces double quotes
 /// unless the value contains a single quote.
 ///
 /// Returns the full content with the new line spliced in just before the
 /// closing `---` delimiter.
+// Superseded by the set/repair_apply mutation paths; safe to delete in a cleanup pass.
+#[cfg(test)]
 pub fn append_frontmatter_field(
     content: &str,
     frontmatter_range: Range<usize>,
     field: &str,
     value: &serde_json::Value,
-) -> Result<String, crate::quote::QuoteError> {
-    let rendered_value = crate::quote::serialize_value_preserving_style(value, ValueStyle::Plain)?;
+) -> Result<String, super::quote::QuoteError> {
+    let rendered_value = super::quote::serialize_value_preserving_style(value, ValueStyle::Plain)?;
 
     let new_line = format!("{field}: {rendered_value}\n");
 

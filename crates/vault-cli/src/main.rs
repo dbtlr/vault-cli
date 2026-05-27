@@ -9,6 +9,7 @@ pub mod delete_doc;
 mod filter;
 mod filter_args;
 mod find;
+mod frontmatter;
 mod graph;
 mod help;
 mod init;
