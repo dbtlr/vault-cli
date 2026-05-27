@@ -949,9 +949,9 @@ mod tests {
 
     #[test]
     fn set_frontmatter_preserves_double_quoted_style() {
-        let content = "---\nworkspace: \"[[vault-cli]]\"\n---\n# body\n";
+        let content = "---\nworkspace: \"[[norn]]\"\n---\n# body\n";
         let change = PlannedChange {
-            expected_old_value: Some(json!("[[vault-cli]]")),
+            expected_old_value: Some(json!("[[norn]]")),
             new_value: Some(json!("[[other]]")),
             ..make_change(
                 "a.md",
@@ -967,9 +967,9 @@ mod tests {
 
     #[test]
     fn set_frontmatter_preserves_single_quoted_style() {
-        let content = "---\nworkspace: '[[vault-cli]]'\n---\n# body\n";
+        let content = "---\nworkspace: '[[norn]]'\n---\n# body\n";
         let change = PlannedChange {
-            expected_old_value: Some(json!("[[vault-cli]]")),
+            expected_old_value: Some(json!("[[norn]]")),
             new_value: Some(json!("[[other]]")),
             ..make_change(
                 "a.md",
@@ -1480,7 +1480,7 @@ mod tests {
     #[test]
     fn apply_delete_removes_file() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-apply-delete-")
+            .prefix("norn-apply-delete-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
@@ -1512,7 +1512,7 @@ mod tests {
     #[test]
     fn apply_delete_missing_source_errors() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-apply-delete-missing-")
+            .prefix("norn-apply-delete-missing-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
@@ -1545,7 +1545,7 @@ mod tests {
     #[test]
     fn apply_delete_refuses_symlink() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-apply-delete-symlink-")
+            .prefix("norn-apply-delete-symlink-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
@@ -1585,7 +1585,7 @@ mod tests {
     #[test]
     fn apply_move_with_force_overwrites_destination() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-apply-move-force-")
+            .prefix("norn-apply-move-force-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
@@ -1625,7 +1625,7 @@ mod tests {
     #[test]
     fn apply_move_without_force_refuses_existing_destination() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-apply-move-noforce-")
+            .prefix("norn-apply-move-noforce-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path()).unwrap();

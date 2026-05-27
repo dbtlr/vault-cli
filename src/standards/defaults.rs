@@ -387,8 +387,8 @@ validate:
         path: "Workspaces/{{workspace}}/tasks/*.md"
 "#,
         );
-        let vars = path_variables(&compiled.rules[0], "Workspaces/vault-cli/tasks/foo.md");
-        assert_eq!(vars.get("workspace"), Some(&"vault-cli".to_string()));
+        let vars = path_variables(&compiled.rules[0], "Workspaces/norn/tasks/foo.md");
+        assert_eq!(vars.get("workspace"), Some(&"norn".to_string()));
         assert_eq!(vars.len(), 1);
     }
 
@@ -573,11 +573,11 @@ validate:
         title: "{{title | titlecase}}"
 "#,
         );
-        let path_vars = BTreeMap::from([("workspace".to_string(), "vault-cli".to_string())]);
+        let path_vars = BTreeMap::from([("workspace".to_string(), "norn".to_string())]);
         let (frontmatter, _rules) = resolve_to_fixpoint(
             &cfg,
             &compiled,
-            "Workspaces/vault-cli/tasks/design-foo.md",
+            "Workspaces/norn/tasks/design-foo.md",
             &BTreeMap::new(),
             &path_vars,
         )
@@ -585,7 +585,7 @@ validate:
 
         assert_eq!(
             frontmatter.get("workspace"),
-            Some(&serde_json::json!("[[vault-cli]]"))
+            Some(&serde_json::json!("[[norn]]"))
         );
         assert_eq!(
             frontmatter.get("title"),

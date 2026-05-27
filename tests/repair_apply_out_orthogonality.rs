@@ -3,7 +3,7 @@ use std::process::Command;
 
 fn fixture_vault() -> tempfile::TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-apply-orthog-")
+        .prefix("norn-apply-orthog-")
         .tempdir()
         .unwrap();
     fs::create_dir_all(tmp.path().join(".norn")).unwrap();

@@ -23,11 +23,11 @@ use crate::output::primitives::{self, NoteLabel};
 
 const SCAFFOLD_TOP: &str = r#"version: 1
 
-# Files inventoried by vault-cli. Patterns here are excluded from
+# Files inventoried by norn. Patterns here are excluded from
 # the graph AND from all validation.
 files:
   # Pre-filled with universally-ignorable patterns.
-  # Remove any you actually want vault-cli to track.
+  # Remove any you actually want norn to track.
   ignore:
     - .obsidian/
     - .git/
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn scaffold_contains_commented_links_alias_field_hint() {
         let dir = tempfile::Builder::new()
-            .prefix("vault-cli-init-alias-")
+            .prefix("norn-init-alias-")
             .tempdir()
             .unwrap();
         let cwd = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();

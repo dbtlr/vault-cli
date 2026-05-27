@@ -349,7 +349,7 @@ fn push_string_membership(
 }
 
 /// Strip Obsidian-style `[[…]]` wikilink brackets from a value so that
-/// `--eq workspaces:vault-cli` matches a stored `["[[vault-cli]]"]` without
+/// `--eq workspaces:norn` matches a stored `["[[norn]]"]` without
 /// the user having to escape brackets in their shell. Both occurrences are
 /// removed (no balance check) — values that legitimately contain `[[` or
 /// `]]` outside wikilink syntax are vanishingly rare in vault frontmatter.

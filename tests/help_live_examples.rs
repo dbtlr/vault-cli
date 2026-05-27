@@ -22,7 +22,7 @@ fn norn_bin() -> Command {
 /// the cache, never rebuilds it) sees populated rows.
 fn fixture_vault() -> TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-help-live-integ-")
+        .prefix("norn-help-live-integ-")
         .tempdir()
         .unwrap();
     let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap();
@@ -30,19 +30,19 @@ fn fixture_vault() -> TempDir {
     let docs: &[(&str, &str)] = &[
         (
             "a.md",
-            "---\ntype: note\nworkspace: vault-cli\nmodified: 2026-05-21\n---\n",
+            "---\ntype: note\nworkspace: norn\nmodified: 2026-05-21\n---\n",
         ),
         (
             "b.md",
-            "---\ntype: note\nworkspace: vault-cli\nmodified: 2026-05-20\n---\n",
+            "---\ntype: note\nworkspace: norn\nmodified: 2026-05-20\n---\n",
         ),
         (
             "c.md",
-            "---\ntype: note\nworkspace: vault-cli\nmodified: 2026-05-19\n---\n",
+            "---\ntype: note\nworkspace: norn\nmodified: 2026-05-19\n---\n",
         ),
         (
             "d.md",
-            "---\ntype: task\nworkspace: vault-cli\nmodified: 2026-05-18\n---\n",
+            "---\ntype: task\nworkspace: norn\nmodified: 2026-05-18\n---\n",
         ),
         (
             "e.md",
@@ -86,13 +86,11 @@ fn long_help_inside_vault_emits_live_examples_block() {
     // The find_live composer ranks enum-like fields by
     // `(docs_with_field/total) * (top_value/docs_with_field)` =
     // `top_value_doc_count / total_documents`. For this fixture:
-    //   workspace: top_value=4 ("vault-cli") → 4/5 = 0.8
+    //   workspace: top_value=4 ("norn") → 4/5 = 0.8
     //   type:      top_value=3 ("note")      → 3/5 = 0.6
     // So workspace wins P1, type wins P2.
     assert!(
-        stdout.contains(
-            "norn find --eq workspace:vault-cli --eq type:note --sort modified --limit 5"
-        ),
+        stdout.contains("norn find --eq workspace:norn --eq type:note --sort modified --limit 5"),
         "expected composed query; got:\n{stdout}"
     );
     assert!(
@@ -125,7 +123,7 @@ fn long_help_deterministic_across_runs() {
 #[test]
 fn long_help_outside_vault_has_no_live_examples() {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-help-no-vault-")
+        .prefix("norn-help-no-vault-")
         .tempdir()
         .unwrap();
     let out = norn_bin()

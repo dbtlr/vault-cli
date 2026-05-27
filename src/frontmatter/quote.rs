@@ -336,13 +336,12 @@ mod serialize_new_document_tests {
     #[test]
     fn serialize_new_document_quotes_wikilink_values() {
         let mut fm = BTreeMap::new();
-        fm.insert("workspace".into(), json!("[[vault-cli]]"));
+        fm.insert("workspace".into(), json!("[[norn]]"));
 
         let out = serialize_new_document(&fm, "").unwrap();
         // Wikilinks must be quoted — `[` starts a YAML flow sequence otherwise.
         assert!(
-            out.contains("workspace: \"[[vault-cli]]\"\n")
-                || out.contains("workspace: '[[vault-cli]]'\n"),
+            out.contains("workspace: \"[[norn]]\"\n") || out.contains("workspace: '[[norn]]'\n"),
             "expected quoted wikilink, got:\n{out}"
         );
     }

@@ -343,7 +343,7 @@ mod tests {
 
     fn fixture_vault() -> (tempfile::TempDir, Utf8PathBuf, GraphIndex) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-delete-preflight-")
+            .prefix("norn-delete-preflight-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())

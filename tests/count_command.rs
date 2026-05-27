@@ -5,7 +5,7 @@ use tempfile::TempDir;
 
 fn synth_vault() -> TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-count-")
+        .prefix("norn-count-")
         .tempdir()
         .unwrap();
     let root = tmp.path().join("vault");

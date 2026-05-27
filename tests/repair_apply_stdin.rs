@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 
 fn fixture_vault() -> tempfile::TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-apply-stdin-")
+        .prefix("norn-apply-stdin-")
         .tempdir()
         .unwrap();
     fs::create_dir_all(tmp.path().join(".norn")).unwrap();

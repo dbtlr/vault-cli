@@ -1,5 +1,5 @@
 //! Generates shell completion scripts and the roff man page as side effects
-//! of building `vault-cli`. The outputs land under the workspace `target/`
+//! of building `norn`. The outputs land under the workspace `target/`
 //! directory so cargo-dist's `include` directive (in `dist-workspace.toml`)
 //! can pick them up without requiring a separate `just completions` /
 //! `just manpage` step in the release pipeline.
@@ -36,15 +36,15 @@ fn main() -> std::io::Result<()> {
     std::fs::create_dir_all(&man_dir)?;
 
     let mut cmd = cli::Cli::command();
-    generate_to(Shell::Bash, &mut cmd, "vault", &completions_dir)?;
-    generate_to(Shell::Zsh, &mut cmd, "vault", &completions_dir)?;
-    generate_to(Shell::Fish, &mut cmd, "vault", &completions_dir)?;
-    generate_to(Nushell, &mut cmd, "vault", &completions_dir)?;
+    generate_to(Shell::Bash, &mut cmd, "norn", &completions_dir)?;
+    generate_to(Shell::Zsh, &mut cmd, "norn", &completions_dir)?;
+    generate_to(Shell::Fish, &mut cmd, "norn", &completions_dir)?;
+    generate_to(Nushell, &mut cmd, "norn", &completions_dir)?;
 
     let man = Man::new(cmd);
     let mut buffer = Vec::new();
     man.render(&mut buffer)?;
-    std::fs::write(man_dir.join("vault.1"), buffer)?;
+    std::fs::write(man_dir.join("norn.1"), buffer)?;
 
     println!("cargo:rerun-if-changed=src/cli.rs");
     println!("cargo:rerun-if-changed=build.rs");

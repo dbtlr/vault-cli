@@ -14,7 +14,7 @@ use super::model::{FlagEntry, GlobalEntry, HelpModel};
 use crate::output::palette::Palette;
 
 const GLOBAL_DESC_MAX: usize = 70;
-const REPO_URL: &str = "https://github.com/dbtlr/vault-cli";
+const REPO_URL: &str = "https://github.com/dbtlr/norn";
 
 /// Abstracts over `FlagEntry` and `GlobalEntry` so `label()` can serve both.
 trait LabelSource {
@@ -968,7 +968,7 @@ mod tests {
     fn sample_model_with_live() -> HelpModel {
         let mut m = sample_model();
         m.live_examples = vec![LiveExample {
-            query: "norn find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
+            query: "norn find --eq type:note --eq workspace:norn --sort modified --limit 5"
                 .to_string(),
             match_count: 412,
         }];
@@ -991,9 +991,9 @@ mod tests {
     #[test]
     fn long_form_emits_live_examples_query_and_count() {
         let out = render_long_to_string(&sample_model_with_live());
-        assert!(out.contains(
-            "norn find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"
-        ));
+        assert!(
+            out.contains("norn find --eq type:note --eq workspace:norn --sort modified --limit 5")
+        );
         assert!(
             out.contains("412 documents match"),
             "expected match-count tail; got:\n{out}"

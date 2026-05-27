@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn delete_pass_removes_file() {
         let (_tmp, root, index, hash) = make_vault_with_doc(
-            "vault-cli-orch-delete-",
+            "norn-orch-delete-",
             "foo.md",
             "---\ntype: note\n---\n# Foo\n",
         );
@@ -472,7 +472,7 @@ mod tests {
     #[test]
     fn delete_pass_dry_run_does_not_remove_file() {
         let (_tmp, root, index, hash) = make_vault_with_doc(
-            "vault-cli-orch-delete-dry-",
+            "norn-orch-delete-dry-",
             "foo.md",
             "---\ntype: note\n---\n# Foo\n",
         );
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn delete_pass_rejects_stale_hash() {
         let (_tmp, root, index, _hash) = make_vault_with_doc(
-            "vault-cli-orch-delete-stale-",
+            "norn-orch-delete-stale-",
             "foo.md",
             "---\ntype: note\n---\n# Foo\n",
         );
@@ -513,7 +513,7 @@ mod tests {
     fn delete_pass_with_rewrite_to_rewrites_then_deletes() {
         use crate::standards::classify_link_risk;
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-orch-delete-rewrite-")
+            .prefix("norn-orch-delete-rewrite-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())

@@ -478,7 +478,7 @@ mod tests {
     ///   b.md  — no outgoing links
     fn fixture_vault() -> (tempfile::TempDir, Utf8PathBuf, GraphIndex) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-move-preflight-")
+            .prefix("norn-move-preflight-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())
@@ -761,7 +761,7 @@ mod tests {
     #[test]
     fn collect_warnings_stem_collision_when_destination_stem_exists_elsewhere() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-move-warn-stem-")
+            .prefix("norn-move-warn-stem-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())

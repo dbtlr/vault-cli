@@ -147,12 +147,12 @@ mod tests {
             std::fs::create_dir(root.as_std_path()).unwrap();
             std::fs::write(
                 root.join("scalar-wikilink.md").as_std_path(),
-                "---\nworkspace: \"[[vault-cli]]\"\n---\nbody\n",
+                "---\nworkspace: \"[[norn]]\"\n---\nbody\n",
             )
             .unwrap();
             std::fs::write(
                 root.join("scalar-plain.md").as_std_path(),
-                "---\nworkspace: vault-cli\n---\nbody\n",
+                "---\nworkspace: norn\n---\nbody\n",
             )
             .unwrap();
             std::fs::write(
@@ -173,7 +173,7 @@ mod tests {
             let (_tmp, root) = synth_vault_wikilink_shapes();
             let cache = populate_cache(&root);
             let query = DocumentQuery {
-                frontmatter_eq: vec![("workspace".to_string(), serde_json::json!("vault-cli"))],
+                frontmatter_eq: vec![("workspace".to_string(), serde_json::json!("norn"))],
                 ..Default::default()
             };
             let result = cache.documents_matching(&query).unwrap();
@@ -227,13 +227,13 @@ mod tests {
             let cache = populate_cache(&root);
             let query = DocumentQuery {
                 frontmatter_has: vec!["workspace".to_string()],
-                frontmatter_not_eq: vec![("workspace".to_string(), serde_json::json!("vault-cli"))],
+                frontmatter_not_eq: vec![("workspace".to_string(), serde_json::json!("norn"))],
                 ..Default::default()
             };
             let result = cache.documents_matching(&query).unwrap();
             assert!(
                 result.is_empty(),
-                "both workspace docs match 'vault-cli' (scalar+wikilink); --not-eq should exclude both: {result:?}"
+                "both workspace docs match 'norn' (scalar+wikilink); --not-eq should exclude both: {result:?}"
             );
         }
 
@@ -263,7 +263,7 @@ mod tests {
             let query = DocumentQuery {
                 frontmatter_in: vec![(
                     "workspace".to_string(),
-                    vec![serde_json::json!("vault-cli"), serde_json::json!("atlas")],
+                    vec![serde_json::json!("norn"), serde_json::json!("atlas")],
                 )],
                 ..Default::default()
             };

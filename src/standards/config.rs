@@ -296,7 +296,7 @@ pub struct CompiledRule {
 /// in the source `Vec<String>`.
 #[derive(Debug, Clone, Default)]
 pub struct CompiledConfig {
-    // Populated by config compilation but no live consumer in vault-cli yet.
+    // Populated by config compilation but no live consumer in norn yet.
     // Mirrors `validate_ignore` (which is consumed). Safe to delete in a
     // cleanup pass if the file-ignore wiring stays unused.
     #[allow(dead_code)]

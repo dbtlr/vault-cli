@@ -25,7 +25,7 @@ fn vault_root(prefix: &str) -> PathBuf {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_fixture_with_changes() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-out-orthog-");
+    let root = vault_root("norn-out-orthog-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -53,7 +53,7 @@ fn build_fixture_with_changes() -> (PathBuf, PathBuf) {
 /// Returns the raw `std::process::Output`.
 fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> std::process::Output {
     let cache_dir = tempfile::Builder::new()
-        .prefix("vault-cli-cache-")
+        .prefix("norn-cache-")
         .tempdir()
         .expect("cache temp dir should be created");
 

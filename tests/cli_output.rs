@@ -93,7 +93,7 @@ fn temp_cache_dir() -> PathBuf {
         .as_nanos();
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let process = std::process::id();
-    std::env::temp_dir().join(format!("vault-cli-cache-{process}-{unique}-{counter}"))
+    std::env::temp_dir().join(format!("norn-cache-{process}-{unique}-{counter}"))
 }
 
 #[test]
@@ -614,7 +614,7 @@ fn repair_apply_preserves_double_quoted_workspace_field() {
     let task_path = root.join("task.md");
     fs::write(
         &task_path,
-        "---\ntype: task\ntitle: Test task\nstatus: someday\nworkspace: \"[[vault-cli]]\"\n---\n# body\n",
+        "---\ntype: task\ntitle: Test task\nstatus: someday\nworkspace: \"[[norn]]\"\n---\n# body\n",
     )
     .expect("task should write");
 
@@ -645,7 +645,7 @@ fn repair_apply_preserves_double_quoted_workspace_field() {
         "status should be repaired, got:\n{after}"
     );
     assert!(
-        after.contains("workspace: \"[[vault-cli]]\""),
+        after.contains("workspace: \"[[norn]]\""),
         "workspace double-quoted style should be preserved, got:\n{after}"
     );
     assert!(after.ends_with("---\n# body\n"));
@@ -1535,20 +1535,20 @@ fn validate_reports_frontmatter_field_type_findings() {
     fs::create_dir_all(&root).expect("temp dir should be created");
     fs::write(
         root.join("note.md"),
-        "---\ncreated: not-a-date\ndate: 2026-99-99\naliases: alias\nworkspace: vault-cli\ntechnologies:\n  - \"[[Rust]]\"\n  - plain\n---\n# Note\n",
+        "---\ncreated: not-a-date\ndate: 2026-99-99\naliases: alias\nworkspace: norn\ntechnologies:\n  - \"[[Rust]]\"\n  - plain\n---\n# Note\n",
     )
     .expect("note should write");
     fs::write(
         root.join("valid.md"),
-        "---\ncreated: 2026-05-17T10:01\ndate: 2026-05-17\naliases:\n  - Alias\nworkspace: \"[[vault-cli]]\"\ntechnologies:\n  - \"[[Rust]]\"\n---\n# Valid\n",
+        "---\ncreated: 2026-05-17T10:01\ndate: 2026-05-17\naliases:\n  - Alias\nworkspace: \"[[norn]]\"\ntechnologies:\n  - \"[[Rust]]\"\n---\n# Valid\n",
     )
     .expect("valid note should write");
     fs::write(
         root.join("valid-exported.md"),
-        "---\ncreated: 2026-02-13T00:00:00.000Z\ndate: \"2026-03-20 00:00:00+00:00\"\naliases:\n  - Exported\nworkspace: \"[[vault-cli]]\"\ntechnologies: \"[[Rust]]\"\n---\n# Valid Exported\n",
+        "---\ncreated: 2026-02-13T00:00:00.000Z\ndate: \"2026-03-20 00:00:00+00:00\"\naliases:\n  - Exported\nworkspace: \"[[norn]]\"\ntechnologies: \"[[Rust]]\"\n---\n# Valid Exported\n",
     )
     .expect("valid exported note should write");
-    fs::write(root.join("vault-cli.md"), "# vault-cli\n").expect("target note should write");
+    fs::write(root.join("norn.md"), "# norn\n").expect("target note should write");
     fs::write(root.join("Rust.md"), "# Rust\n").expect("target note should write");
 
     let output = vault(&[
@@ -1642,8 +1642,8 @@ fn completions_bash_subcommand_emits_non_empty_script() {
     );
     // Bash completions reference the program name in the generated function.
     assert!(
-        stdout.contains("vault"),
-        "expected bash completion script to reference the program name `vault`, got:\n{stdout}"
+        stdout.contains("norn"),
+        "expected bash completion script to reference the program name `norn`, got:\n{stdout}"
     );
 }
 
@@ -1655,8 +1655,8 @@ fn completions_zsh_subcommand_emits_non_empty_script() {
         "expected non-empty zsh completion script"
     );
     assert!(
-        stdout.contains("#compdef vault") || stdout.contains("_vault"),
-        "expected zsh completion to declare the compdef or _vault function, got:\n{stdout}"
+        stdout.contains("#compdef norn") || stdout.contains("_norn"),
+        "expected zsh completion to declare the compdef or _norn function, got:\n{stdout}"
     );
 }
 
@@ -1798,7 +1798,7 @@ fn completions_rejects_unknown_shell() {
 /// Cargo-dist's `include` directive packages completion scripts and the
 /// man page from a stable path under the workspace `target/` directory.
 /// `build.rs` produces those artifacts as a side effect of any build of
-/// `vault-cli`, so the integration test binary having compiled at all
+/// `norn`, so the integration test binary having compiled at all
 /// implies the files now exist. This guards against silent regressions
 /// where the build script stops emitting one of the expected outputs
 /// (for example after a clap_complete shell list change).
@@ -1808,7 +1808,7 @@ fn build_script_emits_release_artifacts() {
     let completions = workspace_root.join("target").join("completions");
     let man = workspace_root.join("target").join("man");
 
-    for expected in ["vault.bash", "_vault", "vault.fish"] {
+    for expected in ["norn.bash", "_norn", "norn.fish"] {
         let path = completions.join(expected);
         let metadata = fs::metadata(&path).unwrap_or_else(|err| {
             panic!(
@@ -1823,7 +1823,7 @@ fn build_script_emits_release_artifacts() {
         );
     }
 
-    let man_path = man.join("vault.1");
+    let man_path = man.join("norn.1");
     let metadata = fs::metadata(&man_path)
         .unwrap_or_else(|err| panic!("build.rs must emit {}: {err}", man_path.display()));
     assert!(
@@ -2677,7 +2677,7 @@ fn cache_rebuild_repopulates_after_adding_documents() {
 /// causing `vault find` to return zero results.
 fn vault_success_in_minimal_vault(args: &[&str]) -> (String, String) {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-ansi-test")
+        .prefix("norn-ansi-test")
         .tempdir()
         .expect("tempdir");
     let vault_dir = tmp.path().join(".norn");
@@ -2742,7 +2742,7 @@ fn find_paths_format_contains_no_ansi_under_color_always() {
 #[test]
 fn find_with_no_predicate_shows_help_on_stderr_exit_2() {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-find-help-test")
+        .prefix("norn-find-help-test")
         .tempdir()
         .expect("tempdir");
     let vault_dir = tmp.path().join(".norn");

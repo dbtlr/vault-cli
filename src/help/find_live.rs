@@ -144,7 +144,7 @@ mod tests {
 
     fn fresh_cache() -> (TempDir, Cache) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-find-live-")
+            .prefix("norn-find-live-")
             .tempdir()
             .unwrap();
         let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap();
@@ -220,22 +220,22 @@ mod tests {
         insert_doc(
             &cache,
             "a.md",
-            r#"{"type":"note","workspace":"vault-cli","modified":"2026-05-21"}"#,
+            r#"{"type":"note","workspace":"norn","modified":"2026-05-21"}"#,
         );
         insert_doc(
             &cache,
             "b.md",
-            r#"{"type":"note","workspace":"vault-cli","modified":"2026-05-20"}"#,
+            r#"{"type":"note","workspace":"norn","modified":"2026-05-20"}"#,
         );
         insert_doc(
             &cache,
             "c.md",
-            r#"{"type":"note","workspace":"vault-cli","modified":"2026-05-19"}"#,
+            r#"{"type":"note","workspace":"norn","modified":"2026-05-19"}"#,
         );
         insert_doc(
             &cache,
             "d.md",
-            r#"{"type":"task","workspace":"vault-cli","modified":"2026-05-18"}"#,
+            r#"{"type":"task","workspace":"norn","modified":"2026-05-18"}"#,
         );
         insert_doc(
             &cache,
@@ -246,7 +246,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         let q = &out[0].query;
         assert!(q.contains("--eq type:note"), "got: {q}");
-        assert!(q.contains("--eq workspace:vault-cli"), "got: {q}");
+        assert!(q.contains("--eq workspace:norn"), "got: {q}");
         assert!(q.contains("--sort modified"), "got: {q}");
         assert!(q.ends_with("--limit 5"), "got: {q}");
         assert_eq!(out[0].match_count, 3);
@@ -332,26 +332,14 @@ mod tests {
         // bracket-tolerant matcher accepts the bare form on input; the
         // rendered example must therefore strip the brackets so the user
         // can paste it without shell escaping.
-        insert_doc(
-            &cache,
-            "a.md",
-            r#"{"type":"note","workspace":"[[vault-cli]]"}"#,
-        );
-        insert_doc(
-            &cache,
-            "b.md",
-            r#"{"type":"note","workspace":"[[vault-cli]]"}"#,
-        );
-        insert_doc(
-            &cache,
-            "c.md",
-            r#"{"type":"note","workspace":"[[vault-cli]]"}"#,
-        );
+        insert_doc(&cache, "a.md", r#"{"type":"note","workspace":"[[norn]]"}"#);
+        insert_doc(&cache, "b.md", r#"{"type":"note","workspace":"[[norn]]"}"#);
+        insert_doc(&cache, "c.md", r#"{"type":"note","workspace":"[[norn]]"}"#);
         let out = live_examples_for_find(&cache);
         assert_eq!(out.len(), 1);
         let q = &out[0].query;
         assert!(
-            q.contains("--eq workspace:vault-cli"),
+            q.contains("--eq workspace:norn"),
             "expected bare value; got: {q}"
         );
         assert!(

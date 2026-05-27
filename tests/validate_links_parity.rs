@@ -41,7 +41,7 @@ fn isolate_cache(command: &mut Command) -> TempDir {
 /// `.norn/config.yaml` sets `validate.ignore: ["Archive/**"]`.
 fn synth_vault_with_ignore() -> TempDir {
     let tmp = tempfile::Builder::new()
-        .prefix("vault-cli-parity-")
+        .prefix("norn-parity-")
         .tempdir()
         .unwrap();
     let root = tmp.path().join("vault");

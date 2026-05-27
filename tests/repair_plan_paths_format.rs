@@ -21,7 +21,7 @@ fn vault_root(prefix: &str) -> PathBuf {
 /// Returns the raw `Output` (stdout bytes, exit status).
 fn run_command(root: &Path, config_path: &Path, extra_args: &[&str]) -> Output {
     let cache_dir = tempfile::Builder::new()
-        .prefix("vault-cli-cache-")
+        .prefix("norn-cache-")
         .tempdir()
         .expect("cache temp dir should be created");
 
@@ -50,7 +50,7 @@ fn run_command(root: &Path, config_path: &Path, extra_args: &[&str]) -> Output {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_multi_changes_per_file_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-paths-multi-");
+    let root = vault_root("norn-paths-multi-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -114,7 +114,7 @@ fn build_multi_changes_per_file_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_mixed_confidence_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-paths-mixed-conf-");
+    let root = vault_root("norn-paths-mixed-conf-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -162,7 +162,7 @@ fn build_mixed_confidence_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_only_skips_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-paths-only-skips-");
+    let root = vault_root("norn-paths-only-skips-");
     let config_path = root.with_extension("yaml");
 
     fs::write(

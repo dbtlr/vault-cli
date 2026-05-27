@@ -2,7 +2,6 @@ use camino::Utf8PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(name = "vault")]
 #[command(about = "Deterministic Markdown vault graph tools")]
 #[command(version)]
 #[command(disable_help_flag = true)]

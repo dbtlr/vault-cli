@@ -21,7 +21,7 @@ fn vault_root(prefix: &str) -> PathBuf {
 /// Returns the raw stdout string.
 fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> String {
     let cache_dir = tempfile::Builder::new()
-        .prefix("vault-cli-cache-")
+        .prefix("norn-cache-")
         .tempdir()
         .expect("cache temp dir should be created");
 
@@ -57,7 +57,7 @@ fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> String {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_mixed_skips_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-mixed-");
+    let root = vault_root("norn-report-mixed-");
     let config_path = root.with_extension("yaml");
 
     // Config: require `status` on all docs; no repair rules (so MissingDefault is the skip path).
@@ -109,7 +109,7 @@ fn build_mixed_skips_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_multi_file_changes_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-multifile-");
+    let root = vault_root("norn-report-multifile-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -170,7 +170,7 @@ fn build_multi_file_changes_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_only_skips_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-only-skips-");
+    let root = vault_root("norn-report-only-skips-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -195,7 +195,7 @@ fn build_only_skips_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_tied_files_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-tied-");
+    let root = vault_root("norn-report-tied-");
     let config_path = root.with_extension("yaml");
 
     fs::write(
@@ -250,7 +250,7 @@ fn build_tied_files_fixture() -> (PathBuf, PathBuf) {
 ///
 /// Returns `(root_dir, config_path)`. Caller is responsible for cleanup.
 fn build_report_fixture() -> (PathBuf, PathBuf) {
-    let root = vault_root("vault-cli-report-");
+    let root = vault_root("norn-report-");
     let config_path = root.with_extension("yaml");
 
     // Minimal config: no required fields, no repair rules (built-in closest-match handles links).
@@ -544,7 +544,7 @@ fn apply_guidance_suppresses_apply_block_when_skip_reason_active() {
 fn piped_default_is_json_explicit_format_overrides() {
     let (root, config_path) = build_plan_with_proposals_fixture();
     let cache_dir = tempfile::Builder::new()
-        .prefix("vault-cli-piped-default-")
+        .prefix("norn-piped-default-")
         .tempdir()
         .expect("cache temp dir should be created");
 

@@ -1,4 +1,4 @@
-//! Brand-token-aligned color palette for vault-cli output.
+//! Brand-token-aligned color palette for norn output.
 //!
 //! [`Palette`] maps the norn-brand token set to `anstyle::Style` values.
 //! Use [`resolve`] to get a palette calibrated to the current environment

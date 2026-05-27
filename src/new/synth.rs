@@ -390,22 +390,19 @@ validate:
         workspace: "[[{{path.workspace}}]]"
 "#,
         );
-        let a = args("Workspaces/vault-cli/tasks/foo.md", vec![]);
+        let a = args("Workspaces/norn/tasks/foo.md", vec![]);
         let plan = build_plan(&a, &cfg, &compiled, None, String::new()).unwrap();
 
         // Operation
         assert_eq!(plan.change.operation, "create_document");
-        assert_eq!(
-            plan.change.path.as_str(),
-            "Workspaces/vault-cli/tasks/foo.md"
-        );
+        assert_eq!(plan.change.path.as_str(), "Workspaces/norn/tasks/foo.md");
 
         // Frontmatter populated
         let nv = plan.change.new_value.as_ref().unwrap();
         let fm = &nv["frontmatter"];
         assert_eq!(fm["type"], serde_json::json!("task"));
         assert_eq!(fm["status"], serde_json::json!("backlog"));
-        assert_eq!(fm["workspace"], serde_json::json!("[[vault-cli]]"));
+        assert_eq!(fm["workspace"], serde_json::json!("[[norn]]"));
 
         // No warnings expected when all required fields are filled.
         assert!(plan.warnings.is_empty(), "warnings: {:?}", plan.warnings);
@@ -542,11 +539,11 @@ validate:
         workspace: wikilink
 "#,
         );
-        let a = args("foo.md", vec!["workspace=vault-cli"]);
+        let a = args("foo.md", vec!["workspace=norn"]);
         let plan = build_plan(&a, &cfg, &compiled, None, String::new()).unwrap();
         let fm = &plan.change.new_value.as_ref().unwrap()["frontmatter"];
-        // Auto-wrapped: "vault-cli" → "[[vault-cli]]"
-        assert_eq!(fm["workspace"], serde_json::json!("[[vault-cli]]"));
+        // Auto-wrapped: "norn" → "[[norn]]"
+        assert_eq!(fm["workspace"], serde_json::json!("[[norn]]"));
     }
 
     #[test]

@@ -636,7 +636,7 @@ mod tests {
 
     fn fixture_cache() -> (tempfile::TempDir, Cache) {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-set-resolve-")
+            .prefix("norn-set-resolve-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn resolve_target_returns_error_when_ambiguous() {
         let tmp = tempfile::Builder::new()
-            .prefix("vault-cli-set-ambig-")
+            .prefix("norn-set-ambig-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8Path::from_path(tmp.path())

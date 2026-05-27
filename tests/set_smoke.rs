@@ -10,7 +10,7 @@ fn norn_bin() -> &'static str {
 }
 
 fn fixture_tempdir() -> tempfile::TempDir {
-    let tmp = Builder::new().prefix("vault-cli-set-").tempdir().unwrap();
+    let tmp = Builder::new().prefix("norn-set-").tempdir().unwrap();
     fs::create_dir_all(tmp.path().join(".norn")).unwrap();
     fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
     tmp

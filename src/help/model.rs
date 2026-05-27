@@ -55,7 +55,7 @@ pub struct GlobalEntry {
 #[derive(Debug, Clone)]
 pub struct LiveExample {
     /// Full command line including the binary name (built with `BIN_NAME`),
-    /// e.g. `"norn find --eq type:note --eq workspace:vault-cli --sort modified --limit 5"`.
+    /// e.g. `"norn find --eq type:note --eq workspace:norn --sort modified --limit 5"`.
     /// The renderer tokenizes this for per-token coloring; no trailing whitespace.
     pub query: String,
     /// Confirmed non-zero match count. Rendered as the tail

@@ -48,7 +48,7 @@ pub struct RunConfig {
     /// passes `std::env::current_exe()` result.
     pub install_path: PathBuf,
     /// URL prefix for the releases endpoint. Tests pass mock server URL;
-    /// production passes `https://github.com/dbtlr/vault-cli/releases`.
+    /// production passes `https://github.com/dbtlr/norn/releases`.
     pub releases_url: String,
     /// Override compile-time target triple. Tests pass a deterministic value;
     /// production passes `resolve::TARGET_TRIPLE` (None → exit 2).
@@ -64,7 +64,7 @@ script. This binary does not have an install receipt.
 To update, either:
   • Re-run the installer:
       curl --proto '=https' --tlsv1.2 -LsSf \\
-        https://github.com/dbtlr/vault-cli/releases/latest/download/vault-installer.sh | sh
+        https://github.com/dbtlr/norn/releases/latest/download/vault-installer.sh | sh
 
   • Update via the package manager you originally used (cargo, homebrew, etc.)";
 

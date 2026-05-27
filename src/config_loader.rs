@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn alias_field_propagates_from_config_to_index_options() {
         let dir = tempfile::Builder::new()
-            .prefix("vault-cli-alias-")
+            .prefix("norn-alias-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn alias_field_absent_in_config_yields_none() {
         let dir = tempfile::Builder::new()
-            .prefix("vault-cli-alias-none-")
+            .prefix("norn-alias-none-")
             .tempdir()
             .unwrap();
         let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
