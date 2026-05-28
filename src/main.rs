@@ -1,3 +1,4 @@
+pub mod applier;
 pub mod apply_report;
 mod cache;
 mod cache_cmd;

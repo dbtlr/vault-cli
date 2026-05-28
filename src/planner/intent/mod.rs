@@ -51,7 +51,6 @@ impl IntentOp {
 ///   `remove_frontmatter`, `rewrite_link`, `replace_body`, `create_document`):
 ///   pass through by deserializing `op.fields` into a `PlannedChange`.
 /// - **Unknown kind**: returns `Err`.
-#[allow(dead_code)] // wired by the applier in Plan Task 7
 pub(crate) fn expand(op: &MigrationOp, index: &GraphIndex) -> Result<Vec<PlannedChange>> {
     match op.kind.as_str() {
         "move_folder" => {
