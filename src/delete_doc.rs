@@ -21,6 +21,8 @@ use crate::mutation_report::{LinkFile, LinkSummary};
 // Report types
 // ---------------------------------------------------------------------------
 
+/// DeleteReport is kept until Plan Task 20 cleans up dead types.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct DeleteReport {
     /// Independent of repair_plan_schema_version; bumps when the DeleteReport shape changes.
@@ -44,6 +46,7 @@ pub enum DeleteWarning {
 // Renderers
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::Result<()> {
     let plural = |n: usize, s: &str, p: &str| -> String {
         if n == 1 {
@@ -126,9 +129,109 @@ pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn render_json<W: Write>(out: &mut W, report: &DeleteReport) -> anyhow::Result<()> {
     serde_json::to_writer_pretty(&mut *out, report)?;
     writeln!(out)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// ApplyReport-based TTY renderer for delete
+// ---------------------------------------------------------------------------
+
+/// Render a human-readable TTY summary for a delete operation.
+///
+/// `doc` is the vault-relative path of the deleted document.
+/// `incoming_total` is the count of backlinks (from preflight).
+/// `incoming_files` is the list of source file paths that hold backlinks.
+/// `rewrite_to` is the resolved rewrite target path (if `--rewrite-to` was used).
+/// `rewrite_total` is the number of links rewritten (from link_risk; 0 if no rewrite).
+/// `applied` is `true` when the operation was executed, `false` for dry-run/preview.
+pub fn render_delete_apply_tty<W: Write>(
+    out: &mut W,
+    doc: &str,
+    incoming_total: usize,
+    incoming_files: &[camino::Utf8PathBuf],
+    rewrite_to: Option<&str>,
+    rewrite_total: usize,
+    applied: bool,
+) -> std::io::Result<()> {
+    macro_rules! pl {
+        ($n:expr, $s:literal, $p:literal) => {
+            if $n == 1 {
+                $s
+            } else {
+                $p
+            }
+        };
+    }
+
+    if applied {
+        match rewrite_to {
+            Some(alt) => {
+                writeln!(out, "✓ deleted {doc} (incoming links redirected to {alt})")?;
+                writeln!(
+                    out,
+                    "✓ rewrote {} {} across {} {}",
+                    rewrite_total,
+                    pl!(rewrite_total, "backlink", "backlinks"),
+                    incoming_files.len(),
+                    pl!(incoming_files.len(), "file", "files"),
+                )?;
+            }
+            None => {
+                writeln!(out, "✓ deleted {doc}")?;
+                if incoming_total > 0 {
+                    writeln!(
+                        out,
+                        "⚠ {} {} now broken (surface via norn validate)",
+                        incoming_total,
+                        pl!(incoming_total, "link", "links"),
+                    )?;
+                }
+            }
+        }
+    } else {
+        match rewrite_to {
+            Some(alt) => {
+                writeln!(
+                    out,
+                    "norn delete {doc} → redirects {} incoming {} to {alt}",
+                    incoming_total,
+                    pl!(incoming_total, "link", "links"),
+                )?;
+                writeln!(
+                    out,
+                    "  {} {} to rewrite across {} {}",
+                    rewrite_total,
+                    pl!(rewrite_total, "backlink", "backlinks"),
+                    incoming_files.len(),
+                    pl!(incoming_files.len(), "file", "files"),
+                )?;
+            }
+            None => {
+                writeln!(out, "norn delete {doc}")?;
+                if incoming_total > 0 {
+                    writeln!(
+                        out,
+                        "  ⚠ {} incoming {} will break across {} {}:",
+                        incoming_total,
+                        pl!(incoming_total, "link", "links"),
+                        incoming_files.len(),
+                        pl!(incoming_files.len(), "file", "files"),
+                    )?;
+                    for file in incoming_files {
+                        writeln!(out, "      {file}")?;
+                    }
+                    writeln!(
+                        out,
+                        "  (broken links will surface as link-target-missing findings in `norn validate`)"
+                    )?;
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -141,6 +244,7 @@ pub fn render_json<W: Write>(out: &mut W, report: &DeleteReport) -> anyhow::Resu
 /// `rewrite_to` is the resolved vault-relative path of the `--rewrite-to` target
 /// (if provided). `applied` should be `false` for the preview and `true` after
 /// `apply_repair_plan` has completed.
+#[allow(dead_code)]
 pub(crate) fn build_report(
     plan: &RepairPlan,
     index: &GraphIndex,

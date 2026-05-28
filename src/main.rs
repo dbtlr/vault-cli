@@ -603,7 +603,11 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(exit)
         }
         Command::Delete(args) => {
-            use std::io::{IsTerminal, Write};
+            use crate::applier::{apply_migration_plan, ApplyContext};
+            use crate::migration_plan::{
+                MigrationOp, MigrationPlan, MIGRATION_PLAN_SCHEMA_VERSION,
+            };
+            use std::io::Write;
 
             let loaded_config = load_config(&cwd, config_path.as_ref())?;
             let mut index = crate::cache_cmd::load_graph_index(
@@ -613,6 +617,11 @@ fn run(cli: Cli) -> Result<i32> {
             )?;
             trim_diagnostics(&mut index, verbose);
 
+            // ----------------------------------------------------------------
+            // Pre-flight: validate doc exists + enforce backlinks policy.
+            // Backlinks-present + no --rewrite-to + no --allow-broken-links → exit 2.
+            // Extract incoming-link data for TTY rendering.
+            // ----------------------------------------------------------------
             let cfg = crate::delete_doc::PreflightConfig {
                 doc: &args.doc,
                 allow_broken_links: args.allow_broken_links,
@@ -627,71 +636,117 @@ fn run(cli: Cli) -> Result<i32> {
                     std::process::exit(2);
                 }
             };
-            let plan = &outcome.plan;
-            let rewrite_to = outcome.resolved_rewrite_to.as_ref();
 
-            let stdout = std::io::stdout();
-            let mut out = stdout.lock();
-
-            // Determine whether to apply, and handle the TTY-interactive branch specially
-            // (it needs to render the preview before prompting).
-            // In JSON mode we must render exactly once — skip the preview when we're
-            // going to apply so callers never see two concatenated JSON objects.
-            let should_apply = if args.dry_run {
-                false
-            } else if args.yes {
-                true
-            } else if matches!(args.format, crate::cli::DeleteFormat::Json) {
-                // --format json is implicitly non-interactive; render preview and exit.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                crate::delete_doc::render_json(&mut out, &preview)?;
-                return Ok(0);
-            } else if std::io::stdin().is_terminal() {
-                // TTY interactive: render preview first so the operator can see what
-                // they're confirming, then prompt.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                crate::delete_doc::render_records(&mut out, &preview)?;
-                let stdin = std::io::stdin();
-                let mut reader = stdin.lock();
-                let mut prompt_out = std::io::stderr();
-                writeln!(prompt_out)?;
-                let ok = crate::prompt::confirm(&mut reader, &mut prompt_out, "Proceed? [y/N] ")?;
-                if !ok {
-                    std::process::exit(1);
+            // Compute incoming-links info for TTY rendering.
+            let delete_op = outcome
+                .plan
+                .changes
+                .iter()
+                .find(|c| c.operation == "delete_document")
+                .expect("preflight_and_plan must produce a delete_document op");
+            let bl = crate::target::backlinks(&index, &delete_op.path);
+            let incoming_total = bl.len();
+            let mut incoming_file_paths: Vec<camino::Utf8PathBuf> = {
+                use std::collections::BTreeSet;
+                let mut seen: BTreeSet<camino::Utf8PathBuf> = BTreeSet::new();
+                for link in &bl {
+                    seen.insert(link.source_path.clone());
                 }
-                true
-            } else {
-                // Non-TTY without --yes = implicit dry-run: render preview and exit.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                crate::delete_doc::render_records(&mut out, &preview)?;
-                return Ok(0);
+                seen.into_iter().collect()
+            };
+            // rewrite_total: count from link_risk when --rewrite-to was used.
+            let rewrite_total = delete_op.link_risk.as_ref().map_or(0, |risk| {
+                risk.stem_links.len()
+                    + risk.path_qualified_wikilinks.len()
+                    + risk.markdown_links.len()
+            });
+            // If rewrite_to is present but no incoming links broke, files list is the
+            // rewrite sources (from link_risk source_path).
+            if args.rewrite_to.is_some() && incoming_file_paths.is_empty() {
+                if let Some(risk) = &delete_op.link_risk {
+                    use std::collections::BTreeSet;
+                    let mut seen: BTreeSet<camino::Utf8PathBuf> = BTreeSet::new();
+                    for a in risk
+                        .stem_links
+                        .iter()
+                        .chain(risk.path_qualified_wikilinks.iter())
+                        .chain(risk.markdown_links.iter())
+                    {
+                        seen.insert(a.source_path.clone());
+                    }
+                    incoming_file_paths = seen.into_iter().collect();
+                }
+            }
+            let resolved_rewrite_to = outcome.resolved_rewrite_to.clone();
+
+            // ----------------------------------------------------------------
+            // Resolve dry_run.
+            // ----------------------------------------------------------------
+            let dry_run = resolve_delete_dry_run(args.dry_run, args.yes, args.format)?;
+
+            // ----------------------------------------------------------------
+            // Build one-op MigrationPlan.
+            // ----------------------------------------------------------------
+            let plan = MigrationPlan {
+                schema_version: MIGRATION_PLAN_SCHEMA_VERSION,
+                vault_root: cwd.to_string(),
+                generator: None,
+                generated_at: None,
+                operations: vec![MigrationOp {
+                    kind: "delete_document".into(),
+                    id: None,
+                    requires: vec![],
+                    fields: serde_json::json!({
+                        "path": args.doc,
+                        "rewrite_to": args.rewrite_to.as_ref(),
+                        "allow_broken_links": args.allow_broken_links,
+                    }),
+                    footnote: None,
+                }],
+                skipped: vec![],
+                plan_footnote: None,
             };
 
-            if should_apply {
-                crate::repair_apply::apply_repair_plan(&cwd, &index, plan, false)?;
-                let applied = crate::delete_doc::build_report(plan, &index, rewrite_to, true);
-                match args.format {
-                    crate::cli::DeleteFormat::Records => {
-                        crate::delete_doc::render_records(&mut out, &applied)?;
-                    }
-                    crate::cli::DeleteFormat::Json => {
-                        crate::delete_doc::render_json(&mut out, &applied)?;
-                    }
+            let ctx = ApplyContext {
+                dry_run,
+                parents: false,
+            };
+            let report = match apply_migration_plan(&plan, &index, ctx) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return Ok(2);
                 }
-            } else {
-                // --dry-run: render preview respecting --format.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                match args.format {
-                    crate::cli::DeleteFormat::Records => {
-                        crate::delete_doc::render_records(&mut out, &preview)?;
-                    }
-                    crate::cli::DeleteFormat::Json => {
-                        crate::delete_doc::render_json(&mut out, &preview)?;
-                    }
+            };
+
+            let exit = if report.failed > 0 { 1 } else { 0 };
+
+            // ----------------------------------------------------------------
+            // Render output.
+            // ----------------------------------------------------------------
+            let stdout = std::io::stdout();
+            let mut out = stdout.lock();
+            match args.format {
+                crate::cli::DeleteFormat::Json => {
+                    let json = serde_json::to_string_pretty(&report)?;
+                    out.write_all(json.as_bytes())?;
+                    out.write_all(b"\n")?;
+                }
+                crate::cli::DeleteFormat::Records => {
+                    let applied = !dry_run && exit == 0;
+                    crate::delete_doc::render_delete_apply_tty(
+                        &mut out,
+                        &args.doc,
+                        incoming_total,
+                        &incoming_file_paths,
+                        resolved_rewrite_to.as_deref().map(camino::Utf8Path::as_str),
+                        rewrite_total,
+                        applied,
+                    )?;
                 }
             }
 
-            Ok(0)
+            Ok(exit)
         }
         Command::Set(args) => {
             use std::io::{IsTerminal, Write};
@@ -913,6 +968,47 @@ fn resolve_move_dry_run(
     // --format json without --yes: implicit non-interactive dry-run (safe for
     // script/agent pipelines that haven't explicitly confirmed with --yes).
     if matches!(format, crate::cli::MoveFormat::Json) {
+        return Ok(true);
+    }
+    if std::io::stdin().is_terminal() {
+        let stdin = std::io::stdin();
+        let mut reader = stdin.lock();
+        let mut prompt_out = std::io::stderr();
+        use std::io::Write;
+        writeln!(prompt_out)?;
+        let ok = crate::prompt::confirm(&mut reader, &mut prompt_out, "Proceed? [y/N] ")?;
+        if !ok {
+            std::process::exit(1);
+        }
+        return Ok(false);
+    }
+    // Non-TTY without --yes: implicit dry-run.
+    Ok(true)
+}
+
+/// Resolve the `dry_run` flag for a `norn delete` invocation.
+///
+/// - `--dry-run` → always dry-run.
+/// - `--yes` → apply (no prompt).
+/// - `--format json` → implicit non-interactive dry-run (safe for pipelines).
+/// - TTY stdin → prompt the operator; exit 1 if declined.
+/// - Non-TTY, no `--yes` → implicit dry-run.
+///
+/// Returns `Ok(true)` for dry-run, `Ok(false)` for apply.
+fn resolve_delete_dry_run(
+    dry_run_flag: bool,
+    yes_flag: bool,
+    format: crate::cli::DeleteFormat,
+) -> anyhow::Result<bool> {
+    use std::io::IsTerminal;
+    if dry_run_flag {
+        return Ok(true);
+    }
+    if yes_flag {
+        return Ok(false);
+    }
+    // --format json without --yes: implicit non-interactive dry-run.
+    if matches!(format, crate::cli::DeleteFormat::Json) {
         return Ok(true);
     }
     if std::io::stdin().is_terminal() {
