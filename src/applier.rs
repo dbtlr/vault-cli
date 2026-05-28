@@ -390,6 +390,7 @@ fn build_report_ops(
                 summary,
                 error: None, // see note below
                 footnote: parent_op.footnote.clone(),
+                cascade: None,
             }
         })
         .collect()
