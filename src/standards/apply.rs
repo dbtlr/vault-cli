@@ -138,6 +138,17 @@ pub struct LinkRewriteOutcome {
     pub skipped: Vec<LinkSkipResult>,
 }
 
+/// One backlink cascade attributable to a single move/delete change, keyed by
+/// the change's source path. Internal plumbing consumed by the applier when it
+/// builds the per-op `CascadeSummary`; never serialized to user JSON.
+#[derive(Debug, Clone)]
+pub struct CascadeRecord {
+    pub source_path: camino::Utf8PathBuf,
+    pub planned: usize,
+    pub rewritten: Vec<LinkRewriteResult>,
+    pub skipped: Vec<LinkSkipResult>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RepairApplyWarning {
     pub path: Utf8PathBuf,
@@ -160,6 +171,10 @@ pub struct RepairApplyReport {
     pub created_documents: Vec<CreateDocumentResult>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub rewritten_links: Vec<LinkRewriteResult>,
+    /// Per-change backlink cascades (move/delete). Internal; not serialized —
+    /// the applier folds these into per-op `CascadeSummary` in the ApplyReport.
+    #[serde(skip)]
+    pub cascades: Vec<CascadeRecord>,
     /// Paths whose body was wholly replaced by a `replace_body` change (Pass 1d).
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub replaced_bodies: Vec<Utf8PathBuf>,
@@ -192,6 +207,7 @@ impl RepairApplyReport {
             deleted_documents: Vec::new(),
             created_documents: Vec::new(),
             rewritten_links: Vec::new(),
+            cascades: Vec::new(),
             replaced_bodies: Vec::new(),
             warnings: Vec::new(),
             plan_context: RepairApplyPlanContext {
