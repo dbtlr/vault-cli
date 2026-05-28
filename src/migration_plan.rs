@@ -43,7 +43,7 @@ pub struct SkippedFinding {
 }
 
 impl MigrationPlan {
-    /// Compute SHA256 (via blake3) over the canonical JSON serialization.
+    /// Compute the BLAKE3 hash over the canonical JSON serialization.
     /// YAML and JSON of the same plan produce the same hash — the hash identifies
     /// the plan's content, not its on-disk representation.
     pub fn canonical_hash(&self) -> String {
