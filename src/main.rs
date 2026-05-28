@@ -29,6 +29,7 @@ pub mod prompt;
 mod query;
 mod repair;
 mod repair_apply;
+mod rewrite_wikilink_cmd;
 mod self_update;
 mod set;
 mod show;
@@ -50,6 +51,7 @@ use crate::migrate_cmd::MigrateRunArgs;
 use crate::output::primitives::is_broken_pipe;
 use crate::repair::skip_reasons::code_matches_any;
 use crate::repair_apply::{apply_repair_plan, with_verification};
+use crate::rewrite_wikilink_cmd::RewriteWikilinkRunArgs;
 use crate::standards::{plan_repairs, validate_with_compiled, RepairPlanFilters, SkippedSummary};
 use crate::validate_filter::{filter_findings, ValidateFilterOptions};
 use anyhow::Result;
@@ -111,6 +113,17 @@ fn run(cli: Cli) -> Result<i32> {
                 out: args.out,
             };
             migrate_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
+        }
+        Command::RewriteWikilink(args) => {
+            let run_args = RewriteWikilinkRunArgs {
+                old: args.old,
+                new: args.new,
+                dry_run: args.dry_run,
+                yes: args.yes,
+                format: args.format,
+                out: args.out,
+            };
+            rewrite_wikilink_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
         }
         Command::Repair(repair_command) => match repair_command.command {
             RepairSubcommand::Plan(args) => {

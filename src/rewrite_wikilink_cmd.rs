@@ -1,0 +1,191 @@
+//! `norn rewrite-wikilink OLD NEW` — graph-aware wikilink rewrite (body + frontmatter).
+//!
+//! Builds a one-op MigrationPlan with kind `rewrite_wikilink`, runs through
+//! the unified applier. Pre-flight refusal (exit 2) when OLD is unresolvable.
+//!
+//! # Exit codes
+//! - 0: success (or dry-run with no failures)
+//! - 1: runtime failure (at least one op failed during apply)
+//! - 2: pre-flight refusal (OLD does not resolve to any document)
+
+use crate::applier::{apply_migration_plan, ApplyContext};
+use crate::apply_report::ApplyReport;
+use crate::cli::RewriteWikilinkFormat;
+use crate::migration_plan::{MigrationOp, MigrationPlan, MIGRATION_PLAN_SCHEMA_VERSION};
+use anyhow::{Context, Result};
+use camino::Utf8PathBuf;
+use std::io::Write;
+
+pub struct RewriteWikilinkRunArgs {
+    pub old: String,
+    pub new: String,
+    pub dry_run: bool,
+    pub yes: bool,
+    pub format: RewriteWikilinkFormat,
+    pub out: Option<String>,
+}
+
+/// Pre-flight error exit code.
+pub const EXIT_PREFLIGHT: i32 = 2;
+/// Runtime failure exit code.
+pub const EXIT_RUNTIME: i32 = 1;
+/// Success exit code.
+pub const EXIT_OK: i32 = 0;
+
+pub fn run(
+    args: RewriteWikilinkRunArgs,
+    cwd: &Utf8PathBuf,
+    no_cache_refresh: bool,
+    config_path: Option<&Utf8PathBuf>,
+) -> Result<i32> {
+    // ------------------------------------------------------------------
+    // 1. Build GraphIndex
+    // ------------------------------------------------------------------
+    let loaded_config = crate::config_loader::load_config(cwd, config_path)?;
+    let index =
+        crate::cache_cmd::load_graph_index(cwd, &loaded_config.index_options, no_cache_refresh)?;
+
+    // ------------------------------------------------------------------
+    // 2. Build one-op MigrationPlan
+    // ------------------------------------------------------------------
+    let vault_root = cwd.to_string();
+    let plan = MigrationPlan {
+        schema_version: MIGRATION_PLAN_SCHEMA_VERSION,
+        vault_root: vault_root.clone(),
+        generator: None,
+        generated_at: None,
+        operations: vec![MigrationOp {
+            kind: "rewrite_wikilink".into(),
+            id: None,
+            requires: vec![],
+            fields: serde_json::json!({"old": args.old, "new": args.new}),
+            footnote: None,
+        }],
+        skipped: vec![],
+        plan_footnote: None,
+    };
+
+    // ------------------------------------------------------------------
+    // 3. Determine dry_run mode
+    //    - --dry-run: never apply
+    //    - --yes or --format json: skip TTY confirmation, apply
+    //    - TTY without --yes: prompt
+    //    - Non-TTY without --yes: implicit dry-run
+    // ------------------------------------------------------------------
+    use std::io::IsTerminal;
+
+    let dry_run = if args.dry_run {
+        true
+    } else if args.yes || matches!(args.format, RewriteWikilinkFormat::Json) {
+        false
+    } else if std::io::stdin().is_terminal() {
+        use std::io::Write;
+        let stdin = std::io::stdin();
+        let mut reader = stdin.lock();
+        let mut prompt_out = std::io::stderr();
+        writeln!(prompt_out)?;
+        let ok = crate::prompt::confirm(
+            &mut reader,
+            &mut prompt_out,
+            "Apply wikilink rewrite? [y/N] ",
+        )?;
+        if !ok {
+            std::process::exit(1);
+        }
+        false
+    } else {
+        // Non-TTY, no --yes: implicit dry-run
+        true
+    };
+
+    let ctx = ApplyContext {
+        dry_run,
+        parents: false,
+    };
+
+    // ------------------------------------------------------------------
+    // 4. Apply — pre-flight refusal on Err
+    // ------------------------------------------------------------------
+    let report = match apply_migration_plan(&plan, &index, ctx) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            return Ok(EXIT_PREFLIGHT);
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // 5. Exit code
+    // ------------------------------------------------------------------
+    let exit = if report.failed > 0 {
+        EXIT_RUNTIME
+    } else {
+        EXIT_OK
+    };
+
+    // ------------------------------------------------------------------
+    // 6. Render
+    // ------------------------------------------------------------------
+    render_report(&report, &args)?;
+
+    Ok(exit)
+}
+
+/// Render the apply report to stdout, OR to a file when `--out` is set.
+///
+/// `--out` is mutually exclusive with stdout output: when set, the report
+/// (always JSON) is written to the file and stdout is silent.
+fn render_report(report: &ApplyReport, args: &RewriteWikilinkRunArgs) -> Result<()> {
+    if let Some(out_path) = &args.out {
+        let json = serde_json::to_string_pretty(report)?;
+        std::fs::write(out_path, format!("{json}\n"))
+            .with_context(|| format!("failed to write apply report to '{out_path}'"))?;
+        return Ok(());
+    }
+
+    let stdout = std::io::stdout();
+    let mut out_lock = stdout.lock();
+    match args.format {
+        RewriteWikilinkFormat::Json => {
+            let json = serde_json::to_string_pretty(report)?;
+            out_lock.write_all(json.as_bytes())?;
+            out_lock.write_all(b"\n")?;
+        }
+        RewriteWikilinkFormat::Records => {
+            render_records(report, &args.old, &args.new, &mut out_lock)?;
+        }
+    }
+    Ok(())
+}
+
+/// Human-readable TTY rendering showing body/frontmatter breakdown.
+fn render_records(report: &ApplyReport, old: &str, new: &str, out: &mut dyn Write) -> Result<()> {
+    let body_count = report
+        .operations
+        .iter()
+        .filter(|o| o.kind == "rewrite_link")
+        .count();
+    let fm_count = report
+        .operations
+        .iter()
+        .filter(|o| o.kind == "set_frontmatter")
+        .count();
+    let total = report.operations.len();
+    let status = if report.dry_run {
+        "would rewrite"
+    } else {
+        "rewrote"
+    };
+    writeln!(
+        out,
+        "{} [[{}]] → [[{}]] in {} ops ({} body + {} frontmatter)",
+        status, old, new, total, body_count, fm_count
+    )?;
+    if !report.warnings.is_empty() {
+        writeln!(out, "warnings:")?;
+        for w in &report.warnings {
+            writeln!(out, "  {}: {}", w.code, w.message)?;
+        }
+    }
+    Ok(())
+}

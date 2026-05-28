@@ -182,6 +182,21 @@ Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-fli
     )]
     Repair(RepairCommand),
     #[command(
+        name = "rewrite-wikilink",
+        disable_help_flag = true,
+        about = "Rewrite all occurrences of a wikilink target across the vault (body + frontmatter)",
+        long_about = "Rewrite all occurrences of a wikilink target across the vault.\n\
+\n\
+Rewrites both body wikilinks (`[[OLD]]`, `[[OLD|display]]`) and frontmatter fields\n\
+that contain the old target as a wikilink value. Builds a one-op MigrationPlan and\n\
+runs through the unified applier.\n\
+\n\
+Pre-flight refusal (exit 2) when OLD does not resolve to any document.\n\
+\n\
+Exit codes: 0 success or dry-run, 1 runtime failure, 2 pre-flight refusal."
+    )]
+    RewriteWikilink(RewriteWikilinkArgs),
+    #[command(
         disable_help_flag = true,
         about = "Validate vault graph facts and configured frontmatter rules",
         long_about = "Validate vault graph facts and configured frontmatter rules.\n\nValidation reuses graph/index facts to surface unresolved links, ambiguous links, document diagnostics, and configured frontmatter requirements. Validate does not mutate files."
@@ -835,6 +850,39 @@ pub enum MigrateFormat {
 pub enum InputFormat {
     Json,
     Yaml,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct RewriteWikilinkArgs {
+    /// Old wikilink target (stem, path, or alias) to find and rewrite.
+    #[arg(value_name = "OLD")]
+    pub old: String,
+
+    /// New wikilink target to replace OLD with.
+    #[arg(value_name = "NEW")]
+    pub new: String,
+
+    /// Preview changes without writing files.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Skip TTY confirmation prompt and apply immediately.
+    #[arg(long)]
+    pub yes: bool,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = RewriteWikilinkFormat::Records)]
+    pub format: RewriteWikilinkFormat,
+
+    /// Write the JSON apply report to this file instead of stdout.
+    #[arg(long)]
+    pub out: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum RewriteWikilinkFormat {
+    Records,
+    Json,
 }
 
 #[derive(Debug, clap::Args)]
