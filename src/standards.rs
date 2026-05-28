@@ -23,7 +23,7 @@ pub(crate) use findings::{Finding, FindingBody};
 pub(crate) use repair::link_risk::classify as classify_link_risk;
 pub(crate) use repair::warnings::{detect_stem_collision, PlanWarning};
 pub(crate) use repair::{
-    plan_repairs, Confidence, ConfidenceFilter, PlannedChange, RepairPlan, RepairPlanFilters,
-    RepairPlanSummary, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
+    plan_repairs, Confidence, ConfidenceFilter, FootnoteDetails, PlannedChange, RepairPlan,
+    RepairPlanFilters, RepairPlanSummary, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
 };
 pub(crate) use summary::summarize;
