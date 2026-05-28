@@ -28,7 +28,10 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "norn validate --format json",
                 "machine-readable validation findings",
             ),
-            ("norn repair plan --out plan.json", "generate a repair plan"),
+            (
+                "norn repair --plan --out plan.json",
+                "generate a MigrationPlan",
+            ),
         ],
         "norn find" => &[
             (
@@ -93,42 +96,27 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "unique source paths only; pipe-friendly",
             ),
         ],
-        "norn repair plan" => &[
-            ("norn repair plan --out plan.json", "write a repair plan"),
+        "norn repair" => &[
+            ("norn repair", "summarize repairable findings; no writes"),
             (
-                "norn repair plan --format json",
-                "machine-readable plan for piping to repair apply",
+                "norn repair --plan --out plan.json",
+                "write a MigrationPlan to file",
             ),
             (
-                "norn repair plan --format paths",
+                "norn repair --plan --format json | norn migrate -",
+                "generate a plan and apply it through migrate",
+            ),
+            (
+                "norn repair --plan --format paths",
                 "affected paths only; pipe to xargs",
             ),
             (
-                "norn repair plan --skip-reason ambiguous-target",
+                "norn repair --plan --skip-reason ambiguous-target",
                 "show only ambiguous-target skips",
             ),
             (
-                "norn repair plan --severity error",
+                "norn repair --plan --severity error",
                 "plan only error-level findings",
-            ),
-        ],
-        "norn repair apply" => &[
-            ("norn repair apply plan.json", "apply a plan from file"),
-            (
-                "norn repair plan --format json | norn repair apply",
-                "pipe a plan straight from plan to apply",
-            ),
-            (
-                "norn repair apply plan.json --dry-run",
-                "preview changes without writing",
-            ),
-            (
-                "norn repair apply plan.json --out report.json",
-                "write the JSON apply report to file; stdout stays silent",
-            ),
-            (
-                "norn repair apply plan.json --verify",
-                "apply then re-validate",
             ),
         ],
         // ── Default tier: 1-2 examples each ─────────────────────────────────

@@ -219,31 +219,17 @@ fn grouped_help_lists_new_surfaces() {
     assert!(output.contains("status"));
 
     let output = vault(&["repair", "--help"]);
-    assert!(output.contains("Plan and apply deterministic vault repairs"));
-    assert!(output.contains("plan"));
-    assert!(output.contains("apply"));
-    // "vault repair links" subcommand was retired; the word "links" still appears in
-    // apply/plan descriptions, so we check for the subcommand listing token instead.
-    assert!(
-        !output.contains("  links  ") && !output.contains("  links\n"),
-        "norn repair links subcommand should be retired; got: {output}"
-    );
-
-    let output = vault(&["repair", "plan", "--help"]);
-    // RepairPlanFormat uses a custom value_parser; clap no longer auto-lists possible values.
-    // Verify the format flag and key help text are present.
+    // `repair` is now flag-based: bare repair = summary, `--plan` = MigrationPlan.
+    assert!(output.contains("--plan"));
     assert!(output.contains("--format"));
-    assert!(output.contains("report when TTY, json when piped"));
-    assert!(output.contains("skipped findings as non-blocking planning fallout"));
     assert!(output.contains("--out"));
-    // jsonl and table were removed from repair plan; they should not appear in help
+    // jsonl and table were removed from repair --plan; they should not appear in help
     assert!(!output.contains("jsonl"));
-    assert!(!output.contains("Possible values: json, jsonl, table"));
-
-    let output = vault(&["repair", "apply", "--help"]);
-    assert!(output.contains("rewrite_link"));
-    assert!(output.contains("precondition checks"));
-    assert!(!output.contains("manual-decision"));
+    // The retired `plan`/`apply` subcommands must not be listed as subcommands.
+    assert!(
+        !output.contains("  apply  ") && !output.contains("  apply\n"),
+        "norn repair apply subcommand should be retired; got: {output}"
+    );
 }
 
 // repair_links_reports_link_drift_and_duplicate_stems: removed — vault repair links retired.
@@ -274,36 +260,39 @@ fn repair_plan_generates_configured_frontmatter_change() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--code",
         "frontmatter-disallowed-value,frontmatter-forbidden-field",
         "--field",
         "status",
     ]);
 
-    let plan = serde_json::from_str::<Value>(&output).expect("repair plan should be JSON");
-    assert_eq!(plan["schema_version"], 9);
-    assert_eq!(plan["summary"]["findings"], 1);
-    assert_eq!(plan["summary"]["planned_changes"], 1);
-    assert_eq!(plan["summary"]["skipped"]["total"], 0);
-    assert!(plan["summary"]["skipped"]["by_reason"]
-        .as_object()
-        .unwrap()
-        .is_empty());
-    assert_eq!(
-        plan["source_filters"]["code"],
-        serde_json::json!([
-            "frontmatter-disallowed-value",
-            "frontmatter-forbidden-field"
-        ])
+    // `repair --plan` emits a MigrationPlan: schema_version 1, generator
+    // norn-repair, ops nested under `operations[].fields` with `operation` → `kind`.
+    let plan = serde_json::from_str::<Value>(&output).expect("repair --plan should be JSON");
+    assert_eq!(plan["schema_version"], 1);
+    assert_eq!(plan["generator"], "norn-repair");
+    assert_eq!(plan["operations"].as_array().unwrap().len(), 1);
+    assert!(
+        plan["skipped"]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(true),
+        "no skipped findings expected; got: {plan}"
     );
-    assert_eq!(plan["changes"][0]["path"], "task.md");
-    assert!(plan["changes"][0]["document_hash"].as_str().unwrap().len() > 20);
-    assert_eq!(plan["changes"][0]["repair_rule"], "map-someday-status");
-    assert_eq!(plan["changes"][0]["operation"], "set_frontmatter");
-    assert_eq!(plan["changes"][0]["field"], "status");
-    assert_eq!(plan["changes"][0]["expected_old_value"], "someday");
-    assert_eq!(plan["changes"][0]["new_value"], "backlog");
+    let op = &plan["operations"][0];
+    assert_eq!(op["kind"], "set_frontmatter");
+    assert_eq!(op["fields"]["path"], "task.md");
+    assert!(op["fields"]["document_hash"].as_str().unwrap().len() > 20);
+    assert_eq!(op["fields"]["repair_rule"], "map-someday-status");
+    assert!(
+        op["fields"].get("operation").is_none(),
+        "operation key must be promoted to kind; fields={}",
+        op["fields"]
+    );
+    assert_eq!(op["fields"]["field"], "status");
+    assert_eq!(op["fields"]["expected_old_value"], "someday");
+    assert_eq!(op["fields"]["new_value"], "backlog");
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -332,16 +321,17 @@ fn repair_plan_out_writes_json_artifact_without_stdout() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--out",
         plan_path.to_str().unwrap(),
     ]);
 
     assert_eq!(stdout, "");
     let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
-    let plan = serde_json::from_str::<Value>(&plan_text).expect("repair plan should be JSON");
-    assert_eq!(plan["summary"]["planned_changes"], 1);
-    assert_eq!(plan["changes"][0]["path"], "task.md");
+    let plan = serde_json::from_str::<Value>(&plan_text).expect("repair --plan should be JSON");
+    assert_eq!(plan["schema_version"], 1);
+    assert_eq!(plan["operations"].as_array().unwrap().len(), 1);
+    assert_eq!(plan["operations"][0]["fields"]["path"], "task.md");
 
     // --format table is now rejected at parse time with a migration message
     let error = vault_error(&[
@@ -350,7 +340,7 @@ fn repair_plan_out_writes_json_artifact_without_stdout() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--format",
         "table",
         "--out",
@@ -391,29 +381,18 @@ fn broad_repair_plan_with_skipped_findings_still_applies_changes() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
     ]);
-    let plan_json = serde_json::from_str::<Value>(&plan).expect("repair plan should be JSON");
-    assert_eq!(plan_json["summary"]["planned_changes"], 1);
-    assert_eq!(plan_json["summary"]["skipped"]["total"], 1);
-    assert_eq!(
-        plan_json["summary"]["skipped"]["by_reason"]["link-decision-needed"],
-        1
-    );
-    assert_eq!(
-        plan_json["skipped_findings"][0]["code"],
-        "link-target-missing"
-    );
-    assert_eq!(
-        plan_json["skipped_findings"][0]["skip_reason"],
-        "link_decision_needed"
-    );
-    assert!(plan_json["skipped_findings"][0]["next_actions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|action| action.as_str().unwrap().contains("rewrite")));
+    let plan_json = serde_json::from_str::<Value>(&plan).expect("repair --plan should be JSON");
+    assert_eq!(plan_json["operations"].as_array().unwrap().len(), 1);
+    let skipped = plan_json["skipped"].as_array().expect("skipped array");
+    assert_eq!(skipped.len(), 1);
+    // The MigrationPlan SkippedFinding carries the validation finding_code and
+    // the kebab-case skip-reason code in `reason`.
+    assert_eq!(skipped[0]["finding_code"], "link-target-missing");
+    assert_eq!(skipped[0]["reason"], "link-decision-needed");
 
+    // The plan applies cleanly through `norn migrate` (dry-run preview).
     let plan_path = root.join("repair.json");
     fs::write(&plan_path, plan).expect("plan should write");
     let output = vault(&[
@@ -421,21 +400,18 @@ fn broad_repair_plan_with_skipped_findings_still_applies_changes() {
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
         "--dry-run",
+        "--format",
+        "json",
     ]);
 
     let report = serde_json::from_str::<Value>(&output).expect("apply report should be JSON");
-    assert_eq!(report["applied_changes"], 1);
-    assert_eq!(report["changed_files"][0], "task.md");
-    assert_eq!(report["plan_context"]["skipped"]["total"], 1);
-    assert_eq!(
-        report["plan_context"]["skipped"]["by_reason"]["link-decision-needed"],
-        1
-    );
-    assert!(report["plan_context"]["skipped"]["by_reason"]["ambiguous-target"].is_null());
+    assert_eq!(report["dry_run"], true);
+    // Dry-run: the one frontmatter op is recognized but not applied (status not_run).
+    assert_eq!(report["operations"][0]["kind"], "set_frontmatter");
+    assert_eq!(report["operations"][0]["status"], "not_run");
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -466,7 +442,7 @@ fn repair_apply_writes_frontmatter_plan_and_verifies() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--code",
         "frontmatter-disallowed-value",
         "--field",
@@ -475,31 +451,46 @@ fn repair_apply_writes_frontmatter_plan_and_verifies() {
     let plan_path = root.join("repair.json");
     fs::write(&plan_path, plan).expect("plan should write");
 
+    // Apply through the unified migrate pipeline (--yes skips the prompt).
     let output = vault(&[
         "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
-        "--verify",
+        "--yes",
+        "--format",
+        "json",
     ]);
 
     let report = serde_json::from_str::<Value>(&output).expect("apply report should be JSON");
     assert_eq!(report["dry_run"], false);
-    assert_eq!(report["applied_changes"], 1);
-    assert_eq!(report["changed_files"][0], "task.md");
-    assert_eq!(report["plan_context"]["skipped"]["total"], 0);
-    assert!(report["plan_context"]["skipped"]["by_reason"]
-        .as_object()
-        .unwrap()
-        .is_empty());
-    assert_eq!(report["verification"]["remaining_findings"], 0);
+    assert_eq!(report["applied"], 1);
+    assert_eq!(report["operations"][0]["status"], "applied");
 
     let updated = fs::read_to_string(root.join("task.md")).expect("task should read");
     assert!(updated.contains("status: backlog"));
     assert!(updated.contains("# Task\n\nBody stays.\n"));
+
+    // Verification: re-planning against the repaired vault yields zero operations.
+    let replan = vault(&[
+        "-C",
+        root.to_str().unwrap(),
+        "--config",
+        config_path.to_str().unwrap(),
+        "repair",
+        "--plan",
+        "--code",
+        "frontmatter-disallowed-value",
+        "--field",
+        "status",
+    ]);
+    let replan_json = serde_json::from_str::<Value>(&replan).expect("re-plan should be JSON");
+    assert!(
+        replan_json["operations"].as_array().unwrap().is_empty(),
+        "no operations should remain after apply; got: {replan}"
+    );
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -527,7 +518,7 @@ fn repair_apply_dry_run_does_not_write() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
     ]);
     let plan_path = root.join("repair.json");
     fs::write(&plan_path, plan).expect("plan should write");
@@ -537,15 +528,16 @@ fn repair_apply_dry_run_does_not_write() {
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
         "--dry-run",
+        "--format",
+        "json",
     ]);
 
     let report = serde_json::from_str::<Value>(&output).expect("apply report should be JSON");
     assert_eq!(report["dry_run"], true);
-    assert_eq!(report["changed_files"][0], "task.md");
+    assert_eq!(report["operations"][0]["kind"], "set_frontmatter");
     let unchanged = fs::read_to_string(root.join("task.md")).expect("task should read");
     assert!(unchanged.contains("status: someday"));
 
@@ -575,10 +567,11 @@ fn repair_apply_rejects_stale_plan() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
     ]);
     let plan_path = root.join("repair.json");
     fs::write(&plan_path, plan).expect("plan should write");
+    // Mutate the document so the plan's stored document_hash is now stale.
     fs::write(
         root.join("task.md"),
         "---\ntype: task\nstatus: later\n---\n# Task\n",
@@ -590,12 +583,17 @@ fn repair_apply_rejects_stale_plan() {
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
+        "--yes",
+        "--format",
+        "json",
     ]);
 
-    assert!(error.contains("stale repair plan"));
+    assert!(
+        error.contains("stale repair plan"),
+        "expected stale-plan refusal; got: {error}"
+    );
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -624,7 +622,7 @@ fn repair_apply_preserves_double_quoted_workspace_field() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
     ]);
     let plan_path = root.join("repair.json");
     fs::write(&plan_path, plan).expect("plan should write");
@@ -634,9 +632,11 @@ fn repair_apply_preserves_double_quoted_workspace_field() {
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
+        "--yes",
+        "--format",
+        "json",
     ]);
 
     let after = fs::read_to_string(&task_path).expect("task should read");
@@ -672,7 +672,7 @@ fn repair_config_rejects_ambiguous_actions() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
     ]);
 
     assert!(error.contains("invalid config"));
@@ -2184,25 +2184,31 @@ fn repair_apply_adds_missing_required_field() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--out",
         plan_path.to_str().unwrap(),
     ]);
     let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
-    let plan_json = serde_json::from_str::<Value>(&plan_text).expect("repair plan should be JSON");
-    assert_eq!(plan_json["summary"]["planned_changes"], 1);
-    assert_eq!(plan_json["changes"][0]["operation"], "add_frontmatter");
-    assert_eq!(plan_json["changes"][0]["field"], "kind");
-    assert_eq!(plan_json["changes"][0]["new_value"], "research");
+    let plan_json =
+        serde_json::from_str::<Value>(&plan_text).expect("repair --plan should be JSON");
+    assert_eq!(plan_json["operations"].as_array().unwrap().len(), 1);
+    assert_eq!(plan_json["operations"][0]["kind"], "add_frontmatter");
+    assert_eq!(plan_json["operations"][0]["fields"]["field"], "kind");
+    assert_eq!(
+        plan_json["operations"][0]["fields"]["new_value"],
+        "research"
+    );
 
     vault_success(&[
         "-C",
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
+        "--yes",
+        "--format",
+        "json",
     ]);
 
     let result = fs::read_to_string(root.join("note.md")).expect("note should read");
@@ -2289,19 +2295,22 @@ repair:
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--out",
         plan_path.to_str().unwrap(),
     ]);
 
     let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
-    let plan_json: Value = serde_json::from_str(&plan_text).expect("repair plan should be JSON");
+    let plan_json: Value = serde_json::from_str(&plan_text).expect("repair --plan should be JSON");
 
-    assert_eq!(plan_json["schema_version"], 9);
-    assert_eq!(plan_json["summary"]["planned_changes"], 1);
-    let change = &plan_json["changes"][0];
-    assert_eq!(change["operation"], "move_document");
-    assert_eq!(change["destination"], "Workspaces/demo/tasks/task.md");
+    assert_eq!(plan_json["schema_version"], 1);
+    assert_eq!(plan_json["operations"].as_array().unwrap().len(), 1);
+    let op = &plan_json["operations"][0];
+    assert_eq!(op["kind"], "move_document");
+    let change = &op["fields"];
+    // move_document ops speak the unified planner vocabulary: src/dst.
+    assert_eq!(change["src"], "Inbox/task.md");
+    assert_eq!(change["dst"], "Workspaces/demo/tasks/task.md");
 
     let risk = &change["link_risk"];
     assert_eq!(risk["directory_changed"], true);
@@ -2366,29 +2375,24 @@ repair:
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--out",
         plan_path.to_str().unwrap(),
     ]);
 
     let plan_text = fs::read_to_string(&plan_path).expect("plan should write");
-    let plan_json: Value = serde_json::from_str(&plan_text).expect("repair plan should be JSON");
+    let plan_json: Value = serde_json::from_str(&plan_text).expect("repair --plan should be JSON");
 
-    assert_eq!(plan_json["summary"]["planned_changes"], 0);
-    let skipped = plan_json["skipped_findings"].as_array().expect("skipped");
+    // No operation is planned; the misrouted finding lands in `skipped` with the
+    // kebab-case `precondition-failed` reason code (the substitution-failure prose
+    // detail is no longer surfaced in the MigrationPlan skipped entry).
+    assert!(plan_json["operations"].as_array().unwrap().is_empty());
+    let skipped = plan_json["skipped"].as_array().expect("skipped");
     let move_skip = skipped
         .iter()
-        .find(|f| f["code"] == "document-misrouted")
+        .find(|f| f["finding_code"] == "document-misrouted")
         .expect("expected a skipped document-misrouted finding");
-    assert_eq!(move_skip["skip_reason"], "precondition_failed");
-    assert!(
-        move_skip["reason"]
-            .as_str()
-            .unwrap_or("")
-            .contains("substitution"),
-        "reason should mention substitution; got: {}",
-        move_skip["reason"]
-    );
+    assert_eq!(move_skip["reason"], "precondition-failed");
 
     fs::remove_dir_all(root).ok();
     fs::remove_file(config_path).ok();
@@ -2439,7 +2443,7 @@ repair:
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--out",
         plan_path.to_str().unwrap(),
     ]);
@@ -2448,9 +2452,11 @@ repair:
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
+        "--yes",
+        "--format",
+        "json",
     ]);
 
     assert!(
@@ -2531,7 +2537,7 @@ repair:
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--out",
         plan_path.to_str().unwrap(),
     ]);
@@ -2540,9 +2546,11 @@ repair:
         root.to_str().unwrap(),
         "--config",
         config_path.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
+        "--yes",
+        "--format",
+        "json",
     ]);
     assert!(
         stderr.contains("destination already exists") || stderr.contains("MoveDestinationExists"),
@@ -2848,19 +2856,19 @@ fn repair_apply_rewrites_link_in_source_doc() {
     )
     .expect("norn-brand should write");
 
-    // Run repair plan scoped to link-target-missing findings.
+    // Run repair --plan scoped to link-target-missing findings.
     let plan = vault(&[
         "-C",
         root.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--code",
         "link-target-missing",
     ]);
-    let plan_json = serde_json::from_str::<Value>(&plan).expect("repair plan should be JSON");
+    let plan_json = serde_json::from_str::<Value>(&plan).expect("repair --plan should be JSON");
     assert_eq!(
-        plan_json["changes"][0]["operation"], "rewrite_link",
-        "expected a rewrite_link change; got plan: {plan}"
+        plan_json["operations"][0]["kind"], "rewrite_link",
+        "expected a rewrite_link op; got plan: {plan}"
     );
 
     let plan_path = root.join("repair.json");
@@ -2869,30 +2877,18 @@ fn repair_apply_rewrites_link_in_source_doc() {
     let output = vault(&[
         "-C",
         root.to_str().unwrap(),
-        "repair",
-        "apply",
+        "migrate",
         plan_path.to_str().unwrap(),
+        "--yes",
+        "--format",
+        "json",
     ]);
 
     let report = serde_json::from_str::<Value>(&output).expect("apply report should be JSON");
     assert_eq!(report["dry_run"], false);
-    assert!(
-        report["changed_files"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|f| f == "source.md"),
-        "expected source.md in changed_files; got: {output}"
-    );
-    assert!(
-        report["rewritten_links"]
-            .as_array()
-            .map(|a| !a.is_empty())
-            .unwrap_or(false),
-        "expected rewritten_links to be populated; got: {output}"
-    );
-    assert_eq!(report["rewritten_links"][0]["from"], "Norn Brand");
-    assert_eq!(report["rewritten_links"][0]["to"], "norn-brand");
+    assert_eq!(report["applied"], 1);
+    assert_eq!(report["operations"][0]["kind"], "rewrite_link");
+    assert_eq!(report["operations"][0]["status"], "applied");
 
     let updated = fs::read_to_string(root.join("source.md")).expect("source should read");
     assert!(

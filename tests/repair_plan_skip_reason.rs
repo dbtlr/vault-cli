@@ -92,77 +92,50 @@ fn skip_reason_filter_narrows_skipped_findings_only() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--format",
         "json",
     ];
 
     // --- Baseline: no --skip-reason filter ---
+    // `norn repair --plan` now emits a MigrationPlan: `operations` + `skipped`,
+    // where each skipped entry carries the kebab-case reason code in `reason`.
     let unfiltered = vault_json(&base_args);
 
-    let unfiltered_skipped = unfiltered["skipped_findings"]
+    let unfiltered_skipped = unfiltered["skipped"]
         .as_array()
-        .expect("skipped_findings should be array");
-    // Should have both skip reasons present.
+        .expect("skipped should be array");
+    // Both kebab-case reason codes should appear.
     let unfiltered_reasons: Vec<&str> = unfiltered_skipped
         .iter()
-        .map(|f| {
-            f["skip_reason"]
-                .as_str()
-                .expect("skip_reason should be str")
-        })
+        .map(|f| f["reason"].as_str().expect("reason should be str"))
         .collect();
     assert!(
-        unfiltered_reasons.contains(&"missing_default"),
-        "baseline should contain missing_default; got: {unfiltered_reasons:?}"
+        unfiltered_reasons.contains(&"missing-default"),
+        "baseline should contain missing-default; got: {unfiltered_reasons:?}"
     );
     assert!(
-        unfiltered_reasons.contains(&"link_decision_needed"),
-        "baseline should contain link_decision_needed; got: {unfiltered_reasons:?}"
+        unfiltered_reasons.contains(&"link-decision-needed"),
+        "baseline should contain link-decision-needed; got: {unfiltered_reasons:?}"
     );
 
-    // Every skipped finding must have a reason_code field (kebab-case).
+    // Every skipped entry must carry a finding_code and a non-empty reason code.
     for entry in unfiltered_skipped {
-        let reason_code = entry["reason_code"]
-            .as_str()
-            .expect("reason_code should be present as a string");
         assert!(
-            !reason_code.is_empty(),
-            "reason_code must not be empty; entry: {entry}"
+            !entry["reason"].as_str().unwrap_or("").is_empty(),
+            "reason must not be empty; entry: {entry}"
+        );
+        assert!(
+            !entry["finding_code"].as_str().unwrap_or("").is_empty(),
+            "finding_code must not be empty; entry: {entry}"
         );
     }
-    // The two expected reason codes (kebab-case) should both appear.
-    let unfiltered_reason_codes: Vec<&str> = unfiltered_skipped
-        .iter()
-        .map(|f| {
-            f["reason_code"]
-                .as_str()
-                .expect("reason_code should be str")
-        })
-        .collect();
-    assert!(
-        unfiltered_reason_codes.contains(&"missing-default"),
-        "baseline reason_codes should contain missing-default; got: {unfiltered_reason_codes:?}"
-    );
-    assert!(
-        unfiltered_reason_codes.contains(&"link-decision-needed"),
-        "baseline reason_codes should contain link-decision-needed; got: {unfiltered_reason_codes:?}"
-    );
 
-    let unfiltered_findings_count = unfiltered["summary"]["findings"]
-        .as_u64()
-        .expect("findings should be u64");
-    let unfiltered_changes_count = unfiltered["summary"]["planned_changes"]
-        .as_u64()
-        .expect("planned_changes should be u64");
-    let unfiltered_skipped_total = unfiltered["summary"]["skipped"]["total"]
-        .as_u64()
-        .expect("skipped.total should be u64");
-    assert_eq!(
-        unfiltered_skipped_total,
-        unfiltered_skipped.len() as u64,
-        "summary.skipped.total should equal skipped_findings length"
-    );
+    let unfiltered_ops_count = unfiltered["operations"]
+        .as_array()
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let unfiltered_skipped_total = unfiltered_skipped.len();
 
     // --- Filtered: --skip-reason missing-default ---
     let filtered_args: Vec<&str> = base_args
@@ -172,90 +145,37 @@ fn skip_reason_filter_narrows_skipped_findings_only() {
         .collect();
     let filtered = vault_json(&filtered_args);
 
-    // findings count must be unchanged.
-    assert_eq!(
-        filtered["summary"]["findings"]
-            .as_u64()
-            .expect("findings should be u64"),
-        unfiltered_findings_count,
-        "findings count must not change after --skip-reason filter"
-    );
-
-    // planned_changes must be unchanged.
-    assert_eq!(
-        filtered["summary"]["planned_changes"]
-            .as_u64()
-            .expect("planned_changes should be u64"),
-        unfiltered_changes_count,
-        "planned_changes must not change after --skip-reason filter"
-    );
-
-    // skipped_findings narrowed to only missing_default entries.
-    let filtered_skipped = filtered["skipped_findings"]
+    // operations count must be unchanged — --skip-reason narrows skipped only.
+    let filtered_ops_count = filtered["operations"]
         .as_array()
-        .expect("skipped_findings should be array");
+        .map(|a| a.len())
+        .unwrap_or(0);
+    assert_eq!(
+        filtered_ops_count, unfiltered_ops_count,
+        "operations count must not change after --skip-reason filter"
+    );
+
+    // skipped narrowed to only missing-default entries.
+    let filtered_skipped = filtered["skipped"]
+        .as_array()
+        .expect("skipped should be array");
     assert!(
         !filtered_skipped.is_empty(),
-        "filtered skipped_findings should have at least one entry"
+        "filtered skipped should have at least one entry"
     );
     for entry in filtered_skipped {
         assert_eq!(
-            entry["skip_reason"]
-                .as_str()
-                .expect("skip_reason should be str"),
-            "missing_default",
-            "every entry after --skip-reason missing-default must have skip_reason missing_default"
-        );
-        assert_eq!(
-            entry["reason_code"]
-                .as_str()
-                .expect("reason_code should be str"),
+            entry["reason"].as_str().expect("reason should be str"),
             "missing-default",
-            "every entry after --skip-reason missing-default must have reason_code missing-default"
-        );
-    }
-
-    // source_filters echoes the input back.
-    let source_skip_reasons = filtered["source_filters"]["skip_reason"]
-        .as_array()
-        .expect("source_filters.skip_reason should be array");
-    assert_eq!(
-        source_skip_reasons.len(),
-        1,
-        "source_filters.skip_reason should have exactly one entry"
-    );
-    assert_eq!(
-        source_skip_reasons[0]
-            .as_str()
-            .expect("element should be str"),
-        "missing-default"
-    );
-
-    // summary.skipped.total matches filtered set.
-    let filtered_total = filtered["summary"]["skipped"]["total"]
-        .as_u64()
-        .expect("skipped.total should be u64");
-    assert_eq!(
-        filtered_total,
-        filtered_skipped.len() as u64,
-        "summary.skipped.total must equal filtered skipped_findings length"
-    );
-
-    // summary.skipped.by_reason only has keys in the filtered set.
-    let by_reason = filtered["summary"]["skipped"]["by_reason"]
-        .as_object()
-        .expect("by_reason should be object");
-    for key in by_reason.keys() {
-        assert_eq!(
-            key, "missing-default",
-            "by_reason should only contain missing-default after filter"
+            "every entry after --skip-reason missing-default must have reason missing-default"
         );
     }
 
     // skipped total is strictly less than the unfiltered total (we filtered something out).
     assert!(
-        filtered_total < unfiltered_skipped_total,
-        "filtered total ({filtered_total}) should be less than unfiltered total ({unfiltered_skipped_total})"
+        filtered_skipped.len() < unfiltered_skipped_total,
+        "filtered total ({}) should be less than unfiltered total ({unfiltered_skipped_total})",
+        filtered_skipped.len()
     );
 
     // Cleanup
@@ -273,20 +193,23 @@ fn skip_reason_filter_empty_list_returns_all_skipped() {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--format",
         "json",
     ];
 
+    // No --skip-reason: both reason codes survive in the skipped set.
     let unfiltered = vault_json(&base_args);
-
-    // No --skip-reason: source_filters.skip_reason should be empty list.
-    let source_skip = unfiltered["source_filters"]["skip_reason"]
+    let skipped = unfiltered["skipped"]
         .as_array()
-        .expect("source_filters.skip_reason should be array");
+        .expect("skipped should be array");
+    let reasons: Vec<&str> = skipped
+        .iter()
+        .map(|f| f["reason"].as_str().expect("reason should be str"))
+        .collect();
     assert!(
-        source_skip.is_empty(),
-        "source_filters.skip_reason should be empty when no flag given"
+        reasons.contains(&"missing-default") && reasons.contains(&"link-decision-needed"),
+        "no --skip-reason flag should retain all skipped reasons; got: {reasons:?}"
     );
 
     fs::remove_dir_all(&root).ok();

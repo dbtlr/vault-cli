@@ -178,9 +178,10 @@ Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-fli
     Migrate(MigrateArgs),
     #[command(
         disable_help_flag = true,
-        about = "Plan and apply deterministic vault repairs"
+        about = "Surface deterministic-repair findings; --plan emits a MigrationPlan",
+        long_about = "Surface deterministic-repair findings for the vault.\n\nBare `norn repair` prints a read-only findings summary (placeholder for a future interactive workflow).\n\n`norn repair --plan` generates a MigrationPlan from the configured deterministic repair rules and emits it as `report` (human summary, TTY default), `json` (full MigrationPlan envelope, pipe default), or `paths` (one affected path per line). Pipe the JSON into `norn migrate -` to apply it. Use `--skip-reason <PATTERN>` to filter skipped findings by reason code; glob patterns accepted."
     )]
-    Repair(RepairCommand),
+    Repair(RepairArgs),
     #[command(
         name = "rewrite-wikilink",
         disable_help_flag = true,
@@ -294,29 +295,6 @@ pub enum CacheOutputFormat {
     Json,
 }
 
-#[derive(Debug, Parser)]
-#[command(disable_help_flag = true)]
-pub struct RepairCommand {
-    #[command(subcommand)]
-    pub command: RepairSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum RepairSubcommand {
-    #[command(
-        disable_help_flag = true,
-        about = "Generate an explicit repair plan from validation findings",
-        long_about = "Generate an explicit repair plan from validation findings.\n\nRepair planning is read-only. It uses configured deterministic repair rules to produce applyable changes, and reports skipped findings as non-blocking planning fallout, categorized by reason code (missing-default, link-decision-needed, no-rule-matched, alias-shadowed, graph-diagnostic, ambiguous-target, missing-hash, precondition-failed).\n\nOutput formats: `report` (human summary, TTY default), `json` (full envelope, pipe default), `paths` (one affected path per line). Use `--skip-reason <PATTERN>` to filter skipped findings by reason code; glob patterns accepted."
-    )]
-    Plan(RepairPlanArgs),
-    #[command(
-        disable_help_flag = true,
-        about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.",
-        long_about = "Apply a repair plan: mutate frontmatter and rewrite broken wikilinks per the plan.\n\nReads a JSON plan emitted by `norn repair plan` from a file path or stdin (when no positional or `-`). Mutates frontmatter (`set_frontmatter` / `remove_frontmatter` / `add_frontmatter` / `move_document`) and source-doc wikilinks (`rewrite_link`). Plan changes are gated by precondition checks; any failure aborts the whole apply before any partial writes (stderr error, exit 1).\n\nOutput formats: `report` (TTY default, human summary), `json` (pipe default, full RepairApplyReport envelope), `paths` (sorted dedup of changed files). Use `--out <PATH>` to write the JSON report to file independently of `--format` (stdout stays silent when `--out` is set without `--format`)."
-    )]
-    Apply(RepairApplyArgs),
-}
-
 #[derive(Debug, Clone, clap::Args)]
 pub struct FrontmatterFilterArgs {
     #[arg(
@@ -392,16 +370,20 @@ pub struct ValidateTriageArgs {
 }
 
 #[derive(Debug, Parser)]
-pub struct RepairPlanArgs {
+pub struct RepairArgs {
+    /// Generate a MigrationPlan from current findings (read-only). Without this
+    /// flag, `norn repair` prints a findings summary instead.
+    #[arg(long)]
+    pub plan: bool,
     #[arg(
         long,
         value_parser = parse_repair_plan_format,
-        help = "Output format (default: report when TTY, json when piped)"
+        help = "Output format for --plan (default: report when TTY, json when piped)"
     )]
     pub format: Option<RepairPlanFormat>,
     #[arg(
         long,
-        help = "Write the JSON repair plan artifact to this path instead of stdout"
+        help = "Write the JSON MigrationPlan artifact to this path instead of stdout (--plan only)"
     )]
     pub out: Option<Utf8PathBuf>,
     /// Filter closest-match proposals by confidence band.
@@ -416,33 +398,6 @@ pub struct RepairPlanArgs {
     pub skip_reason: Vec<String>,
     #[command(flatten)]
     pub triage: ValidateTriageArgs,
-}
-
-#[derive(Debug, Parser)]
-pub struct RepairApplyArgs {
-    #[arg(
-        help = "Path to a JSON repair plan artifact, or `-` for stdin. Omit to read from stdin."
-    )]
-    pub plan: Option<Utf8PathBuf>,
-    #[arg(long, help = "Preview changes without writing files")]
-    pub dry_run: bool,
-    #[arg(
-        long,
-        help = "Run validation after apply and report remaining finding counts"
-    )]
-    pub verify: bool,
-    #[arg(
-        long,
-        value_name = "PATH",
-        help = "Write the JSON apply report to this file (always JSON, independent of --format)"
-    )]
-    pub out: Option<Utf8PathBuf>,
-    #[arg(
-        long,
-        value_parser = parse_repair_apply_format,
-        help = "Stdout format. Default: report on TTY, json when piped. Silent when --out is set without --format."
-    )]
-    pub format: Option<RepairApplyFormat>,
 }
 
 #[derive(Debug, Parser)]
@@ -1060,28 +1015,6 @@ fn parse_repair_plan_format(s: &str) -> Result<RepairPlanFormat, String> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RepairApplyFormat {
-    /// Summary report for human review. Default for TTY.
-    Report,
-    /// Full JSON envelope (`RepairApplyReport`). Default when piped.
-    Json,
-    /// Sorted dedup of changed file paths, one per line.
-    Paths,
-}
-
-fn parse_repair_apply_format(s: &str) -> Result<RepairApplyFormat, String> {
-    // Returns the suffix only — clap wraps with "invalid value '<v>' for '--format <FORMAT>': ".
-    match s {
-        "report" => Ok(RepairApplyFormat::Report),
-        "json" => Ok(RepairApplyFormat::Json),
-        "paths" => Ok(RepairApplyFormat::Paths),
-        "jsonl" => Err("jsonl was removed — use --format json".into()),
-        "table" => Err("table was removed — use --format report".into()),
-        _ => Err("possible values: report, json, paths".into()),
-    }
-}
-
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 #[clap(rename_all = "snake_case")]
 pub enum ConfidenceArg {
@@ -1313,105 +1246,6 @@ mod set_cli_tests {
             }
             _ => panic!("expected Command::Set"),
         }
-    }
-}
-
-#[cfg(test)]
-mod repair_apply_format_tests {
-    use super::*;
-
-    #[test]
-    fn accepts_report_json_paths() {
-        assert!(matches!(
-            parse_repair_apply_format("report"),
-            Ok(RepairApplyFormat::Report)
-        ));
-        assert!(matches!(
-            parse_repair_apply_format("json"),
-            Ok(RepairApplyFormat::Json)
-        ));
-        assert!(matches!(
-            parse_repair_apply_format("paths"),
-            Ok(RepairApplyFormat::Paths)
-        ));
-    }
-
-    #[test]
-    fn rejects_jsonl_with_migration_message() {
-        let err = parse_repair_apply_format("jsonl").unwrap_err();
-        assert_eq!(err, "jsonl was removed — use --format json");
-    }
-
-    #[test]
-    fn rejects_table_with_migration_message() {
-        let err = parse_repair_apply_format("table").unwrap_err();
-        assert_eq!(err, "table was removed — use --format report");
-    }
-
-    #[test]
-    fn rejects_unknown_with_possible_values_message() {
-        let err = parse_repair_apply_format("xml").unwrap_err();
-        assert_eq!(err, "possible values: report, json, paths");
-    }
-}
-
-#[cfg(test)]
-mod repair_apply_args_tests {
-    use super::*;
-    use clap::Parser;
-
-    /// Helper: parse top-level args via the `Cli` parser to exercise the real clap surface.
-    fn parse(args: &[&str]) -> Result<RepairApplyArgs, clap::Error> {
-        let cli = Cli::try_parse_from(std::iter::once("vault").chain(args.iter().copied()))?;
-        match cli.command {
-            Command::Repair(repair) => match repair.command {
-                RepairSubcommand::Apply(a) => Ok(a),
-                _ => panic!("expected Apply subcommand"),
-            },
-            _ => panic!("expected Repair command"),
-        }
-    }
-
-    #[test]
-    fn positional_plan_is_optional_when_omitted() {
-        let args = parse(&["repair", "apply"]).expect("should parse with no positional");
-        assert!(args.plan.is_none());
-    }
-
-    #[test]
-    fn positional_plan_accepts_dash_for_stdin() {
-        let args = parse(&["repair", "apply", "-"]).expect("dash should parse");
-        assert_eq!(args.plan.as_deref().map(|p| p.as_str()), Some("-"));
-    }
-
-    #[test]
-    fn positional_plan_accepts_a_real_path() {
-        let args = parse(&["repair", "apply", "plan.json"]).expect("path should parse");
-        assert_eq!(args.plan.as_deref().map(|p| p.as_str()), Some("plan.json"));
-    }
-
-    #[test]
-    fn out_flag_is_accepted() {
-        let args = parse(&["repair", "apply", "plan.json", "--out", "report.json"])
-            .expect("--out should parse");
-        assert_eq!(args.out.as_deref().map(|p| p.as_str()), Some("report.json"));
-    }
-
-    #[test]
-    fn format_flag_accepts_report() {
-        let args = parse(&["repair", "apply", "plan.json", "--format", "report"])
-            .expect("--format report should parse");
-        assert!(matches!(args.format, Some(RepairApplyFormat::Report)));
-    }
-
-    #[test]
-    fn format_flag_rejects_jsonl() {
-        let err = parse(&["repair", "apply", "plan.json", "--format", "jsonl"]).unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("jsonl was removed"),
-            "expected jsonl migration msg, got: {msg}"
-        );
     }
 }
 

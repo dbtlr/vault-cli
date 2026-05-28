@@ -163,6 +163,9 @@ impl RepairApplyReport {
         }
     }
 
+    // Dead since `repair apply` was removed (Plan Task 19); the whole
+    // RepairApplyReport machinery is deleted in Plan Task 20.
+    #[allow(dead_code)]
     pub fn with_verification(mut self, findings: &[Finding]) -> Self {
         let summary = summarize(findings);
         self.verification = Some(RepairApplyVerification {

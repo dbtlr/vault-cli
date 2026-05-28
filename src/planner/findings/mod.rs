@@ -23,7 +23,6 @@ use std::collections::HashMap;
 /// `ClosestMatchSuggestion` footnotes (one per change), there is a 1:1 mapping
 /// and no ambiguity. If multiple footnotes share a `change_id` in a future
 /// schema, only the last one wins — that is noted in the design archive.
-#[allow(dead_code)] // wired up by Plan Task 18; unused until repair --plan flag lands
 pub(crate) fn plan_from_findings(
     vault_root: Utf8PathBuf,
     filters: RepairPlanFilters,
@@ -71,6 +70,22 @@ pub(crate) fn plan_from_findings(
                 serde_json::to_value(&change).expect("PlannedChange must always serialize");
             if let Some(obj) = fields.as_object_mut() {
                 obj.remove("operation");
+
+                // `move_document` ops must speak the unified planner vocabulary
+                // (`src`/`dst`) so they apply through `norn migrate`. The repair
+                // PlannedChange uses `path`/`destination` (Plan Task 16 renamed
+                // the intent-source path); remap here so the findings-source and
+                // intent-source converge on the same on-disk op shape. The
+                // applier's `expand` move_document arm recomputes link_risk/hash,
+                // so the leftover repair-specific keys are harmless passengers.
+                if kind == "move_document" {
+                    if let Some(path) = obj.remove("path") {
+                        obj.insert("src".to_string(), path);
+                    }
+                    if let Some(dest) = obj.remove("destination") {
+                        obj.insert("dst".to_string(), dest);
+                    }
+                }
             }
 
             MigrationOp {
@@ -84,13 +99,19 @@ pub(crate) fn plan_from_findings(
         .collect();
 
     // Convert repair::SkippedFinding → migration_plan::SkippedFinding.
+    //
+    // `reason` carries the kebab-case skip-reason CODE (e.g. "missing-default"),
+    // not the prose. The CLI's `--skip-reason` filter matches against this code,
+    // and the report renderer derives human prose from it via
+    // `repair::skip_reasons::prose_for`. `finding_code` carries the underlying
+    // validation finding code (e.g. "link-target-missing").
     let skipped: Vec<SkippedFinding> = repair_plan
         .skipped_findings
         .into_iter()
         .map(|sf| SkippedFinding {
             finding_code: sf.code,
             path: sf.path.to_string(),
-            reason: sf.reason,
+            reason: sf.reason_code,
             footnote: None,
         })
         .collect();

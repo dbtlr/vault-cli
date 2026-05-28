@@ -32,7 +32,7 @@ fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> String {
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
         "--format",
         "report",
     ]);
@@ -293,20 +293,20 @@ fn report_format_renders_header_count_and_confidence_breakdown() {
         "expected vault root in header; full stdout:\n{stdout}"
     );
 
-    // Count line: "N findings analyzed → N changes proposed across N files"
+    // Count line: "N operations proposed across N files"
     assert!(
-        stdout.contains("findings analyzed"),
-        "expected count line; full stdout:\n{stdout}"
-    );
-    assert!(
-        stdout.contains("changes proposed"),
+        stdout.contains("operations proposed"),
         "expected count line; full stdout:\n{stdout}"
     );
 
-    // The fixture produces a High-confidence footnote (slug-identity match).
+    // The fixture produces a High-confidence closest-match footnote (slug-identity match).
+    assert!(
+        stdout.contains("Footnotes"),
+        "expected footnotes section; full stdout:\n{stdout}"
+    );
     assert!(
         stdout.contains("high") || stdout.contains("medium"),
-        "expected confidence band in output; full stdout:\n{stdout}"
+        "expected confidence band in footnote; full stdout:\n{stdout}"
     );
 
     // Cleanup
@@ -457,25 +457,21 @@ fn apply_guidance_unfiltered_suggests_high_confidence_narrowing() {
         "expected To inspect block; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("norn repair plan --confidence high --format json"),
+        stdout.contains("norn repair --plan --confidence high --format json"),
         "expected high-confidence narrowing suggestion; full stdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("norn repair plan --format json"),
+        stdout.contains("norn repair --plan --format json"),
         "expected unfiltered inspect baseline; full stdout:\n{stdout}"
     );
     assert!(
         stdout.contains("To apply"),
         "expected To apply block; full stdout:\n{stdout}"
     );
+    // Apply guidance pipes the plan into `norn migrate -`.
     assert!(
-        stdout.contains("norn repair apply --dry-run"),
-        "expected dry-run suggestion; full stdout:\n{stdout}"
-    );
-    // Bare apply also present
-    assert!(
-        stdout.contains("| norn repair apply"),
-        "expected bare apply suggestion; full stdout:\n{stdout}"
+        stdout.contains("| norn migrate -"),
+        "expected migrate apply suggestion; full stdout:\n{stdout}"
     );
 
     // Cleanup
@@ -489,13 +485,13 @@ fn apply_guidance_echoes_active_confidence_filter() {
     let stdout = run_plan(&root, &config_path, &["--confidence", "high"]);
 
     assert!(
-        stdout.contains("norn repair plan --confidence high --format json"),
+        stdout.contains("norn repair --plan --confidence high --format json"),
         "expected confidence echoed in command; full stdout:\n{stdout}"
     );
     // The unfiltered baseline should not appear in the apply section when --confidence is active
     let apply_section = stdout.split("To apply").nth(1).unwrap_or("");
     assert!(
-        !apply_section.contains("norn repair plan --format json |"),
+        !apply_section.contains("norn repair --plan --format json |"),
         "unfiltered apply suggestion should be dropped when --confidence is active. stdout:\n{stdout}"
     );
 
@@ -539,7 +535,8 @@ fn apply_guidance_suppresses_apply_block_when_skip_reason_active() {
 }
 
 /// Subprocess stdout is a pipe, not a tty, so omitting `--format` should default
-/// to JSON output (schema_version 9). Explicit `--format report` still wins.
+/// to JSON output (MigrationPlan schema_version 1). Explicit `--format report`
+/// still wins.
 #[test]
 fn piped_default_is_json_explicit_format_overrides() {
     let (root, config_path) = build_plan_with_proposals_fixture();
@@ -556,7 +553,7 @@ fn piped_default_is_json_explicit_format_overrides() {
             "--config",
             config_path.to_str().unwrap(),
             "repair",
-            "plan",
+            "--plan",
         ])
         .env("XDG_CACHE_HOME", cache_dir.path())
         .env("NO_COLOR", "1")
@@ -575,7 +572,12 @@ fn piped_default_is_json_explicit_format_overrides() {
     );
     let json: serde_json::Value =
         serde_json::from_str(&piped_stdout).expect("piped default should be valid JSON");
-    assert_eq!(json["schema_version"], 9);
+    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["generator"], "norn-repair");
+    assert!(
+        json["operations"].is_array(),
+        "MigrationPlan must carry an operations array"
+    );
 
     // Explicit --format report overrides the piped default
     let report = Command::new(env!("CARGO_BIN_EXE_norn"))
@@ -585,7 +587,7 @@ fn piped_default_is_json_explicit_format_overrides() {
             "--config",
             config_path.to_str().unwrap(),
             "repair",
-            "plan",
+            "--plan",
             "--format",
             "report",
         ])

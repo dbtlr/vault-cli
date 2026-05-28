@@ -38,21 +38,16 @@ mod target;
 mod validate;
 mod validate_filter;
 
-use std::{fs, process};
+use std::process;
 
-use crate::cli::{
-    CacheSubcommand, Cli, Command, ConfigSubcommand, RepairApplyFormat, RepairPlanFormat,
-    RepairSubcommand,
-};
-use crate::config_loader::{effective_cwd, load_config, resolve_path};
+use crate::cli::{CacheSubcommand, Cli, Command, ConfigSubcommand};
+use crate::config_loader::{effective_cwd, load_config};
 use crate::core::GraphIndex;
 use crate::graph::{concise_diagnostics, has_errors};
 use crate::migrate_cmd::MigrateRunArgs;
 use crate::output::primitives::is_broken_pipe;
-use crate::repair::skip_reasons::code_matches_any;
-use crate::repair_apply::{apply_repair_plan, with_verification};
 use crate::rewrite_wikilink_cmd::RewriteWikilinkRunArgs;
-use crate::standards::{plan_repairs, validate_with_compiled, RepairPlanFilters, SkippedSummary};
+use crate::standards::validate_with_compiled;
 use crate::validate_filter::{filter_findings, ValidateFilterOptions};
 use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches};
@@ -125,178 +120,19 @@ fn run(cli: Cli) -> Result<i32> {
             };
             rewrite_wikilink_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
         }
-        Command::Repair(repair_command) => match repair_command.command {
-            RepairSubcommand::Plan(args) => {
-                let loaded_config = load_config(&cwd, config_path.as_ref())?;
-                let mut index = crate::cache_cmd::load_graph_index(
-                    &cwd,
-                    &loaded_config.index_options,
-                    no_cache_refresh,
-                )?;
-                trim_diagnostics(&mut index, verbose);
-                let findings = validate_with_compiled(
-                    &index,
-                    &loaded_config.validate,
-                    &loaded_config.compiled,
-                    loaded_config.index_options.alias_field.as_deref(),
-                );
-                let filters = ValidateFilterOptions::from(&args);
-                let findings = filter_findings(findings, &filters)?;
-                let mut plan = plan_repairs(
-                    cwd.clone(),
-                    repair_plan_filters(&args),
-                    findings,
-                    &loaded_config.repair,
-                    &index,
-                );
-                if !args.skip_reason.is_empty() {
-                    plan.skipped_findings
-                        .retain(|f| code_matches_any(f.skip_reason.code(), &args.skip_reason));
-                    plan.summary.skipped = SkippedSummary::from_skipped(&plan.skipped_findings);
-                }
-                // --out: always writes JSON to the file (independent of --format).
-                if let Some(out) = &args.out {
-                    let out_path = resolve_path(&cwd, out);
-                    let plan_text = serde_json::to_string_pretty(&plan)?;
-                    fs::write(&out_path, format!("{plan_text}\n")).map_err(|error| {
-                        anyhow::anyhow!("failed to write repair plan {out_path}: {error}")
-                    })?;
-                }
-
-                // --format: governs stdout. When --out is set without --format, stdout stays silent.
-                let stdout_format = if args.format.is_none() && args.out.is_some() {
-                    None // silent when --out alone
-                } else {
-                    Some(args.format.unwrap_or_else(|| {
-                        use std::io::IsTerminal;
-                        if std::io::stdout().is_terminal() {
-                            RepairPlanFormat::Report
-                        } else {
-                            RepairPlanFormat::Json
-                        }
-                    }))
-                };
-
-                if let Some(format) = stdout_format {
-                    use std::io::Write;
-                    match format {
-                        RepairPlanFormat::Report => repair::render::write_report(&plan, &args)?,
-                        RepairPlanFormat::Json => {
-                            // Pretty-printed JSON with trailing newline — matches write_item_output behavior
-                            let json = serde_json::to_string_pretty(&plan)?;
-                            let stdout = std::io::stdout();
-                            let mut stdout = stdout.lock();
-                            stdout.write_all(json.as_bytes())?;
-                            stdout.write_all(b"\n")?;
-                        }
-                        RepairPlanFormat::Paths => repair::render::write_paths(&plan)?,
-                    }
-                }
-                Ok(exit_code_for(&index))
+        Command::Repair(args) => {
+            let ctx = crate::repair::RepairRunContext {
+                cwd: &cwd,
+                config_path: config_path.as_ref(),
+                no_cache_refresh,
+                verbose,
+            };
+            if args.plan {
+                repair::run_plan(&args, &ctx)
+            } else {
+                repair::run_summary(&args, &ctx)
             }
-            RepairSubcommand::Apply(args) => {
-                // Determine plan source: positional path, '-' (stdin), or absent (stdin).
-                let (plan_text, plan_source) = match args.plan.as_deref().map(|p| p.as_str()) {
-                    None | Some("-") => {
-                        use std::io::Read;
-                        let mut buf = String::new();
-                        std::io::stdin().read_to_string(&mut buf).map_err(|error| {
-                            anyhow::anyhow!("could not read plan from stdin: {error}")
-                        })?;
-                        (buf, crate::repair::apply_render::PlanSource::Stdin)
-                    }
-                    Some(_) => {
-                        let plan_path_arg = args.plan.as_ref().unwrap();
-                        let plan_path = resolve_path(&cwd, plan_path_arg);
-                        let body = fs::read_to_string(&plan_path).map_err(|error| {
-                            anyhow::anyhow!("failed to read repair plan {plan_path}: {error}")
-                        })?;
-                        (
-                            body,
-                            crate::repair::apply_render::PlanSource::File(plan_path),
-                        )
-                    }
-                };
-                let plan = serde_json::from_str::<crate::standards::RepairPlan>(&plan_text)
-                    .map_err(|error| match &plan_source {
-                        crate::repair::apply_render::PlanSource::Stdin => {
-                            anyhow::anyhow!("could not parse plan from stdin: {error}")
-                        }
-                        crate::repair::apply_render::PlanSource::File(p) => {
-                            anyhow::anyhow!("failed to parse repair plan {p}: {error}")
-                        }
-                    })?;
-                let loaded_config = load_config(&cwd, config_path.as_ref())?;
-                let mut index = crate::cache_cmd::load_graph_index(
-                    &cwd,
-                    &loaded_config.index_options,
-                    no_cache_refresh,
-                )?;
-                trim_diagnostics(&mut index, verbose);
-                let mut report = apply_repair_plan(&cwd, &index, &plan, args.dry_run)?;
-                if args.verify {
-                    let mut verify_index = crate::cache_cmd::load_graph_index(
-                        &cwd,
-                        &loaded_config.index_options,
-                        false,
-                    )?;
-                    trim_diagnostics(&mut verify_index, verbose);
-                    let findings = validate_with_compiled(
-                        &verify_index,
-                        &loaded_config.validate,
-                        &loaded_config.compiled,
-                        loaded_config.index_options.alias_field.as_deref(),
-                    );
-                    report = with_verification(report, &findings);
-                }
-                // --out: always writes JSON to file (independent of --format).
-                if let Some(out) = &args.out {
-                    let out_path = resolve_path(&cwd, out);
-                    let report_json = serde_json::to_string_pretty(&report)?;
-                    fs::write(&out_path, format!("{report_json}\n")).map_err(|error| {
-                        anyhow::anyhow!("failed to write apply report {out_path}: {error}")
-                    })?;
-                }
-
-                // --format: governs stdout. Silent when --out is set without --format.
-                let stdout_format = if args.format.is_none() && args.out.is_some() {
-                    None
-                } else {
-                    Some(args.format.unwrap_or_else(|| {
-                        if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-                            RepairApplyFormat::Report
-                        } else {
-                            RepairApplyFormat::Json
-                        }
-                    }))
-                };
-
-                if let Some(format) = stdout_format {
-                    use std::io::Write;
-                    let stdout = std::io::stdout();
-                    let mut stdout = stdout.lock();
-                    match format {
-                        RepairApplyFormat::Report => {
-                            crate::repair::apply_render::render_report(
-                                &report,
-                                &plan,
-                                plan_source,
-                                &mut stdout,
-                            )?;
-                        }
-                        RepairApplyFormat::Json => {
-                            let json = serde_json::to_string_pretty(&report)?;
-                            stdout.write_all(json.as_bytes())?;
-                            stdout.write_all(b"\n")?;
-                        }
-                        RepairApplyFormat::Paths => {
-                            crate::repair::apply_render::write_paths(&report, &mut stdout)?;
-                        }
-                    }
-                }
-                Ok(exit_code_for(&index))
-            }
-        },
+        }
         Command::Cache(cache_command) => {
             let loaded_config = load_config(&cwd, config_path.as_ref())?;
             let alias_field = loaded_config.index_options.alias_field.as_deref();
@@ -1054,32 +890,6 @@ fn strip_block_prefix(msg: &str) -> &str {
         return msg;
     };
     rest.split_once(": ").map(|(_, tail)| tail).unwrap_or(rest)
-}
-
-fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
-    RepairPlanFilters {
-        code: normalized_filter_values(&args.triage.code),
-        severity: normalized_filter_values(&args.triage.severity),
-        field: normalized_filter_values(&args.triage.field),
-        rule: normalized_filter_values(&args.triage.rule),
-        path: normalized_filter_values(&args.triage.path),
-        target: normalized_filter_values(&args.triage.target),
-        reason: normalized_filter_values(&args.triage.reason),
-        skip_reason: normalized_filter_values(&args.skip_reason),
-        confidence: args.confidence.map(|c| match c {
-            crate::cli::ConfidenceArg::High => crate::standards::ConfidenceFilter::High,
-        }),
-    }
-}
-
-fn normalized_filter_values(values: &[String]) -> Vec<String> {
-    values
-        .iter()
-        .flat_map(|value| value.split(','))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .collect()
 }
 
 fn trim_diagnostics(index: &mut GraphIndex, verbose: bool) {

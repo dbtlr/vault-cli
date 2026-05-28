@@ -143,6 +143,83 @@ fn migrate_reads_plan_from_stdin() {
     );
 }
 
+/// Ported from the deleted `repair_apply_out_orthogonality` suite: `--out`
+/// writes the JSON ApplyReport to a file and keeps stdout silent.
+#[test]
+fn migrate_out_alone_writes_file_and_keeps_stdout_silent() {
+    let tmp = synth();
+    let vault = tmp.path().join("vault");
+    let plan = format!(
+        r#"schema_version: 1
+vault_root: {}
+operations: []
+"#,
+        vault.to_str().unwrap()
+    );
+    let plan_path = tmp.path().join("plan.yaml");
+    std::fs::write(&plan_path, plan).unwrap();
+    let out_path = tmp.path().join("report.json");
+
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["migrate"])
+        .arg(&plan_path)
+        .args(["--dry-run", "--out"])
+        .arg(&out_path)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "",
+        "stdout must be silent when --out is set"
+    );
+    assert!(out_path.exists(), "report file must be written");
+    let body = std::fs::read_to_string(&out_path).unwrap();
+    assert!(
+        body.trim_start().starts_with('{'),
+        "report file must contain JSON, got: {body}"
+    );
+}
+
+/// Ported from the deleted `repair_apply_stdin` suite: malformed stdin is a
+/// pre-flight refusal (non-zero exit) with a parse error on stderr.
+#[test]
+fn migrate_malformed_stdin_exits_non_zero() {
+    let tmp = synth();
+    let vault = tmp.path().join("vault");
+
+    use std::io::Write;
+    let mut child = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["migrate", "-", "--dry-run", "--format", "json"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"not json")
+        .unwrap();
+    drop(child.stdin.take());
+    let out = child.wait_with_output().unwrap();
+    assert!(!out.status.success(), "should fail on malformed stdin");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.to_lowercase().contains("parse"),
+        "expected a parse error on stderr, got: {stderr}"
+    );
+}
+
 #[test]
 fn migrate_stdin_with_input_format_yaml_works() {
     let tmp = synth();
