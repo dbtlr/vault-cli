@@ -178,17 +178,19 @@ fn parse_plan(raw: &str, fmt: InputFormat, source: &str) -> Result<MigrationPlan
     }
 }
 
-/// Render the apply report to stdout (and optionally to a file via `--out`).
+/// Render the apply report to stdout, OR to a file when `--out` is set.
+///
+/// `--out` is mutually exclusive with stdout output: when set, the report
+/// (always JSON) is written to the file and stdout is silent. This matches
+/// repair-apply's convention — if you wanted both file + stdout, run twice.
 fn render_report(report: &ApplyReport, format: MigrateFormat, out: Option<&str>) -> Result<()> {
-    // --out: always writes JSON to a file
     if let Some(out_path) = out {
         let json = serde_json::to_string_pretty(report)?;
         std::fs::write(out_path, format!("{json}\n"))
             .with_context(|| format!("failed to write apply report to '{out_path}'"))?;
+        return Ok(());
     }
 
-    // stdout: governed by --format (silent when --out is set without explicit format request)
-    // For this command, --format always applies to stdout regardless of --out.
     let stdout = io::stdout();
     let mut out_lock = stdout.lock();
     match format {
