@@ -314,6 +314,7 @@ pub fn build_plan(
         link_risk: None,
         warnings: vec![],
         force: args.force,
+        parents: false,
     };
 
     Ok(CreateDocumentPlan {

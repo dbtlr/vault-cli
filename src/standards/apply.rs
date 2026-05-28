@@ -822,6 +822,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         }
     }
 
@@ -1261,6 +1262,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand]]"));
@@ -1285,6 +1287,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand|the brand spec]]"));
@@ -1308,6 +1311,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand#colors]]"));
@@ -1331,6 +1335,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand^block-id]]"));
@@ -1354,6 +1359,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert_eq!(updated.matches("[[norn-brand]]").count(), 2);
@@ -1378,6 +1384,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[Other Doc]]"));
@@ -1402,6 +1409,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand#^block-id]]"));
@@ -1425,6 +1433,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let result =
             apply_replace_body(content, &change).expect("apply_replace_body should succeed");
@@ -1449,6 +1458,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let result =
             apply_replace_body(content, &change).expect("apply_replace_body should succeed");
@@ -1473,6 +1483,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         assert!(apply_replace_body(content, &change).is_err());
     }
@@ -1502,6 +1513,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: false,
+            parents: false,
         };
 
         let result = apply_delete(root, &change).unwrap();
@@ -1533,6 +1545,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: false,
+            parents: false,
         };
 
         let err = apply_delete(root, &change).unwrap_err();
@@ -1572,6 +1585,7 @@ mod tests {
                 link_risk: None,
                 warnings: Vec::new(),
                 force: false,
+                parents: false,
             };
 
             let err = apply_delete(root, &change).unwrap_err();
@@ -1609,6 +1623,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: true,
+            parents: false,
         };
 
         let result = apply_move(root, &change).unwrap();
@@ -1649,6 +1664,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: false,
+            parents: false,
         };
 
         let err = apply_move(root, &change).unwrap_err();

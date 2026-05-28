@@ -317,6 +317,7 @@ pub(crate) fn preflight_and_plan(
         link_risk,
         warnings: Vec::new(),
         force: false,
+        parents: false,
     };
 
     Ok(PreflightOutcome {

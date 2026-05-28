@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod move_folder;
+
 /// The set of op kinds the planner expands (vs. passes through to the applier).
 pub const HIGH_LEVEL_KINDS: &[&str] = &["move_folder", "rewrite_wikilink"];
 

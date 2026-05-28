@@ -264,6 +264,7 @@ pub(crate) fn preflight_and_plan(
         link_risk,
         warnings: Vec::new(),
         force: cfg.force,
+        parents: false,
     };
 
     let changes = vec![move_change];

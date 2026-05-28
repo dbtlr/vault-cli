@@ -268,6 +268,7 @@ mod tests {
                     link_risk: None,
                     warnings: vec![],
                     force: false,
+                    parents: false,
                 })
                 .collect(),
             skipped_findings: vec![],
@@ -503,6 +504,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         RepairPlan {
             schema_version: 6,
@@ -686,6 +688,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         });
         plan.summary.findings = 1;
         plan.summary.planned_changes = 1;
