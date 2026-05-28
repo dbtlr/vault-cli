@@ -109,6 +109,7 @@ pub fn run(
     let ctx = ApplyContext {
         dry_run,
         parents: false,
+        verbose: false,
     };
 
     let report = match apply_migration_plan(&plan, &index, ctx) {

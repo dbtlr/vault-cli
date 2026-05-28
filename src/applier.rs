@@ -16,19 +16,22 @@
 //! - propagate the parent MigrationOp's `footnote` to each child ApplyReportOp
 
 use crate::apply_report::{
-    ApplyReport, ApplyReportOp, ApplyWarning, OpStatus, APPLY_REPORT_SCHEMA_VERSION,
+    ApplyReport, ApplyReportOp, ApplyWarning, CascadeRewrite, CascadeSkip, CascadeSummary,
+    OpStatus, APPLY_REPORT_SCHEMA_VERSION,
 };
 use crate::core::GraphIndex;
 use crate::migration_plan::{MigrationOp, MigrationPlan};
 use crate::planner::intent::{expand, HIGH_LEVEL_KINDS};
 use crate::repair_apply::{apply_repair_plan_with_context, CreateApplyContext};
+use crate::standards::apply::CascadeRecord;
 use crate::standards::apply::RepairApplyReport;
 use crate::standards::{
     PlanWarning, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary,
     REPAIR_PLAN_SCHEMA_VERSION,
 };
 use anyhow::Result;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
+use std::collections::BTreeSet;
 
 /// Context for `apply_migration_plan`.
 pub(crate) struct ApplyContext {
@@ -36,6 +39,8 @@ pub(crate) struct ApplyContext {
     pub dry_run: bool,
     /// When true, create intermediate parent directories for create_document ops.
     pub parents: bool,
+    /// When true, per-op cascade summaries include the full rewrite/skip lists.
+    pub verbose: bool,
 }
 
 /// Apply a `MigrationPlan` against an in-memory `GraphIndex`, delegating to the
@@ -154,6 +159,7 @@ pub(crate) fn apply_migration_plan(
         &plan.operations,
         &apply_result,
         ctx.dry_run,
+        ctx.verbose,
     );
 
     let applied = ops
@@ -357,12 +363,67 @@ fn is_high_level_op(op: &MigrationOp) -> bool {
     HIGH_LEVEL_KINDS.contains(&op.kind.as_str())
 }
 
+/// Fold a (possibly missing) `CascadeRecord` into a serialized `CascadeSummary`.
+/// Counts are always present; the `rewrites`/`skips` lists are populated only
+/// when `verbose` is set. A missing record (op had no backlinks) yields an
+/// all-zero summary.
+fn build_cascade_summary(rec: Option<&CascadeRecord>, verbose: bool) -> CascadeSummary {
+    let rec = match rec {
+        Some(r) => r,
+        None => {
+            return CascadeSummary {
+                planned: 0,
+                applied: 0,
+                skipped: 0,
+                files: 0,
+                rewrites: Vec::new(),
+                skips: Vec::new(),
+            }
+        }
+    };
+    let files: BTreeSet<&Utf8Path> = rec.rewritten.iter().map(|r| r.file.as_path()).collect();
+    let rewrites = if verbose {
+        rec.rewritten
+            .iter()
+            .map(|r| CascadeRewrite {
+                file: r.file.to_string(),
+                from: r.from.clone(),
+                to: r.to.clone(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let skips = if verbose {
+        rec.skipped
+            .iter()
+            .map(|s| CascadeSkip {
+                file: s.file.to_string(),
+                from: s.from.clone(),
+                to: s.to.clone(),
+                reason: s.reason.code().to_string(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    CascadeSummary {
+        planned: rec.planned,
+        applied: rec.rewritten.len(),
+        skipped: rec.skipped.len(),
+        files: files.len(),
+        rewrites,
+        skips,
+    }
+}
+
 fn build_report_ops(
     changes: &[PlannedChange],
     provenance: &[usize],
     plan_ops: &[MigrationOp],
     apply_result: &RepairApplyReport,
     dry_run: bool,
+    verbose: bool,
 ) -> Vec<ApplyReportOp> {
     changes
         .iter()
@@ -382,6 +443,17 @@ fn build_report_ops(
             let status = infer_status(change, apply_result, dry_run);
             let summary = build_summary(change, dry_run);
 
+            let cascade = match change.operation.as_str() {
+                "move_document" | "delete_document" => {
+                    let rec = apply_result
+                        .cascades
+                        .iter()
+                        .find(|c| c.source_path == change.path);
+                    Some(build_cascade_summary(rec, verbose))
+                }
+                _ => None,
+            };
+
             ApplyReportOp {
                 op_id: i.to_string(),
                 kind: change.operation.clone(),
@@ -390,7 +462,7 @@ fn build_report_ops(
                 summary,
                 error: None, // see note below
                 footnote: parent_op.footnote.clone(),
-                cascade: None,
+                cascade,
             }
         })
         .collect()
@@ -444,6 +516,7 @@ mod tests {
         let ctx = ApplyContext {
             dry_run: true,
             parents: false,
+            verbose: false,
         };
         let report = apply_migration_plan(&plan, &index, ctx).unwrap();
         assert_eq!(report.schema_version, 1);
@@ -477,6 +550,7 @@ mod tests {
         let ctx = ApplyContext {
             dry_run: false,
             parents: false,
+            verbose: false,
         };
         let report = apply_migration_plan(&plan, &index, ctx).unwrap();
         assert_eq!(report.applied, 1);
@@ -521,6 +595,7 @@ mod tests {
         let ctx = ApplyContext {
             dry_run: true,
             parents: false,
+            verbose: false,
         };
         let report = apply_migration_plan(&plan, &index, ctx).unwrap();
         // Expanded ops should reference parent op_id 0
@@ -533,5 +608,79 @@ mod tests {
             // Footnote propagated from parent
             assert_eq!(op.footnote.as_deref(), Some("Rename folder"));
         }
+    }
+
+    #[test]
+    fn move_op_carries_cascade_summary_from_actuals() {
+        let (tmp, index) = synth_vault();
+        let vault_root = tmp.path().to_string_lossy().to_string();
+        let plan = MigrationPlan {
+            schema_version: 1,
+            vault_root,
+            generator: None,
+            generated_at: None,
+            operations: vec![MigrationOp {
+                kind: "move_document".into(),
+                id: None,
+                requires: vec![],
+                fields: serde_json::json!({"src": "a.md", "dst": "renamed.md"}),
+                footnote: None,
+            }],
+            skipped: vec![],
+            plan_footnote: None,
+        };
+        let ctx = ApplyContext {
+            dry_run: false,
+            parents: false,
+            verbose: false,
+        };
+        let report = apply_migration_plan(&plan, &index, ctx).unwrap();
+        let op = report
+            .operations
+            .iter()
+            .find(|o| o.kind == "move_document")
+            .unwrap();
+        let cascade = op.cascade.as_ref().expect("move op must carry a cascade");
+        assert_eq!(cascade.planned, 1);
+        assert_eq!(cascade.applied, 1);
+        assert_eq!(cascade.skipped, 0);
+        assert_eq!(cascade.files, 1);
+        assert!(cascade.rewrites.is_empty());
+        assert!(cascade.skips.is_empty());
+    }
+
+    #[test]
+    fn verbose_populates_cascade_rewrite_list() {
+        let (tmp, index) = synth_vault();
+        let vault_root = tmp.path().to_string_lossy().to_string();
+        let plan = MigrationPlan {
+            schema_version: 1,
+            vault_root,
+            generator: None,
+            generated_at: None,
+            operations: vec![MigrationOp {
+                kind: "move_document".into(),
+                id: None,
+                requires: vec![],
+                fields: serde_json::json!({"src": "a.md", "dst": "renamed.md"}),
+                footnote: None,
+            }],
+            skipped: vec![],
+            plan_footnote: None,
+        };
+        let ctx = ApplyContext {
+            dry_run: false,
+            parents: false,
+            verbose: true,
+        };
+        let report = apply_migration_plan(&plan, &index, ctx).unwrap();
+        let op = report
+            .operations
+            .iter()
+            .find(|o| o.kind == "move_document")
+            .unwrap();
+        let cascade = op.cascade.as_ref().unwrap();
+        assert_eq!(cascade.rewrites.len(), 1);
+        assert_eq!(cascade.rewrites[0].file, "b.md");
     }
 }

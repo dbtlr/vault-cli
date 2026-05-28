@@ -101,6 +101,7 @@ pub fn run(
     let ctx = ApplyContext {
         dry_run,
         parents: false,
+        verbose: false,
     };
 
     // ------------------------------------------------------------------

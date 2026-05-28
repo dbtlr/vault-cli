@@ -113,12 +113,6 @@ impl LinkSkipReason {
             LinkSkipReason::Drifted => "drifted",
         }
     }
-
-    pub fn message(self) -> &'static str {
-        match self {
-            LinkSkipReason::Drifted => "on-disk link text changed between plan and apply",
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -1770,10 +1764,21 @@ mod tests {
         };
 
         let outcome = apply_link_rewrites(root, &change).unwrap();
-        assert_eq!(outcome.rewritten.len(), 0, "drifted link must not be rewritten");
-        assert_eq!(outcome.skipped.len(), 1, "drifted link must be recorded as skipped");
+        assert_eq!(
+            outcome.rewritten.len(),
+            0,
+            "drifted link must not be rewritten"
+        );
+        assert_eq!(
+            outcome.skipped.len(),
+            1,
+            "drifted link must be recorded as skipped"
+        );
         assert_eq!(outcome.skipped[0].file.as_str(), "d.md");
         assert_eq!(outcome.skipped[0].reason.code(), "drifted");
-        assert_eq!(std::fs::read_to_string(root.join("d.md")).unwrap(), "see [[c]] here\n");
+        assert_eq!(
+            std::fs::read_to_string(root.join("d.md")).unwrap(),
+            "see [[c]] here\n"
+        );
     }
 }

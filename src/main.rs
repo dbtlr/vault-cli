@@ -396,6 +396,7 @@ fn run(cli: Cli) -> Result<i32> {
             let ctx = ApplyContext {
                 dry_run,
                 parents: args.parents,
+                verbose: false,
             };
             let report = match apply_migration_plan(&migration_plan, &index, ctx) {
                 Ok(r) => r,
@@ -545,6 +546,7 @@ fn run(cli: Cli) -> Result<i32> {
             let ctx = ApplyContext {
                 dry_run,
                 parents: false,
+                verbose: false,
             };
             let report = match apply_migration_plan(&plan, &index, ctx) {
                 Ok(r) => r,
