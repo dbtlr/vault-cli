@@ -37,6 +37,7 @@ pub fn run(
     cwd: &Utf8PathBuf,
     no_cache_refresh: bool,
     config_path: Option<&Utf8PathBuf>,
+    verbose: bool,
 ) -> Result<i32> {
     // ------------------------------------------------------------------
     // 1. Build GraphIndex
@@ -101,7 +102,7 @@ pub fn run(
     let ctx = ApplyContext {
         dry_run,
         parents: false,
-        verbose: false,
+        verbose,
     };
 
     // ------------------------------------------------------------------
