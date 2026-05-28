@@ -173,6 +173,11 @@ Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-fli
     Delete(DeleteArgs),
     #[command(
         disable_help_flag = true,
+        about = "Apply a MigrationPlan — move, delete, rewrite, and frontmatter ops from a plan file"
+    )]
+    Migrate(MigrateArgs),
+    #[command(
+        disable_help_flag = true,
         about = "Plan and apply deterministic vault repairs"
     )]
     Repair(RepairCommand),
@@ -790,6 +795,46 @@ pub struct MoveArgs {
 pub enum MoveFormat {
     Records,
     Json,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct MigrateArgs {
+    /// Path to MigrationPlan file (YAML or JSON). Use `-` for stdin.
+    #[arg(value_name = "PLAN")]
+    pub plan_path: String,
+
+    /// Preview without mutating. Exit code 0, dry_run=true in JSON report.
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Skip TTY confirmation prompt and apply immediately.
+    #[arg(long)]
+    pub yes: bool,
+
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = MigrateFormat::Records)]
+    pub format: MigrateFormat,
+
+    /// Input plan format. Auto-detected by extension (.yaml/.yml → YAML, else JSON).
+    /// Required for stdin (`-`) when the plan is YAML.
+    #[arg(long, value_enum)]
+    pub input_format: Option<InputFormat>,
+
+    /// Write the JSON apply report to this file instead of stdout.
+    #[arg(long)]
+    pub out: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum MigrateFormat {
+    Records,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum InputFormat {
+    Json,
+    Yaml,
 }
 
 #[derive(Debug, clap::Args)]

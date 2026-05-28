@@ -1,8 +1,5 @@
 //! Unified applier: planner expansion pre-pass + delegation to today's
 //! pass-based apply_repair_plan_with_context.
-// Items in this module are wired progressively across Plan Tasks 8, 10, 11,
-// 14, 15. Suppress dead_code until the consumers are in place.
-#![allow(dead_code)]
 //!
 //! This module is the integration point that wires the MigrationPlan →
 //! PlannedChange expansion (Plan Tasks 4-6) to the existing pass-based

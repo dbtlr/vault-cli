@@ -18,6 +18,7 @@ mod help;
 mod init;
 mod init_scan;
 mod links;
+mod migrate_cmd;
 pub mod migration_plan;
 pub mod move_doc;
 pub mod mutation_report;
@@ -45,6 +46,7 @@ use crate::cli::{
 use crate::config_loader::{effective_cwd, load_config, resolve_path};
 use crate::core::GraphIndex;
 use crate::graph::{concise_diagnostics, has_errors};
+use crate::migrate_cmd::MigrateRunArgs;
 use crate::output::primitives::is_broken_pipe;
 use crate::repair::skip_reasons::code_matches_any;
 use crate::repair_apply::{apply_repair_plan, with_verification};
@@ -99,6 +101,17 @@ fn run(cli: Cli) -> Result<i32> {
     let config_path = config;
 
     match command {
+        Command::Migrate(args) => {
+            let run_args = MigrateRunArgs {
+                plan_path: args.plan_path,
+                dry_run: args.dry_run,
+                yes: args.yes,
+                format: args.format,
+                input_format: args.input_format,
+                out: args.out,
+            };
+            migrate_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
+        }
         Command::Repair(repair_command) => match repair_command.command {
             RepairSubcommand::Plan(args) => {
                 let loaded_config = load_config(&cwd, config_path.as_ref())?;
