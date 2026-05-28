@@ -997,7 +997,7 @@ pub enum OutputFormat {
 pub enum RepairPlanFormat {
     /// Decision-support report for human review. Default for TTY.
     Report,
-    /// Full JSON envelope. Default when piped. Required for `norn repair apply` consumers.
+    /// Full JSON envelope. Default when piped. Feed to `norn migrate -` to apply.
     Json,
     /// Affected document paths, one per line, sorted and deduplicated.
     Paths,

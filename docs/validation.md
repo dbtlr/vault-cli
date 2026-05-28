@@ -1,6 +1,6 @@
 ---
 title: Validation and repair
-description: Finding codes, summary output, triage filters, the schema-versioned repair plan, and the apply contract.
+description: Finding codes, summary output, triage filters, the schema-versioned MigrationPlan, and the migrate apply contract.
 ---
 
 # Validation and repair
@@ -167,7 +167,7 @@ The validate → plan → apply → verify loop closes for these finding classes
 | `document-misrouted` | `move_document` | Move the file to a configured destination (with backlink rewriting). |
 | `link-target-missing` | `rewrite_link` | Closest-match rewrite proposed automatically. Use `--confidence high` to keep only slug-normalized-identity matches. |
 
-Findings without a matching deterministic rule are reported as skipped fallout in the repair plan with `skip_reason: no_rule_matched`.
+Findings without a matching deterministic rule are reported as skipped fallout in the MigrationPlan with `skip_reason: no_rule_matched`.
 
 ## Migrate (apply)
 

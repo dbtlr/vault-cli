@@ -2,10 +2,10 @@
 //! pass-based apply_repair_plan_with_context.
 //!
 //! This module is the integration point that wires the MigrationPlan →
-//! PlannedChange expansion (Plan Tasks 4-6) to the existing pass-based
-//! apply orchestrator (repair_apply.rs). It eventually replaces the per-command
-//! RepairPlan construction in move_doc.rs, delete_doc.rs, etc. (Plan Tasks
-//! 14-20). Kept side-by-side during the transition.
+//! PlannedChange expansion to the existing pass-based apply orchestrator
+//! (repair_apply.rs). Every document-mutation command (move, delete,
+//! rewrite-wikilink, migrate) builds a MigrationPlan and applies it here,
+//! emitting a single ApplyReport envelope.
 //!
 //! # Provenance tracking
 //!
