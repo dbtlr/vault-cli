@@ -1,3 +1,5 @@
+pub mod applier;
+pub mod apply_report;
 mod cache;
 mod cache_cmd;
 mod cli;
@@ -16,14 +18,17 @@ mod help;
 mod init;
 mod init_scan;
 mod links;
+mod migrate_cmd;
+pub mod migration_plan;
 pub mod move_doc;
-pub mod mutation_report;
 mod new;
 mod output;
+pub mod planner;
 pub mod prompt;
 mod query;
 mod repair;
 mod repair_apply;
+mod rewrite_wikilink_cmd;
 mod self_update;
 mod set;
 mod show;
@@ -32,19 +37,16 @@ mod target;
 mod validate;
 mod validate_filter;
 
-use std::{fs, process};
+use std::process;
 
-use crate::cli::{
-    CacheSubcommand, Cli, Command, ConfigSubcommand, RepairApplyFormat, RepairPlanFormat,
-    RepairSubcommand,
-};
-use crate::config_loader::{effective_cwd, load_config, resolve_path};
+use crate::cli::{CacheSubcommand, Cli, Command, ConfigSubcommand};
+use crate::config_loader::{effective_cwd, load_config};
 use crate::core::GraphIndex;
 use crate::graph::{concise_diagnostics, has_errors};
+use crate::migrate_cmd::MigrateRunArgs;
 use crate::output::primitives::is_broken_pipe;
-use crate::repair::skip_reasons::code_matches_any;
-use crate::repair_apply::{apply_repair_plan, with_verification};
-use crate::standards::{plan_repairs, validate_with_compiled, RepairPlanFilters, SkippedSummary};
+use crate::rewrite_wikilink_cmd::RewriteWikilinkRunArgs;
+use crate::standards::validate_with_compiled;
 use crate::validate_filter::{filter_findings, ValidateFilterOptions};
 use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches};
@@ -95,178 +97,41 @@ fn run(cli: Cli) -> Result<i32> {
     let config_path = config;
 
     match command {
-        Command::Repair(repair_command) => match repair_command.command {
-            RepairSubcommand::Plan(args) => {
-                let loaded_config = load_config(&cwd, config_path.as_ref())?;
-                let mut index = crate::cache_cmd::load_graph_index(
-                    &cwd,
-                    &loaded_config.index_options,
-                    no_cache_refresh,
-                )?;
-                trim_diagnostics(&mut index, verbose);
-                let findings = validate_with_compiled(
-                    &index,
-                    &loaded_config.validate,
-                    &loaded_config.compiled,
-                    loaded_config.index_options.alias_field.as_deref(),
-                );
-                let filters = ValidateFilterOptions::from(&args);
-                let findings = filter_findings(findings, &filters)?;
-                let mut plan = plan_repairs(
-                    cwd.clone(),
-                    repair_plan_filters(&args),
-                    findings,
-                    &loaded_config.repair,
-                    &index,
-                );
-                if !args.skip_reason.is_empty() {
-                    plan.skipped_findings
-                        .retain(|f| code_matches_any(f.skip_reason.code(), &args.skip_reason));
-                    plan.summary.skipped = SkippedSummary::from_skipped(&plan.skipped_findings);
-                }
-                // --out: always writes JSON to the file (independent of --format).
-                if let Some(out) = &args.out {
-                    let out_path = resolve_path(&cwd, out);
-                    let plan_text = serde_json::to_string_pretty(&plan)?;
-                    fs::write(&out_path, format!("{plan_text}\n")).map_err(|error| {
-                        anyhow::anyhow!("failed to write repair plan {out_path}: {error}")
-                    })?;
-                }
-
-                // --format: governs stdout. When --out is set without --format, stdout stays silent.
-                let stdout_format = if args.format.is_none() && args.out.is_some() {
-                    None // silent when --out alone
-                } else {
-                    Some(args.format.unwrap_or_else(|| {
-                        use std::io::IsTerminal;
-                        if std::io::stdout().is_terminal() {
-                            RepairPlanFormat::Report
-                        } else {
-                            RepairPlanFormat::Json
-                        }
-                    }))
-                };
-
-                if let Some(format) = stdout_format {
-                    use std::io::Write;
-                    match format {
-                        RepairPlanFormat::Report => repair::render::write_report(&plan, &args)?,
-                        RepairPlanFormat::Json => {
-                            // Pretty-printed JSON with trailing newline — matches write_item_output behavior
-                            let json = serde_json::to_string_pretty(&plan)?;
-                            let stdout = std::io::stdout();
-                            let mut stdout = stdout.lock();
-                            stdout.write_all(json.as_bytes())?;
-                            stdout.write_all(b"\n")?;
-                        }
-                        RepairPlanFormat::Paths => repair::render::write_paths(&plan)?,
-                    }
-                }
-                Ok(exit_code_for(&index))
+        Command::Migrate(args) => {
+            let run_args = MigrateRunArgs {
+                plan_path: args.plan_path,
+                dry_run: args.dry_run,
+                yes: args.yes,
+                format: args.format,
+                input_format: args.input_format,
+                out: args.out,
+            };
+            migrate_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
+        }
+        Command::RewriteWikilink(args) => {
+            let run_args = RewriteWikilinkRunArgs {
+                old: args.old,
+                new: args.new,
+                dry_run: args.dry_run,
+                yes: args.yes,
+                format: args.format,
+                out: args.out,
+            };
+            rewrite_wikilink_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
+        }
+        Command::Repair(args) => {
+            let ctx = crate::repair::RepairRunContext {
+                cwd: &cwd,
+                config_path: config_path.as_ref(),
+                no_cache_refresh,
+                verbose,
+            };
+            if args.plan {
+                repair::run_plan(&args, &ctx)
+            } else {
+                repair::run_summary(&args, &ctx)
             }
-            RepairSubcommand::Apply(args) => {
-                // Determine plan source: positional path, '-' (stdin), or absent (stdin).
-                let (plan_text, plan_source) = match args.plan.as_deref().map(|p| p.as_str()) {
-                    None | Some("-") => {
-                        use std::io::Read;
-                        let mut buf = String::new();
-                        std::io::stdin().read_to_string(&mut buf).map_err(|error| {
-                            anyhow::anyhow!("could not read plan from stdin: {error}")
-                        })?;
-                        (buf, crate::repair::apply_render::PlanSource::Stdin)
-                    }
-                    Some(_) => {
-                        let plan_path_arg = args.plan.as_ref().unwrap();
-                        let plan_path = resolve_path(&cwd, plan_path_arg);
-                        let body = fs::read_to_string(&plan_path).map_err(|error| {
-                            anyhow::anyhow!("failed to read repair plan {plan_path}: {error}")
-                        })?;
-                        (
-                            body,
-                            crate::repair::apply_render::PlanSource::File(plan_path),
-                        )
-                    }
-                };
-                let plan = serde_json::from_str::<crate::standards::RepairPlan>(&plan_text)
-                    .map_err(|error| match &plan_source {
-                        crate::repair::apply_render::PlanSource::Stdin => {
-                            anyhow::anyhow!("could not parse plan from stdin: {error}")
-                        }
-                        crate::repair::apply_render::PlanSource::File(p) => {
-                            anyhow::anyhow!("failed to parse repair plan {p}: {error}")
-                        }
-                    })?;
-                let loaded_config = load_config(&cwd, config_path.as_ref())?;
-                let mut index = crate::cache_cmd::load_graph_index(
-                    &cwd,
-                    &loaded_config.index_options,
-                    no_cache_refresh,
-                )?;
-                trim_diagnostics(&mut index, verbose);
-                let mut report = apply_repair_plan(&cwd, &index, &plan, args.dry_run)?;
-                if args.verify {
-                    let mut verify_index = crate::cache_cmd::load_graph_index(
-                        &cwd,
-                        &loaded_config.index_options,
-                        false,
-                    )?;
-                    trim_diagnostics(&mut verify_index, verbose);
-                    let findings = validate_with_compiled(
-                        &verify_index,
-                        &loaded_config.validate,
-                        &loaded_config.compiled,
-                        loaded_config.index_options.alias_field.as_deref(),
-                    );
-                    report = with_verification(report, &findings);
-                }
-                // --out: always writes JSON to file (independent of --format).
-                if let Some(out) = &args.out {
-                    let out_path = resolve_path(&cwd, out);
-                    let report_json = serde_json::to_string_pretty(&report)?;
-                    fs::write(&out_path, format!("{report_json}\n")).map_err(|error| {
-                        anyhow::anyhow!("failed to write apply report {out_path}: {error}")
-                    })?;
-                }
-
-                // --format: governs stdout. Silent when --out is set without --format.
-                let stdout_format = if args.format.is_none() && args.out.is_some() {
-                    None
-                } else {
-                    Some(args.format.unwrap_or_else(|| {
-                        if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-                            RepairApplyFormat::Report
-                        } else {
-                            RepairApplyFormat::Json
-                        }
-                    }))
-                };
-
-                if let Some(format) = stdout_format {
-                    use std::io::Write;
-                    let stdout = std::io::stdout();
-                    let mut stdout = stdout.lock();
-                    match format {
-                        RepairApplyFormat::Report => {
-                            crate::repair::apply_render::render_report(
-                                &report,
-                                &plan,
-                                plan_source,
-                                &mut stdout,
-                            )?;
-                        }
-                        RepairApplyFormat::Json => {
-                            let json = serde_json::to_string_pretty(&report)?;
-                            stdout.write_all(json.as_bytes())?;
-                            stdout.write_all(b"\n")?;
-                        }
-                        RepairApplyFormat::Paths => {
-                            crate::repair::apply_render::write_paths(&report, &mut stdout)?;
-                        }
-                    }
-                }
-                Ok(exit_code_for(&index))
-            }
-        },
+        }
         Command::Cache(cache_command) => {
             let loaded_config = load_config(&cwd, config_path.as_ref())?;
             let alias_field = loaded_config.index_options.alias_field.as_deref();
@@ -399,7 +264,11 @@ fn run(cli: Cli) -> Result<i32> {
             Ok(0)
         }
         Command::Move(args) => {
-            use std::io::{IsTerminal, Write};
+            use crate::applier::{apply_migration_plan, ApplyContext};
+            use crate::migration_plan::{
+                MigrationOp, MigrationPlan, MIGRATION_PLAN_SCHEMA_VERSION,
+            };
+            use std::io::Write;
 
             let loaded_config = load_config(&cwd, config_path.as_ref())?;
             let mut index = crate::cache_cmd::load_graph_index(
@@ -409,91 +278,171 @@ fn run(cli: Cli) -> Result<i32> {
             )?;
             trim_diagnostics(&mut index, verbose);
 
-            let cfg = crate::move_doc::PreflightConfig {
-                src: &args.src,
-                dst: &args.dst,
-                force: args.force,
-                no_link_rewrite: args.no_link_rewrite,
-                vault_root: &cwd,
-                index: &index,
-            };
-            let plan = match crate::move_doc::preflight_and_plan(cfg) {
-                Ok(plan) => plan,
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    std::process::exit(2);
-                }
-            };
+            // Auto-detect folder move: if SRC is a directory on disk (or --recursive
+            // is explicit), route through the planner via a move_folder op.
+            // This matches the "warn don't block" pattern — an operator who typed
+            // `norn move src_dir dst_dir` without -r almost certainly meant folder-move.
+            let src_full = cwd.join(&args.src);
+            let src_is_dir = src_full.as_std_path().is_dir();
+            let is_folder = args.recursive || src_is_dir;
 
-            let warnings = crate::move_doc::collect_warnings(&plan, &index, &cwd);
-
-            let stdout = std::io::stdout();
-            let mut out = stdout.lock();
-
-            // Determine whether to apply, and handle the TTY-interactive branch specially
-            // (it needs to render the preview before prompting).
-            // In JSON mode we must render exactly once — skip the preview when we're
-            // going to apply so callers never see two concatenated JSON objects.
-            let should_apply = if args.dry_run {
-                false
-            } else if args.yes {
-                true
-            } else if matches!(args.format, crate::cli::MoveFormat::Json) {
-                // --format json is implicitly non-interactive; render preview and exit.
-                let preview = crate::move_doc::build_report(&plan, false, warnings.clone());
-                crate::move_doc::render_json(&mut out, &preview)?;
-                return Ok(0);
-            } else if std::io::stdin().is_terminal() {
-                // TTY interactive: render preview first so the operator can see what
-                // they're confirming, then prompt.
-                let preview = crate::move_doc::build_report(&plan, false, warnings.clone());
-                crate::move_doc::render_records(&mut out, &preview)?;
-                let stdin = std::io::stdin();
-                let mut reader = stdin.lock();
-                let mut prompt_out = std::io::stderr();
-                writeln!(prompt_out)?;
-                let ok = crate::prompt::confirm(&mut reader, &mut prompt_out, "Proceed? [y/N] ")?;
-                if !ok {
-                    std::process::exit(1);
-                }
-                true
-            } else {
-                // Non-TTY without --yes = implicit dry-run: render preview and exit.
-                let preview = crate::move_doc::build_report(&plan, false, warnings.clone());
-                crate::move_doc::render_records(&mut out, &preview)?;
-                return Ok(0);
-            };
-
-            if should_apply {
-                crate::repair_apply::apply_repair_plan(
-                    &cwd, &index, &plan, /*dry_run=*/ false,
-                )?;
-                let applied = crate::move_doc::build_report(&plan, true, warnings);
-                match args.format {
-                    crate::cli::MoveFormat::Records => {
-                        crate::move_doc::render_records(&mut out, &applied)?;
-                    }
-                    crate::cli::MoveFormat::Json => {
-                        crate::move_doc::render_json(&mut out, &applied)?;
-                    }
-                }
-            } else {
-                // --dry-run: render preview respecting --format.
-                let preview = crate::move_doc::build_report(&plan, false, warnings);
-                match args.format {
-                    crate::cli::MoveFormat::Records => {
-                        crate::move_doc::render_records(&mut out, &preview)?;
-                    }
-                    crate::cli::MoveFormat::Json => {
-                        crate::move_doc::render_json(&mut out, &preview)?;
+            // --parents: for single-file moves, create missing destination parent
+            // directories before preflight. (Folder moves handle parents via the expander.)
+            if !is_folder && args.parents {
+                let dst_path = camino::Utf8Path::new(&args.dst);
+                if let Some(parent) = dst_path.parent() {
+                    if !parent.as_str().is_empty() {
+                        std::fs::create_dir_all(cwd.join(parent)).map_err(|e| {
+                            anyhow::anyhow!(
+                                "failed to create destination parents for {}: {e}",
+                                args.dst
+                            )
+                        })?;
                     }
                 }
             }
 
-            Ok(0)
+            // ----------------------------------------------------------------
+            // Pre-flight (single-file only): validate src/dst before building
+            // the MigrationPlan so we can exit 2 on refusal.
+            // ----------------------------------------------------------------
+            // For folder moves the expander handles its own validation; we only
+            // run the explicit preflight for single-file moves.
+            let (link_total, link_files) = if !is_folder {
+                let cfg = crate::move_doc::PreflightConfig {
+                    src: &args.src,
+                    dst: &args.dst,
+                    force: args.force,
+                    no_link_rewrite: args.no_link_rewrite,
+                    vault_root: &cwd,
+                    index: &index,
+                };
+                let repair_plan = match crate::move_doc::preflight_and_plan(cfg) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(2);
+                    }
+                };
+                // Compute link counts from link_risk for TTY rendering.
+                let move_op = repair_plan
+                    .changes
+                    .iter()
+                    .find(|c| c.operation == "move_document")
+                    .expect("plan must have a move_document op");
+                let (lt, lf) = if let Some(risk) = &move_op.link_risk {
+                    use std::collections::BTreeSet;
+                    let mut files: BTreeSet<&camino::Utf8Path> = BTreeSet::new();
+                    let mut total = 0usize;
+                    for a in risk
+                        .stem_links
+                        .iter()
+                        .chain(risk.path_qualified_wikilinks.iter())
+                        .chain(risk.markdown_links.iter())
+                    {
+                        files.insert(a.source_path.as_path());
+                        total += 1;
+                    }
+                    (total, files.len())
+                } else {
+                    (0, 0)
+                };
+                (lt, lf)
+            } else {
+                (0, 0)
+            };
+
+            // ----------------------------------------------------------------
+            // Resolve dry_run (extracted helper logic, shared across both paths).
+            // --format json → implicit non-interactive (no apply without --yes).
+            // ----------------------------------------------------------------
+            let dry_run = resolve_move_dry_run(args.dry_run, args.yes, &args.format)?;
+
+            // ----------------------------------------------------------------
+            // Build one-op MigrationPlan.
+            // ----------------------------------------------------------------
+            let op_kind = if is_folder {
+                "move_folder"
+            } else {
+                "move_document"
+            };
+            let mut fields = serde_json::json!({
+                "src": args.src.clone(),
+                "dst": args.dst.clone(),
+                "parents": args.parents,
+            });
+            if !is_folder && args.force {
+                fields["force"] = serde_json::Value::Bool(true);
+            }
+            if !is_folder && args.no_link_rewrite {
+                fields["no_link_rewrite"] = serde_json::Value::Bool(true);
+            }
+            let migration_plan = MigrationPlan {
+                schema_version: MIGRATION_PLAN_SCHEMA_VERSION,
+                vault_root: cwd.to_string(),
+                generator: None,
+                generated_at: None,
+                operations: vec![MigrationOp {
+                    kind: op_kind.into(),
+                    id: None,
+                    requires: vec![],
+                    fields,
+                    footnote: None,
+                }],
+                skipped: vec![],
+                plan_footnote: None,
+            };
+
+            let ctx = ApplyContext {
+                dry_run,
+                parents: args.parents,
+            };
+            let report = match apply_migration_plan(&migration_plan, &index, ctx) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return Ok(2);
+                }
+            };
+
+            let exit = if report.failed > 0 { 1 } else { 0 };
+
+            // After a live folder move, clean up empty source directories.
+            if is_folder && !dry_run && exit == 0 {
+                remove_empty_dirs(src_full.as_std_path());
+            }
+
+            // ----------------------------------------------------------------
+            // Render output.
+            // ----------------------------------------------------------------
+            let stdout = std::io::stdout();
+            let mut out = stdout.lock();
+            match args.format {
+                crate::cli::MoveFormat::Json => {
+                    let json = serde_json::to_string_pretty(&report)?;
+                    out.write_all(json.as_bytes())?;
+                    out.write_all(b"\n")?;
+                }
+                crate::cli::MoveFormat::Records => {
+                    if is_folder {
+                        crate::move_doc::render_folder_apply_tty(&mut out, &report, dry_run)?;
+                    } else {
+                        let applied = !dry_run && exit == 0;
+                        crate::move_doc::render_move_apply_tty(
+                            &mut out, &args.src, &args.dst, link_total, link_files, applied,
+                        )?;
+                    }
+                }
+            }
+
+            Ok(exit)
         }
         Command::Delete(args) => {
-            use std::io::{IsTerminal, Write};
+            use crate::applier::{apply_migration_plan, ApplyContext};
+            use crate::migration_plan::{
+                MigrationOp, MigrationPlan, MIGRATION_PLAN_SCHEMA_VERSION,
+            };
+            use std::io::Write;
 
             let loaded_config = load_config(&cwd, config_path.as_ref())?;
             let mut index = crate::cache_cmd::load_graph_index(
@@ -503,6 +452,11 @@ fn run(cli: Cli) -> Result<i32> {
             )?;
             trim_diagnostics(&mut index, verbose);
 
+            // ----------------------------------------------------------------
+            // Pre-flight: validate doc exists + enforce backlinks policy.
+            // Backlinks-present + no --rewrite-to + no --allow-broken-links → exit 2.
+            // Extract incoming-link data for TTY rendering.
+            // ----------------------------------------------------------------
             let cfg = crate::delete_doc::PreflightConfig {
                 doc: &args.doc,
                 allow_broken_links: args.allow_broken_links,
@@ -517,71 +471,117 @@ fn run(cli: Cli) -> Result<i32> {
                     std::process::exit(2);
                 }
             };
-            let plan = &outcome.plan;
-            let rewrite_to = outcome.resolved_rewrite_to.as_ref();
 
-            let stdout = std::io::stdout();
-            let mut out = stdout.lock();
-
-            // Determine whether to apply, and handle the TTY-interactive branch specially
-            // (it needs to render the preview before prompting).
-            // In JSON mode we must render exactly once — skip the preview when we're
-            // going to apply so callers never see two concatenated JSON objects.
-            let should_apply = if args.dry_run {
-                false
-            } else if args.yes {
-                true
-            } else if matches!(args.format, crate::cli::DeleteFormat::Json) {
-                // --format json is implicitly non-interactive; render preview and exit.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                crate::delete_doc::render_json(&mut out, &preview)?;
-                return Ok(0);
-            } else if std::io::stdin().is_terminal() {
-                // TTY interactive: render preview first so the operator can see what
-                // they're confirming, then prompt.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                crate::delete_doc::render_records(&mut out, &preview)?;
-                let stdin = std::io::stdin();
-                let mut reader = stdin.lock();
-                let mut prompt_out = std::io::stderr();
-                writeln!(prompt_out)?;
-                let ok = crate::prompt::confirm(&mut reader, &mut prompt_out, "Proceed? [y/N] ")?;
-                if !ok {
-                    std::process::exit(1);
+            // Compute incoming-links info for TTY rendering.
+            let delete_op = outcome
+                .plan
+                .changes
+                .iter()
+                .find(|c| c.operation == "delete_document")
+                .expect("preflight_and_plan must produce a delete_document op");
+            let bl = crate::target::backlinks(&index, &delete_op.path);
+            let incoming_total = bl.len();
+            let mut incoming_file_paths: Vec<camino::Utf8PathBuf> = {
+                use std::collections::BTreeSet;
+                let mut seen: BTreeSet<camino::Utf8PathBuf> = BTreeSet::new();
+                for link in &bl {
+                    seen.insert(link.source_path.clone());
                 }
-                true
-            } else {
-                // Non-TTY without --yes = implicit dry-run: render preview and exit.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                crate::delete_doc::render_records(&mut out, &preview)?;
-                return Ok(0);
+                seen.into_iter().collect()
+            };
+            // rewrite_total: count from link_risk when --rewrite-to was used.
+            let rewrite_total = delete_op.link_risk.as_ref().map_or(0, |risk| {
+                risk.stem_links.len()
+                    + risk.path_qualified_wikilinks.len()
+                    + risk.markdown_links.len()
+            });
+            // If rewrite_to is present but no incoming links broke, files list is the
+            // rewrite sources (from link_risk source_path).
+            if args.rewrite_to.is_some() && incoming_file_paths.is_empty() {
+                if let Some(risk) = &delete_op.link_risk {
+                    use std::collections::BTreeSet;
+                    let mut seen: BTreeSet<camino::Utf8PathBuf> = BTreeSet::new();
+                    for a in risk
+                        .stem_links
+                        .iter()
+                        .chain(risk.path_qualified_wikilinks.iter())
+                        .chain(risk.markdown_links.iter())
+                    {
+                        seen.insert(a.source_path.clone());
+                    }
+                    incoming_file_paths = seen.into_iter().collect();
+                }
+            }
+            let resolved_rewrite_to = outcome.resolved_rewrite_to.clone();
+
+            // ----------------------------------------------------------------
+            // Resolve dry_run.
+            // ----------------------------------------------------------------
+            let dry_run = resolve_delete_dry_run(args.dry_run, args.yes, args.format)?;
+
+            // ----------------------------------------------------------------
+            // Build one-op MigrationPlan.
+            // ----------------------------------------------------------------
+            let plan = MigrationPlan {
+                schema_version: MIGRATION_PLAN_SCHEMA_VERSION,
+                vault_root: cwd.to_string(),
+                generator: None,
+                generated_at: None,
+                operations: vec![MigrationOp {
+                    kind: "delete_document".into(),
+                    id: None,
+                    requires: vec![],
+                    fields: serde_json::json!({
+                        "path": args.doc,
+                        "rewrite_to": args.rewrite_to.as_ref(),
+                        "allow_broken_links": args.allow_broken_links,
+                    }),
+                    footnote: None,
+                }],
+                skipped: vec![],
+                plan_footnote: None,
             };
 
-            if should_apply {
-                crate::repair_apply::apply_repair_plan(&cwd, &index, plan, false)?;
-                let applied = crate::delete_doc::build_report(plan, &index, rewrite_to, true);
-                match args.format {
-                    crate::cli::DeleteFormat::Records => {
-                        crate::delete_doc::render_records(&mut out, &applied)?;
-                    }
-                    crate::cli::DeleteFormat::Json => {
-                        crate::delete_doc::render_json(&mut out, &applied)?;
-                    }
+            let ctx = ApplyContext {
+                dry_run,
+                parents: false,
+            };
+            let report = match apply_migration_plan(&plan, &index, ctx) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return Ok(2);
                 }
-            } else {
-                // --dry-run: render preview respecting --format.
-                let preview = crate::delete_doc::build_report(plan, &index, rewrite_to, false);
-                match args.format {
-                    crate::cli::DeleteFormat::Records => {
-                        crate::delete_doc::render_records(&mut out, &preview)?;
-                    }
-                    crate::cli::DeleteFormat::Json => {
-                        crate::delete_doc::render_json(&mut out, &preview)?;
-                    }
+            };
+
+            let exit = if report.failed > 0 { 1 } else { 0 };
+
+            // ----------------------------------------------------------------
+            // Render output.
+            // ----------------------------------------------------------------
+            let stdout = std::io::stdout();
+            let mut out = stdout.lock();
+            match args.format {
+                crate::cli::DeleteFormat::Json => {
+                    let json = serde_json::to_string_pretty(&report)?;
+                    out.write_all(json.as_bytes())?;
+                    out.write_all(b"\n")?;
+                }
+                crate::cli::DeleteFormat::Records => {
+                    let applied = !dry_run && exit == 0;
+                    crate::delete_doc::render_delete_apply_tty(
+                        &mut out,
+                        &args.doc,
+                        incoming_total,
+                        &incoming_file_paths,
+                        resolved_rewrite_to.as_deref().map(camino::Utf8Path::as_str),
+                        rewrite_total,
+                        applied,
+                    )?;
                 }
             }
 
-            Ok(0)
+            Ok(exit)
         }
         Command::Set(args) => {
             use std::io::{IsTerminal, Write};
@@ -778,37 +778,117 @@ fn run_self_update_command(args: cli::SelfUpdateArgs, color: cli::ColorWhen) -> 
     }
 }
 
+/// Resolve the `dry_run` flag for a `norn move` invocation.
+///
+/// - `--dry-run` → always dry-run.
+/// - `--yes` → apply (no prompt).
+/// - `--format json` → implicit non-interactive; apply without prompting.
+///   (JSON mode is designed for script/agent use where `--yes` is implied.)
+/// - TTY stdin → prompt the operator; exit 1 if declined.
+/// - Non-TTY, no `--yes` → implicit dry-run.
+///
+/// Returns `Ok(true)` for dry-run, `Ok(false)` for apply.
+fn resolve_move_dry_run(
+    dry_run_flag: bool,
+    yes_flag: bool,
+    format: &crate::cli::MoveFormat,
+) -> anyhow::Result<bool> {
+    use std::io::IsTerminal;
+    if dry_run_flag {
+        return Ok(true);
+    }
+    if yes_flag {
+        return Ok(false);
+    }
+    // --format json without --yes: implicit non-interactive dry-run (safe for
+    // script/agent pipelines that haven't explicitly confirmed with --yes).
+    if matches!(format, crate::cli::MoveFormat::Json) {
+        return Ok(true);
+    }
+    if std::io::stdin().is_terminal() {
+        let stdin = std::io::stdin();
+        let mut reader = stdin.lock();
+        let mut prompt_out = std::io::stderr();
+        use std::io::Write;
+        writeln!(prompt_out)?;
+        let ok = crate::prompt::confirm(&mut reader, &mut prompt_out, "Proceed? [y/N] ")?;
+        if !ok {
+            std::process::exit(1);
+        }
+        return Ok(false);
+    }
+    // Non-TTY without --yes: implicit dry-run.
+    Ok(true)
+}
+
+/// Resolve the `dry_run` flag for a `norn delete` invocation.
+///
+/// - `--dry-run` → always dry-run.
+/// - `--yes` → apply (no prompt).
+/// - `--format json` → implicit non-interactive dry-run (safe for pipelines).
+/// - TTY stdin → prompt the operator; exit 1 if declined.
+/// - Non-TTY, no `--yes` → implicit dry-run.
+///
+/// Returns `Ok(true)` for dry-run, `Ok(false)` for apply.
+fn resolve_delete_dry_run(
+    dry_run_flag: bool,
+    yes_flag: bool,
+    format: crate::cli::DeleteFormat,
+) -> anyhow::Result<bool> {
+    use std::io::IsTerminal;
+    if dry_run_flag {
+        return Ok(true);
+    }
+    if yes_flag {
+        return Ok(false);
+    }
+    // --format json without --yes: implicit non-interactive dry-run.
+    if matches!(format, crate::cli::DeleteFormat::Json) {
+        return Ok(true);
+    }
+    if std::io::stdin().is_terminal() {
+        let stdin = std::io::stdin();
+        let mut reader = stdin.lock();
+        let mut prompt_out = std::io::stderr();
+        use std::io::Write;
+        writeln!(prompt_out)?;
+        let ok = crate::prompt::confirm(&mut reader, &mut prompt_out, "Proceed? [y/N] ")?;
+        if !ok {
+            std::process::exit(1);
+        }
+        return Ok(false);
+    }
+    // Non-TTY without --yes: implicit dry-run.
+    Ok(true)
+}
+
+/// Recursively remove a directory and all of its children, but only if every
+/// descendant is an empty directory. If any non-directory file remains (e.g. a
+/// .md file that failed to move), the directory is left intact.
+///
+/// Called after a `move_folder` apply to clean up the empty source tree.
+fn remove_empty_dirs(path: &std::path::Path) {
+    if !path.is_dir() {
+        return;
+    }
+    // Recurse into children first (depth-first).
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.is_dir() {
+                remove_empty_dirs(&child);
+            }
+        }
+    }
+    // Now attempt to remove this directory (succeeds only if empty).
+    let _ = std::fs::remove_dir(path);
+}
+
 fn strip_block_prefix(msg: &str) -> &str {
     let Some(rest) = msg.strip_prefix("BLOCK::") else {
         return msg;
     };
     rest.split_once(": ").map(|(_, tail)| tail).unwrap_or(rest)
-}
-
-fn repair_plan_filters(args: &crate::cli::RepairPlanArgs) -> RepairPlanFilters {
-    RepairPlanFilters {
-        code: normalized_filter_values(&args.triage.code),
-        severity: normalized_filter_values(&args.triage.severity),
-        field: normalized_filter_values(&args.triage.field),
-        rule: normalized_filter_values(&args.triage.rule),
-        path: normalized_filter_values(&args.triage.path),
-        target: normalized_filter_values(&args.triage.target),
-        reason: normalized_filter_values(&args.triage.reason),
-        skip_reason: normalized_filter_values(&args.skip_reason),
-        confidence: args.confidence.map(|c| match c {
-            crate::cli::ConfidenceArg::High => crate::standards::ConfidenceFilter::High,
-        }),
-    }
-}
-
-fn normalized_filter_values(values: &[String]) -> Vec<String> {
-    values
-        .iter()
-        .flat_map(|value| value.split(','))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .collect()
 }
 
 fn trim_diagnostics(index: &mut GraphIndex, verbose: bool) {

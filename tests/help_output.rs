@@ -118,15 +118,15 @@ fn validate_long_help() {
 }
 
 #[test]
-fn repair_plan_short_help() {
-    let out = norn_help(&["repair", "plan", "-h"]);
-    assert_short_help_shape(&out, "norn repair plan");
+fn repair_short_help() {
+    let out = norn_help(&["repair", "-h"]);
+    assert_short_help_shape(&out, "norn repair");
 }
 
 #[test]
-fn repair_apply_long_help() {
-    let out = norn_help(&["repair", "apply", "--help"]);
-    assert_long_help_shape(&out, "norn repair apply");
+fn repair_long_help() {
+    let out = norn_help(&["repair", "--help"]);
+    assert_long_help_shape(&out, "norn repair");
 }
 
 // repair_links_short_help: removed — vault repair links retired.
@@ -272,14 +272,8 @@ fn validate_help_renders_finding_codes_section_with_all_codes() {
 }
 
 #[test]
-fn repair_plan_long_help_has_examples() {
-    let out = norn_help(&["repair", "plan", "--help"]);
-    assert!(out.contains("EXAMPLES\n"));
-}
-
-#[test]
-fn repair_apply_long_help_has_examples() {
-    let out = norn_help(&["repair", "apply", "--help"]);
+fn repair_long_help_has_examples() {
+    let out = norn_help(&["repair", "--help"]);
     assert!(out.contains("EXAMPLES\n"));
 }
 

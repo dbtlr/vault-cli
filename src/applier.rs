@@ -1,0 +1,536 @@
+//! Unified applier: planner expansion pre-pass + delegation to today's
+//! pass-based apply_repair_plan_with_context.
+//!
+//! This module is the integration point that wires the MigrationPlan →
+//! PlannedChange expansion to the existing pass-based apply orchestrator
+//! (repair_apply.rs). Every document-mutation command (move, delete,
+//! rewrite-wikilink, migrate) builds a MigrationPlan and applies it here,
+//! emitting a single ApplyReport envelope.
+//!
+//! # Provenance tracking
+//!
+//! Each PlannedChange carries a `parent_op_idx` (index into
+//! `plan.operations`) so the ApplyReport can:
+//! - set `from = Some(parent_idx.to_string())` for changes produced by
+//!   high-level expansions (move_folder → N move_document ops)
+//! - propagate the parent MigrationOp's `footnote` to each child ApplyReportOp
+
+use crate::apply_report::{
+    ApplyReport, ApplyReportOp, ApplyWarning, OpStatus, APPLY_REPORT_SCHEMA_VERSION,
+};
+use crate::core::GraphIndex;
+use crate::migration_plan::{MigrationOp, MigrationPlan};
+use crate::planner::intent::{expand, HIGH_LEVEL_KINDS};
+use crate::repair_apply::{apply_repair_plan_with_context, CreateApplyContext};
+use crate::standards::apply::RepairApplyReport;
+use crate::standards::{
+    PlanWarning, PlannedChange, RepairPlan, RepairPlanFilters, RepairPlanSummary, SkippedSummary,
+    REPAIR_PLAN_SCHEMA_VERSION,
+};
+use anyhow::Result;
+use camino::Utf8PathBuf;
+
+/// Context for `apply_migration_plan`.
+pub(crate) struct ApplyContext {
+    /// When true, no filesystem mutations are made; report shows what would happen.
+    pub dry_run: bool,
+    /// When true, create intermediate parent directories for create_document ops.
+    pub parents: bool,
+}
+
+/// Apply a `MigrationPlan` against an in-memory `GraphIndex`, delegating to the
+/// existing pass-based apply orchestrator.
+///
+/// # Phase 1 — Expansion
+///
+/// Each `MigrationOp` in `plan.operations` is expanded via
+/// `planner::intent::expand`. High-level ops (e.g. `move_folder`) expand to N
+/// `PlannedChange`s; low-level ops expand to exactly one. Provenance is
+/// tracked so the report can surface which parent op each change came from.
+///
+/// # Phase 2 — Hash hydration
+///
+/// The intent expander sets `document_hash = ""` for operator-originated
+/// move/delete ops (it has no index at that layer). Before delegating to the
+/// existing apply orchestrator (which hash-checks delete/rewrite/frontmatter ops),
+/// we fill in the real hash from the index for any change that has an empty hash
+/// and whose operation is hash-checked (delete_document, rewrite_link,
+/// replace_body, set/add/remove_frontmatter).
+///
+/// move_document hashes are NOT checked by the existing orchestrator, so an
+/// empty hash there is fine.
+///
+/// # Phase 3 — Delegation
+///
+/// A synthetic `RepairPlan` is built from the expanded changes and handed to
+/// `apply_repair_plan_with_context`. That function owns all the pass sequencing.
+///
+/// # Phase 4 — Conversion
+///
+/// The `RepairApplyReport` is converted to an `ApplyReport` with per-op status,
+/// provenance (`from`), footnote propagation, and summary lines.
+pub(crate) fn apply_migration_plan(
+    plan: &MigrationPlan,
+    index: &GraphIndex,
+    ctx: ApplyContext,
+) -> Result<ApplyReport> {
+    // ------------------------------------------------------------------
+    // Phase 1: expansion + provenance tracking
+    // ------------------------------------------------------------------
+
+    // `all_changes[i]` came from `plan.operations[provenance[i]]`.
+    let mut all_changes: Vec<PlannedChange> = Vec::new();
+    let mut provenance: Vec<usize> = Vec::new(); // change idx → parent op idx
+
+    for (i, op) in plan.operations.iter().enumerate() {
+        let expanded = expand(op, index)?;
+        for c in expanded {
+            provenance.push(i);
+            all_changes.push(c);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Phase 2: hash hydration
+    // ------------------------------------------------------------------
+    // The intent expander emits empty document_hash for move_document and
+    // delete_document (operator-driven ops have no hash at expansion time).
+    // The apply orchestrator hash-checks delete_document, rewrite_link,
+    // replace_body, and frontmatter changes — fill those in from the index.
+
+    let index_hashes: std::collections::BTreeMap<Utf8PathBuf, String> = index
+        .documents
+        .iter()
+        .map(|d| (d.path.clone(), d.hash.clone()))
+        .collect();
+
+    let hydrated: Vec<PlannedChange> = all_changes
+        .iter()
+        .map(|c| {
+            if c.document_hash.is_empty() && needs_hash_check(&c.operation) {
+                if let Some(hash) = index_hashes.get(&c.path) {
+                    let mut c2 = c.clone();
+                    c2.document_hash = hash.clone();
+                    return c2;
+                }
+            }
+            c.clone()
+        })
+        .collect();
+
+    // ------------------------------------------------------------------
+    // Phase 3: delegation to today's applier
+    // ------------------------------------------------------------------
+
+    let vault_root = Utf8PathBuf::from(&plan.vault_root);
+    let repair_plan = RepairPlan {
+        schema_version: REPAIR_PLAN_SCHEMA_VERSION,
+        vault_root: vault_root.clone(),
+        source_filters: RepairPlanFilters::default(),
+        summary: RepairPlanSummary {
+            findings: hydrated.len(),
+            planned_changes: hydrated.len(),
+            skipped: SkippedSummary::default(),
+        },
+        changes: hydrated.clone(),
+        skipped_findings: Vec::new(),
+        footnotes: Vec::new(),
+    };
+
+    let create_ctx = CreateApplyContext {
+        parents: ctx.parents,
+    };
+
+    let apply_result =
+        apply_repair_plan_with_context(&vault_root, index, &repair_plan, ctx.dry_run, &create_ctx)?;
+
+    // ------------------------------------------------------------------
+    // Phase 4: convert RepairApplyReport → ApplyReport
+    // ------------------------------------------------------------------
+
+    let ops = build_report_ops(
+        &hydrated,
+        &provenance,
+        &plan.operations,
+        &apply_result,
+        ctx.dry_run,
+    );
+
+    let applied = ops
+        .iter()
+        .filter(|o| matches!(o.status, OpStatus::Applied))
+        .count();
+    let failed = ops
+        .iter()
+        .filter(|o| matches!(o.status, OpStatus::Failed))
+        .count();
+    let skipped = ops
+        .iter()
+        .filter(|o| matches!(o.status, OpStatus::Skipped))
+        .count();
+    let remaining = ops
+        .iter()
+        .filter(|o| matches!(o.status, OpStatus::NotRun))
+        .count();
+
+    let warnings: Vec<ApplyWarning> = apply_result
+        .warnings
+        .iter()
+        .map(|w| {
+            // PlanWarning is a tagged enum; convert to a code+message shape
+            // for ApplyWarning.
+            let (code, message) = match &w.warning {
+                PlanWarning::StemCollisionAfterMove {
+                    new_stem,
+                    new_path,
+                    collides_with,
+                } => (
+                    "stem_collision_after_move".to_string(),
+                    format!(
+                        "stem '{}' ({}) collides with: {}",
+                        new_stem,
+                        new_path,
+                        collides_with
+                            .iter()
+                            .map(|p| p.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ),
+            };
+            ApplyWarning {
+                code,
+                message,
+                path: Some(w.path.to_string()),
+            }
+        })
+        .collect();
+
+    Ok(ApplyReport {
+        schema_version: APPLY_REPORT_SCHEMA_VERSION,
+        plan_hash: plan.canonical_hash(),
+        vault_root: plan.vault_root.clone(),
+        dry_run: ctx.dry_run,
+        applied,
+        skipped,
+        failed,
+        remaining,
+        operations: ops,
+        warnings,
+    })
+}
+
+/// Returns true for operation kinds that the existing apply orchestrator
+/// hash-checks. Operations not listed here (e.g. move_document, create_document)
+/// are not subject to hash checks and can safely have an empty document_hash.
+fn needs_hash_check(operation: &str) -> bool {
+    matches!(
+        operation,
+        "delete_document"
+            | "rewrite_link"
+            | "replace_body"
+            | "set_frontmatter"
+            | "add_frontmatter"
+            | "remove_frontmatter"
+    )
+}
+
+/// For a single `PlannedChange`, determine its `OpStatus` by matching against
+/// what the `RepairApplyReport` recorded.
+///
+/// The existing orchestrator does not return per-change success/failure —
+/// it either returns `Ok(report)` (all changes applied) or `Err(...)` (fatal
+/// error aborted the run). When the call returns `Ok`, every change in the
+/// report has been processed. We infer status from the report's output lists:
+///
+/// - `move_document`: appears in `moved_files` when applied (or dry-run)
+/// - `delete_document`: appears in `deleted_documents`
+/// - `create_document`: appears in `created_documents`
+/// - `replace_body`: appears in `replaced_bodies`
+/// - `rewrite_link` / frontmatter edits: appear in `changed_files`
+///
+/// For dry-run, all processed changes get `NotRun` (nothing was mutated).
+/// For live apply, every change that made it into the output list gets `Applied`.
+/// Anything not found in any output list (e.g. a change whose file didn't
+/// change because the content already matched) gets `Skipped`.
+fn infer_status(change: &PlannedChange, report: &RepairApplyReport, dry_run: bool) -> OpStatus {
+    if dry_run {
+        return OpStatus::NotRun;
+    }
+
+    match change.operation.as_str() {
+        "move_document" => {
+            let found = report.moved_files.iter().any(|m| m.from == change.path);
+            if found {
+                OpStatus::Applied
+            } else {
+                OpStatus::Skipped
+            }
+        }
+        "delete_document" => {
+            let found = report
+                .deleted_documents
+                .iter()
+                .any(|d| d.path == change.path);
+            if found {
+                OpStatus::Applied
+            } else {
+                OpStatus::Skipped
+            }
+        }
+        "create_document" => {
+            let found = report
+                .created_documents
+                .iter()
+                .any(|c| c.path == change.path);
+            if found {
+                OpStatus::Applied
+            } else {
+                OpStatus::Skipped
+            }
+        }
+        "replace_body" => {
+            let found = report.replaced_bodies.iter().any(|p| p == &change.path);
+            if found {
+                OpStatus::Applied
+            } else {
+                OpStatus::Skipped
+            }
+        }
+        // rewrite_link and frontmatter ops: check changed_files
+        _ => {
+            let found = report.changed_files.iter().any(|p| p == &change.path);
+            if found {
+                OpStatus::Applied
+            } else {
+                OpStatus::Skipped
+            }
+        }
+    }
+}
+
+/// Build a one-liner summary for an `ApplyReportOp`.
+fn build_summary(change: &PlannedChange, dry_run: bool) -> String {
+    let prefix = if dry_run { "would " } else { "" };
+    match change.operation.as_str() {
+        "move_document" => {
+            let dst = change
+                .destination
+                .as_ref()
+                .map(|p| p.as_str())
+                .unwrap_or("<unknown>");
+            format!("{}move {} → {}", prefix, change.path, dst)
+        }
+        "delete_document" => format!("{}delete {}", prefix, change.path),
+        "create_document" => format!("{}create {}", prefix, change.path),
+        "replace_body" => format!("{}replace body of {}", prefix, change.path),
+        "rewrite_link" => {
+            let from = change
+                .expected_old_value
+                .as_ref()
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let to = change
+                .new_value
+                .as_ref()
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            format!(
+                "{}rewrite link in {} ({} → {})",
+                prefix, change.path, from, to
+            )
+        }
+        "set_frontmatter" | "add_frontmatter" | "remove_frontmatter" => {
+            let field = change.field.as_deref().unwrap_or("?");
+            format!(
+                "{}{} frontmatter field '{}' in {}",
+                prefix, change.operation, field, change.path
+            )
+        }
+        other => format!("{}{} {}", prefix, other, change.path),
+    }
+}
+
+/// Returns true when the parent MigrationOp is a high-level kind (expands to
+/// multiple PlannedChanges). Used to set the `from` field in ApplyReportOp.
+fn is_high_level_op(op: &MigrationOp) -> bool {
+    HIGH_LEVEL_KINDS.contains(&op.kind.as_str())
+}
+
+fn build_report_ops(
+    changes: &[PlannedChange],
+    provenance: &[usize],
+    plan_ops: &[MigrationOp],
+    apply_result: &RepairApplyReport,
+    dry_run: bool,
+) -> Vec<ApplyReportOp> {
+    changes
+        .iter()
+        .enumerate()
+        .map(|(i, change)| {
+            let parent_idx = provenance[i];
+            let parent_op = &plan_ops[parent_idx];
+
+            // "from" is set when the parent is a high-level op that expanded
+            // into multiple changes. For 1:1 (low-level) ops, `from` is None.
+            let from = if is_high_level_op(parent_op) {
+                Some(parent_idx.to_string())
+            } else {
+                None
+            };
+
+            let status = infer_status(change, apply_result, dry_run);
+            let summary = build_summary(change, dry_run);
+
+            ApplyReportOp {
+                op_id: i.to_string(),
+                kind: change.operation.clone(),
+                status,
+                from,
+                summary,
+                error: None, // see note below
+                footnote: parent_op.footnote.clone(),
+            }
+        })
+        .collect()
+}
+
+// Note on error field: the existing `apply_repair_plan_with_context` returns
+// `Err(anyhow::Error)` for any failure and aborts the whole apply — there is
+// no per-change error tracking. If the call returns `Ok`, all changes succeeded
+// (or were no-ops, mapped to Skipped). The `error` field in ApplyReportOp is
+// therefore always `None` in the current implementation. Per-change error
+// tracking is a future enhancement (post Plan Task 20 when we own the apply loop).
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::migration_plan::{MigrationOp, MigrationPlan};
+    use camino::Utf8Path;
+
+    fn synth_vault() -> (tempfile::TempDir, GraphIndex) {
+        let tmp = tempfile::Builder::new()
+            .prefix("applier-")
+            .tempdir()
+            .unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("a.md"), "---\ntype: note\n---\n# A\n").unwrap();
+        std::fs::write(root.join("b.md"), "---\ntype: note\n---\n# B\n[[a]]\n").unwrap();
+        let utf8_root = Utf8Path::from_path(root).unwrap();
+        let index = crate::graph::build_index(utf8_root).unwrap();
+        (tmp, index)
+    }
+
+    #[test]
+    fn applier_dry_run_returns_apply_report_without_mutating() {
+        let (tmp, index) = synth_vault();
+        let vault_root = tmp.path().to_string_lossy().to_string();
+        let plan = MigrationPlan {
+            schema_version: 1,
+            vault_root: vault_root.clone(),
+            generator: None,
+            generated_at: None,
+            operations: vec![MigrationOp {
+                kind: "move_document".into(),
+                id: None,
+                requires: vec![],
+                fields: serde_json::json!({"src": "a.md", "dst": "renamed.md"}),
+                footnote: None,
+            }],
+            skipped: vec![],
+            plan_footnote: None,
+        };
+        let ctx = ApplyContext {
+            dry_run: true,
+            parents: false,
+        };
+        let report = apply_migration_plan(&plan, &index, ctx).unwrap();
+        assert_eq!(report.schema_version, 1);
+        assert!(report.dry_run);
+        assert_eq!(report.operations.len(), 1);
+        assert_eq!(report.operations[0].kind, "move_document");
+        // Dry-run: file unchanged
+        assert!(tmp.path().join("a.md").exists());
+        assert!(!tmp.path().join("renamed.md").exists());
+    }
+
+    #[test]
+    fn applier_apply_actually_mutates_and_marks_applied() {
+        let (tmp, index) = synth_vault();
+        let vault_root = tmp.path().to_string_lossy().to_string();
+        let plan = MigrationPlan {
+            schema_version: 1,
+            vault_root: vault_root.clone(),
+            generator: None,
+            generated_at: None,
+            operations: vec![MigrationOp {
+                kind: "move_document".into(),
+                id: None,
+                requires: vec![],
+                fields: serde_json::json!({"src": "a.md", "dst": "renamed.md"}),
+                footnote: None,
+            }],
+            skipped: vec![],
+            plan_footnote: None,
+        };
+        let ctx = ApplyContext {
+            dry_run: false,
+            parents: false,
+        };
+        let report = apply_migration_plan(&plan, &index, ctx).unwrap();
+        assert_eq!(report.applied, 1);
+        assert!(matches!(
+            report.operations[0].status,
+            crate::apply_report::OpStatus::Applied
+        ));
+        // Apply: file moved
+        assert!(!tmp.path().join("a.md").exists());
+        assert!(tmp.path().join("renamed.md").exists());
+    }
+
+    #[test]
+    fn applier_propagates_parent_provenance_on_high_level_expansion() {
+        let (tmp, _index) = synth_vault();
+        std::fs::create_dir_all(tmp.path().join("src_dir")).unwrap();
+        std::fs::write(
+            tmp.path().join("src_dir/c.md"),
+            "---\ntype: note\n---\n# C\n",
+        )
+        .unwrap();
+        // Rebuild the index now that src_dir/c.md exists.
+        let utf8_root = Utf8Path::from_path(tmp.path()).unwrap();
+        let index = crate::graph::build_index(utf8_root).unwrap();
+
+        let vault_root = tmp.path().to_string_lossy().to_string();
+        let plan = MigrationPlan {
+            schema_version: 1,
+            vault_root,
+            generator: None,
+            generated_at: None,
+            operations: vec![MigrationOp {
+                kind: "move_folder".into(),
+                id: None,
+                requires: vec![],
+                fields: serde_json::json!({"src": "src_dir", "dst": "dst_dir", "parents": true}),
+                footnote: Some("Rename folder".into()),
+            }],
+            skipped: vec![],
+            plan_footnote: None,
+        };
+        let ctx = ApplyContext {
+            dry_run: true,
+            parents: false,
+        };
+        let report = apply_migration_plan(&plan, &index, ctx).unwrap();
+        // Expanded ops should reference parent op_id 0
+        for op in &report.operations {
+            assert_eq!(
+                op.from.as_deref(),
+                Some("0"),
+                "expanded op should reference parent op_id 0"
+            );
+            // Footnote propagated from parent
+            assert_eq!(op.footnote.as_deref(), Some("Rename folder"));
+        }
+    }
+}

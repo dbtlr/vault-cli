@@ -11,17 +11,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::standards::findings::Finding;
 use crate::standards::repair::warnings::PlanWarning;
 use crate::standards::repair::{
     PlannedChange, RepairPlan, SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
 };
-use crate::standards::summarize;
 use crate::standards::summary::Summary;
 
 #[derive(Debug, Error)]
 pub enum ApplyError {
-    #[error("unsupported repair plan schema version: expected {expected}, got {got}; regenerate with `norn repair plan`")]
+    #[error("unsupported repair plan schema version: expected {expected}, got {got}; regenerate with `norn repair --plan`")]
     UnsupportedSchemaVersion { expected: u32, got: u32 },
 
     #[error("repair plan vault root does not match effective cwd: plan {plan}, cwd {cwd}")]
@@ -30,7 +28,7 @@ pub enum ApplyError {
     #[error("repair plan targets a document not in the index: {path}")]
     UnknownPath { path: Utf8PathBuf },
 
-    #[error("stale repair plan for {path}: expected hash {expected}, found {actual}; regenerate with `norn repair plan`")]
+    #[error("stale repair plan for {path}: expected hash {expected}, found {actual}; regenerate with `norn repair --plan`")]
     StaleDocumentHash {
         path: Utf8PathBuf,
         expected: String,
@@ -43,7 +41,7 @@ pub enum ApplyError {
     #[error("repair plan contains conflicting document hash preconditions for {path}")]
     ConflictingHashes { path: Utf8PathBuf },
 
-    #[error("stale repair plan for {path} field {field}: expected {expected}, found {actual}; regenerate with `norn repair plan`")]
+    #[error("stale repair plan for {path} field {field}: expected {expected}, found {actual}; regenerate with `norn repair --plan`")]
     ExpectedOldValueMismatch {
         path: Utf8PathBuf,
         field: String,
@@ -161,15 +159,6 @@ impl RepairApplyReport {
             },
             verification: None,
         }
-    }
-
-    pub fn with_verification(mut self, findings: &[Finding]) -> Self {
-        let summary = summarize(findings);
-        self.verification = Some(RepairApplyVerification {
-            remaining_findings: summary.findings,
-            summary,
-        });
-        self
     }
 }
 
@@ -822,6 +811,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         }
     }
 
@@ -1261,6 +1251,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand]]"));
@@ -1285,6 +1276,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand|the brand spec]]"));
@@ -1308,6 +1300,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand#colors]]"));
@@ -1331,6 +1324,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand^block-id]]"));
@@ -1354,6 +1348,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert_eq!(updated.matches("[[norn-brand]]").count(), 2);
@@ -1378,6 +1373,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[Other Doc]]"));
@@ -1402,6 +1398,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let updated = apply_rewrite_link(original, &change).unwrap();
         assert!(updated.contains("[[norn-brand#^block-id]]"));
@@ -1425,6 +1422,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let result =
             apply_replace_body(content, &change).expect("apply_replace_body should succeed");
@@ -1449,6 +1447,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let result =
             apply_replace_body(content, &change).expect("apply_replace_body should succeed");
@@ -1473,6 +1472,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         assert!(apply_replace_body(content, &change).is_err());
     }
@@ -1502,6 +1502,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: false,
+            parents: false,
         };
 
         let result = apply_delete(root, &change).unwrap();
@@ -1533,6 +1534,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: false,
+            parents: false,
         };
 
         let err = apply_delete(root, &change).unwrap_err();
@@ -1572,6 +1574,7 @@ mod tests {
                 link_risk: None,
                 warnings: Vec::new(),
                 force: false,
+                parents: false,
             };
 
             let err = apply_delete(root, &change).unwrap_err();
@@ -1609,6 +1612,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: true,
+            parents: false,
         };
 
         let result = apply_move(root, &change).unwrap();
@@ -1649,6 +1653,7 @@ mod tests {
             link_risk: None,
             warnings: Vec::new(),
             force: false,
+            parents: false,
         };
 
         let err = apply_move(root, &change).unwrap_err();

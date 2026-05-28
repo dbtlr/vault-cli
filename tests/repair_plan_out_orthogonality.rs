@@ -64,7 +64,7 @@ fn run_plan(root: &Path, config_path: &Path, extra_args: &[&str]) -> std::proces
         "--config",
         config_path.to_str().unwrap(),
         "repair",
-        "plan",
+        "--plan",
     ]);
     cmd.args(extra_args);
     cmd.env("XDG_CACHE_HOME", cache_dir.path())

@@ -13,107 +13,94 @@ use crate::standards::{
     SkippedSummary, REPAIR_PLAN_SCHEMA_VERSION,
 };
 use camino::Utf8PathBuf;
-use serde::Serialize;
-
-use crate::mutation_report::{LinkFile, LinkSummary};
 
 // ---------------------------------------------------------------------------
-// Report types
+// ApplyReport-based TTY renderer for delete
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize)]
-pub struct DeleteReport {
-    /// Independent of repair_plan_schema_version; bumps when the DeleteReport shape changes.
-    pub schema_version: u32,
-    pub operation: String,
-    pub target: Utf8PathBuf,
-    pub incoming_links: LinkSummary,
-    pub rewrite_to: Option<Utf8PathBuf>,
-    pub link_rewrites: Option<LinkSummary>,
-    pub applied: bool,
-    pub warnings: Vec<DeleteWarning>,
-}
+/// Render a human-readable TTY summary for a delete operation.
+///
+/// `doc` is the vault-relative path of the deleted document.
+/// `incoming_total` is the count of backlinks (from preflight).
+/// `incoming_files` is the list of source file paths that hold backlinks.
+/// `rewrite_to` is the resolved rewrite target path (if `--rewrite-to` was used).
+/// `rewrite_total` is the number of links rewritten (from link_risk; 0 if no rewrite).
+/// `applied` is `true` when the operation was executed, `false` for dry-run/preview.
+pub fn render_delete_apply_tty<W: Write>(
+    out: &mut W,
+    doc: &str,
+    incoming_total: usize,
+    incoming_files: &[camino::Utf8PathBuf],
+    rewrite_to: Option<&str>,
+    rewrite_total: usize,
+    applied: bool,
+) -> std::io::Result<()> {
+    macro_rules! pl {
+        ($n:expr, $s:literal, $p:literal) => {
+            if $n == 1 {
+                $s
+            } else {
+                $p
+            }
+        };
+    }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DeleteWarning {
-    CodeFenceSuspected { path: Utf8PathBuf, count: usize },
-}
-
-// ---------------------------------------------------------------------------
-// Renderers
-// ---------------------------------------------------------------------------
-
-pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::Result<()> {
-    let plural = |n: usize, s: &str, p: &str| -> String {
-        if n == 1 {
-            s.to_string()
-        } else {
-            p.to_string()
-        }
-    };
-
-    if report.applied {
-        match (&report.rewrite_to, &report.link_rewrites) {
-            (Some(alt), Some(rewrites)) => {
-                writeln!(
-                    out,
-                    "✓ deleted {} (incoming links redirected to {alt})",
-                    report.target
-                )?;
+    if applied {
+        match rewrite_to {
+            Some(alt) => {
+                writeln!(out, "✓ deleted {doc} (incoming links redirected to {alt})")?;
                 writeln!(
                     out,
                     "✓ rewrote {} {} across {} {}",
-                    rewrites.total,
-                    plural(rewrites.total, "backlink", "backlinks"),
-                    rewrites.files.len(),
-                    plural(rewrites.files.len(), "file", "files"),
+                    rewrite_total,
+                    pl!(rewrite_total, "backlink", "backlinks"),
+                    incoming_files.len(),
+                    pl!(incoming_files.len(), "file", "files"),
                 )?;
             }
-            _ => {
-                writeln!(out, "✓ deleted {}", report.target)?;
-                if report.incoming_links.total > 0 {
+            None => {
+                writeln!(out, "✓ deleted {doc}")?;
+                if incoming_total > 0 {
                     writeln!(
                         out,
                         "⚠ {} {} now broken (surface via norn validate)",
-                        report.incoming_links.total,
-                        plural(report.incoming_links.total, "link", "links"),
+                        incoming_total,
+                        pl!(incoming_total, "link", "links"),
                     )?;
                 }
             }
         }
     } else {
-        match (&report.rewrite_to, &report.link_rewrites) {
-            (Some(alt), Some(rewrites)) => {
+        match rewrite_to {
+            Some(alt) => {
                 writeln!(
                     out,
-                    "norn delete {} → redirects {} incoming {} to {alt}",
-                    report.target,
-                    report.incoming_links.total,
-                    plural(report.incoming_links.total, "link", "links"),
+                    "norn delete {doc} → redirects {} incoming {} to {alt}",
+                    incoming_total,
+                    pl!(incoming_total, "link", "links"),
                 )?;
                 writeln!(
                     out,
                     "  {} {} to rewrite across {} {}",
-                    rewrites.total,
-                    plural(rewrites.total, "backlink", "backlinks"),
-                    rewrites.files.len(),
-                    plural(rewrites.files.len(), "file", "files"),
+                    rewrite_total,
+                    pl!(rewrite_total, "backlink", "backlinks"),
+                    incoming_files.len(),
+                    pl!(incoming_files.len(), "file", "files"),
                 )?;
             }
-            _ => {
-                writeln!(out, "norn delete {}", report.target)?;
-                if report.incoming_links.total > 0 {
+            None => {
+                writeln!(out, "norn delete {doc}")?;
+                if incoming_total > 0 {
                     writeln!(
                         out,
                         "  ⚠ {} incoming {} will break across {} {}:",
-                        report.incoming_links.total,
-                        plural(report.incoming_links.total, "link", "links"),
-                        report.incoming_links.files.len(),
-                        plural(report.incoming_links.files.len(), "file", "files"),
+                        incoming_total,
+                        pl!(incoming_total, "link", "links"),
+                        incoming_files.len(),
+                        pl!(incoming_files.len(), "file", "files"),
                     )?;
-                    for file in &report.incoming_links.files {
-                        writeln!(out, "      {}", file.path)?;
+                    for file in incoming_files {
+                        writeln!(out, "      {file}")?;
                     }
                     writeln!(
                         out,
@@ -124,83 +111,6 @@ pub fn render_records<W: Write>(out: &mut W, report: &DeleteReport) -> std::io::
         }
     }
     Ok(())
-}
-
-pub fn render_json<W: Write>(out: &mut W, report: &DeleteReport) -> anyhow::Result<()> {
-    serde_json::to_writer_pretty(&mut *out, report)?;
-    writeln!(out)?;
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// build_report
-// ---------------------------------------------------------------------------
-
-/// Build a `DeleteReport` from a `RepairPlan` and the current graph index.
-///
-/// `rewrite_to` is the resolved vault-relative path of the `--rewrite-to` target
-/// (if provided). `applied` should be `false` for the preview and `true` after
-/// `apply_repair_plan` has completed.
-pub(crate) fn build_report(
-    plan: &RepairPlan,
-    index: &GraphIndex,
-    rewrite_to: Option<&Utf8PathBuf>,
-    applied: bool,
-) -> DeleteReport {
-    use std::collections::BTreeMap;
-
-    let delete_op = plan
-        .changes
-        .iter()
-        .find(|c| c.operation == "delete_document")
-        .expect("plan must contain delete_document op");
-
-    // Incoming links: enumerate via target::backlinks (the index source-of-truth).
-    let bl = crate::target::backlinks(index, &delete_op.path);
-    let mut incoming_counts: BTreeMap<Utf8PathBuf, usize> = BTreeMap::new();
-    for link in &bl {
-        *incoming_counts.entry(link.source_path.clone()).or_insert(0) += 1;
-    }
-    let incoming_links = LinkSummary {
-        total: bl.len(),
-        files: incoming_counts
-            .into_iter()
-            .map(|(path, count)| LinkFile { path, count })
-            .collect(),
-    };
-
-    // link_rewrites: derived from the delete_op's link_risk when --rewrite-to was used.
-    let link_rewrites = delete_op.link_risk.as_ref().map(|risk| {
-        let mut counts: BTreeMap<Utf8PathBuf, usize> = BTreeMap::new();
-        let mut total = 0;
-        for affected in risk
-            .stem_links
-            .iter()
-            .chain(risk.path_qualified_wikilinks.iter())
-            .chain(risk.markdown_links.iter())
-        {
-            *counts.entry(affected.source_path.clone()).or_insert(0) += 1;
-            total += 1;
-        }
-        LinkSummary {
-            total,
-            files: counts
-                .into_iter()
-                .map(|(path, count)| LinkFile { path, count })
-                .collect(),
-        }
-    });
-
-    DeleteReport {
-        schema_version: 1,
-        operation: "delete".into(),
-        target: delete_op.path.clone(),
-        incoming_links,
-        rewrite_to: rewrite_to.cloned(),
-        link_rewrites,
-        applied,
-        warnings: Vec::new(),
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -317,6 +227,7 @@ pub(crate) fn preflight_and_plan(
         link_risk,
         warnings: Vec::new(),
         force: false,
+        parents: false,
     };
 
     Ok(PreflightOutcome {
@@ -449,188 +360,5 @@ mod tests {
             index: &index,
         });
         assert!(matches!(result, Err(DeletePreflightError::RewriteToSelf)));
-    }
-
-    // ---------------------------------------------------------------------------
-    // build_report tests
-    // ---------------------------------------------------------------------------
-
-    #[test]
-    fn build_report_counts_incoming_links() {
-        let (_tmp, root, index) = fixture_vault();
-        let outcome = preflight_and_plan(PreflightConfig {
-            doc: "b.md",
-            allow_broken_links: true,
-            rewrite_to: None,
-            vault_root: &root,
-            index: &index,
-        })
-        .unwrap();
-        let report = build_report(&outcome.plan, &index, None, false);
-        assert_eq!(report.operation, "delete");
-        assert_eq!(report.target.as_str(), "b.md");
-        assert_eq!(report.incoming_links.total, 1);
-        assert_eq!(report.incoming_links.files.len(), 1);
-        assert_eq!(report.incoming_links.files[0].path.as_str(), "a.md");
-        assert!(report.link_rewrites.is_none());
-        assert!(report.rewrite_to.is_none());
-        assert!(!report.applied);
-    }
-
-    #[test]
-    fn build_report_with_rewrite_to_has_link_rewrites() {
-        let (_tmp, root, index) = fixture_vault();
-        let outcome = preflight_and_plan(PreflightConfig {
-            doc: "b.md",
-            allow_broken_links: false,
-            rewrite_to: Some("c.md"),
-            vault_root: &root,
-            index: &index,
-        })
-        .unwrap();
-        let rewrite_to = outcome.resolved_rewrite_to.clone();
-        let report = build_report(&outcome.plan, &index, rewrite_to.as_ref(), false);
-        assert_eq!(
-            report.rewrite_to.as_deref(),
-            Some(camino::Utf8Path::new("c.md"))
-        );
-        let rewrites = report.link_rewrites.expect("link_rewrites should be Some");
-        assert!(rewrites.total >= 1);
-    }
-
-    // ---------------------------------------------------------------------------
-    // Renderer tests
-    // ---------------------------------------------------------------------------
-
-    #[test]
-    fn render_records_preview_with_no_incoming_links() {
-        let report = DeleteReport {
-            schema_version: 1,
-            operation: "delete".into(),
-            target: "leaf.md".into(),
-            incoming_links: LinkSummary {
-                total: 0,
-                files: Vec::new(),
-            },
-            rewrite_to: None,
-            link_rewrites: None,
-            applied: false,
-            warnings: Vec::new(),
-        };
-        let mut buf = Vec::new();
-        render_records(&mut buf, &report).unwrap();
-        let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("norn delete leaf.md"), "unexpected: {out}");
-        // No incoming link warning expected.
-        assert!(!out.contains("will break"), "unexpected: {out}");
-    }
-
-    #[test]
-    fn render_records_preview_with_incoming_links_warns() {
-        let report = DeleteReport {
-            schema_version: 1,
-            operation: "delete".into(),
-            target: "b.md".into(),
-            incoming_links: LinkSummary {
-                total: 1,
-                files: vec![LinkFile {
-                    path: "a.md".into(),
-                    count: 1,
-                }],
-            },
-            rewrite_to: None,
-            link_rewrites: None,
-            applied: false,
-            warnings: Vec::new(),
-        };
-        let mut buf = Vec::new();
-        render_records(&mut buf, &report).unwrap();
-        let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("norn delete b.md"), "unexpected: {out}");
-        assert!(
-            out.contains("1 incoming link will break"),
-            "unexpected: {out}"
-        );
-        assert!(out.contains("a.md"), "unexpected: {out}");
-    }
-
-    #[test]
-    fn render_records_applied_emits_checkmark() {
-        let report = DeleteReport {
-            schema_version: 1,
-            operation: "delete".into(),
-            target: "leaf.md".into(),
-            incoming_links: LinkSummary {
-                total: 0,
-                files: Vec::new(),
-            },
-            rewrite_to: None,
-            link_rewrites: None,
-            applied: true,
-            warnings: Vec::new(),
-        };
-        let mut buf = Vec::new();
-        render_records(&mut buf, &report).unwrap();
-        let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("✓ deleted leaf.md"), "unexpected: {out}");
-    }
-
-    #[test]
-    fn render_records_applied_with_rewrite_to() {
-        let report = DeleteReport {
-            schema_version: 1,
-            operation: "delete".into(),
-            target: "b.md".into(),
-            incoming_links: LinkSummary {
-                total: 1,
-                files: vec![LinkFile {
-                    path: "a.md".into(),
-                    count: 1,
-                }],
-            },
-            rewrite_to: Some("c.md".into()),
-            link_rewrites: Some(LinkSummary {
-                total: 1,
-                files: vec![LinkFile {
-                    path: "a.md".into(),
-                    count: 1,
-                }],
-            }),
-            applied: true,
-            warnings: Vec::new(),
-        };
-        let mut buf = Vec::new();
-        render_records(&mut buf, &report).unwrap();
-        let out = String::from_utf8(buf).unwrap();
-        assert!(out.contains("✓ deleted b.md"), "unexpected: {out}");
-        assert!(out.contains("redirected to c.md"), "unexpected: {out}");
-        assert!(out.contains("rewrote 1 backlink"), "unexpected: {out}");
-    }
-
-    #[test]
-    fn render_json_emits_valid_envelope() {
-        let report = DeleteReport {
-            schema_version: 1,
-            operation: "delete".into(),
-            target: "b.md".into(),
-            incoming_links: LinkSummary {
-                total: 1,
-                files: vec![LinkFile {
-                    path: "a.md".into(),
-                    count: 1,
-                }],
-            },
-            rewrite_to: None,
-            link_rewrites: None,
-            applied: false,
-            warnings: Vec::new(),
-        };
-        let mut buf = Vec::new();
-        render_json(&mut buf, &report).unwrap();
-        let json = String::from_utf8(buf).unwrap();
-        assert!(json.contains(r#""operation": "delete""#));
-        assert!(json.contains(r#""target": "b.md""#));
-        assert!(json.contains(r#""applied": false"#));
-        assert!(json.contains(r#""rewrite_to": null"#));
     }
 }

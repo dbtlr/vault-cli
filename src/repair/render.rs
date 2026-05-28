@@ -1,19 +1,39 @@
-//! Repair-plan rendering (Report / Paths formats).
+//! MigrationPlan rendering for `norn repair --plan` (Report / Paths formats).
 //!
-//! Report and Paths renderers stubbed by Task 7; bodies land in Tasks 8–13.
+//! `norn repair --plan` produces a unified `MigrationPlan`; these renderers
+//! present it as a human summary (`report`) or one affected path per line
+//! (`paths`). The `json` format is handled directly by the dispatcher via
+//! `serde_json::to_string_pretty`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
-use crate::standards::{Confidence, RepairPlan};
+use crate::migration_plan::{MigrationOp, MigrationPlan};
 use anyhow::Result;
 
-use crate::cli::{ColorWhen, RepairPlanArgs};
+use crate::cli::{ColorWhen, RepairArgs};
 use crate::output::palette;
 use crate::output::primitives::{status_headline, tally_group};
 use crate::repair::skip_reasons::prose_for;
 
-pub fn write_report(plan: &RepairPlan, args: &RepairPlanArgs) -> Result<()> {
+/// Extract the affected vault-relative paths from a single operation.
+///
+/// Frontmatter / link ops carry a single `path`; structural moves carry
+/// `src` + `dst`. Any field present is collected so `paths` format reflects
+/// every file an op touches.
+fn op_paths(op: &MigrationOp) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(obj) = op.fields.as_object() {
+        for key in ["path", "src", "dst", "destination"] {
+            if let Some(v) = obj.get(key).and_then(|v| v.as_str()) {
+                out.push(v.to_string());
+            }
+        }
+    }
+    out
+}
+
+pub fn write_report(plan: &MigrationPlan, args: &RepairArgs) -> Result<()> {
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     let p = palette::resolve(ColorWhen::Auto);
@@ -23,52 +43,59 @@ pub fn write_report(plan: &RepairPlan, args: &RepairPlanArgs) -> Result<()> {
     status_headline(&mut out, &p, &title)?;
     writeln!(out)?;
 
-    // Count line: "  <findings> findings analyzed → <changes> changes proposed across <files> files"
-    let n_changes = plan.changes.len();
-    let n_files = plan
-        .changes
+    // Count line: "<ops> operations proposed across <files> files"
+    let n_ops = plan.operations.len();
+    let n_files: usize = plan
+        .operations
         .iter()
-        .map(|c| &c.path)
+        .flat_map(op_paths)
         .collect::<BTreeSet<_>>()
         .len();
-    let count_text = format!(
-        "{} findings analyzed \u{2192} {} changes proposed across {} files",
-        plan.summary.findings, n_changes, n_files
-    );
-    writeln!(out, "  {count_text}")?;
+    writeln!(out, "  {n_ops} operations proposed across {n_files} files")?;
 
-    // Confidence breakdown — only when there are changes and at least one footnote.
-    // Each band line is suppressed when its count is zero (records doctrine).
-    if n_changes > 0 {
-        let (n_high, n_medium) = count_confidence(plan);
-        if n_high > 0 {
-            writeln!(
-                out,
-                "    {n_high} high    (slug-identity or near-zero edit distance)"
-            )?;
+    // Operations grouped by kind — suppressed when there are no operations.
+    if n_ops > 0 {
+        let mut by_kind: BTreeMap<&str, usize> = BTreeMap::new();
+        for op in &plan.operations {
+            *by_kind.entry(op.kind.as_str()).or_insert(0) += 1;
         }
-        if n_medium > 0 {
-            writeln!(
-                out,
-                "    {n_medium} medium  (Levenshtein ratio \u{2265} 0.7)"
-            )?;
-        }
+        let label_strings: Vec<(String, usize)> = by_kind
+            .iter()
+            .map(|(kind, &count)| ((*kind).to_string(), count))
+            .collect();
+        let rows: Vec<(&str, usize)> = label_strings
+            .iter()
+            .map(|(label, count)| (label.as_str(), *count))
+            .collect();
+        tally_group(&mut out, &p, "Operations by kind", &rows, 80)?;
     }
     writeln!(out)?;
 
-    // Skipped tally
-    if plan.summary.skipped.total > 0 {
-        let header = format!("Skipped ({})", plan.summary.skipped.total);
-        // Build owned label strings combining code and prose, then borrow them as &str rows.
-        let label_strings: Vec<(String, usize)> = plan
-            .summary
-            .skipped
-            .by_reason
+    // Footnotes — one line per op that carries one.
+    let footnotes: Vec<&String> = plan
+        .operations
+        .iter()
+        .filter_map(|op| op.footnote.as_ref())
+        .collect();
+    if !footnotes.is_empty() {
+        let header = format!("Footnotes ({})", footnotes.len());
+        status_headline(&mut out, &p, &header)?;
+        for note in &footnotes {
+            writeln!(out, "  {note}")?;
+        }
+        writeln!(out)?;
+    }
+
+    // Skipped tally — grouped by reason code with prose.
+    if !plan.skipped.is_empty() {
+        let mut by_reason: BTreeMap<&str, usize> = BTreeMap::new();
+        for sf in &plan.skipped {
+            *by_reason.entry(sf.reason.as_str()).or_insert(0) += 1;
+        }
+        let header = format!("Skipped ({})", plan.skipped.len());
+        let label_strings: Vec<(String, usize)> = by_reason
             .iter()
-            .map(|(code, &count)| {
-                let label = format!("{}  {}", code, prose_for(code));
-                (label, count)
-            })
+            .map(|(code, &count)| (format!("{}  {}", code, prose_for(code)), count))
             .collect();
         let rows: Vec<(&str, usize)> = label_strings
             .iter()
@@ -80,37 +107,34 @@ pub fn write_report(plan: &RepairPlan, args: &RepairPlanArgs) -> Result<()> {
 
     // Top affected files
     const TOP_FILES_N: usize = 5;
-    if !plan.changes.is_empty() {
-        // Aggregate changes per path.
-        let mut counts: std::collections::BTreeMap<&camino::Utf8Path, usize> =
-            std::collections::BTreeMap::new();
-        for change in &plan.changes {
-            *counts.entry(change.path.as_ref()).or_insert(0) += 1;
+    if n_ops > 0 {
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for op in &plan.operations {
+            for path in op_paths(op) {
+                *counts.entry(path).or_insert(0) += 1;
+            }
         }
-        // Sort: count desc, then path asc (BTreeMap already gives path-asc order,
-        // so the then_with is belt-and-suspenders for when counts differ).
-        let mut sorted: Vec<(&camino::Utf8Path, usize)> = counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
-        sorted.truncate(TOP_FILES_N);
+        if !counts.is_empty() {
+            // Sort: count desc, then path asc (BTreeMap gives path-asc order).
+            let mut sorted: Vec<(String, usize)> = counts.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            sorted.truncate(TOP_FILES_N);
 
-        let label_strings: Vec<(String, usize)> = sorted
-            .iter()
-            .map(|(path, count)| (path.to_string(), *count))
-            .collect();
-        let rows: Vec<(&str, usize)> = label_strings
-            .iter()
-            .map(|(label, count)| (label.as_str(), *count))
-            .collect();
-        tally_group(&mut out, &p, "Top affected files", &rows, 80)?;
-        writeln!(out)?;
+            let rows: Vec<(&str, usize)> = sorted
+                .iter()
+                .map(|(label, count)| (label.as_str(), *count))
+                .collect();
+            tally_group(&mut out, &p, "Top affected files", &rows, 80)?;
+            writeln!(out)?;
+        }
     }
 
-    // Apply guidance — filter-aware
+    // Apply guidance — filter-aware.
     let active_filter_args = collect_active_filter_flags(args);
     let confidence_already_active = active_filter_args.iter().any(|f| f == "--confidence");
     let skip_reason_active = active_filter_args.iter().any(|f| f == "--skip-reason");
 
-    let has_anything_actionable = !plan.changes.is_empty() || plan.summary.skipped.total > 0;
+    let has_anything_actionable = n_ops > 0 || !plan.skipped.is_empty();
     if has_anything_actionable {
         writeln!(out, "  To inspect proposed changes")?;
         if !confidence_already_active {
@@ -125,7 +149,7 @@ pub fn write_report(plan: &RepairPlan, args: &RepairPlanArgs) -> Result<()> {
         writeln!(out)?;
     }
 
-    if !skip_reason_active && !plan.changes.is_empty() {
+    if !skip_reason_active && n_ops > 0 {
         let apply_args = if confidence_already_active {
             active_filter_args.clone()
         } else {
@@ -136,15 +160,14 @@ pub fn write_report(plan: &RepairPlan, args: &RepairPlanArgs) -> Result<()> {
         };
         let cmd = build_command(&apply_args, &["--format", "json"]);
         writeln!(out, "  To apply")?;
-        writeln!(out, "    {cmd} | norn repair apply --dry-run")?;
-        writeln!(out, "    {cmd} | norn repair apply")?;
+        writeln!(out, "    {cmd} | norn migrate -")?;
         writeln!(out)?;
     }
 
     Ok(())
 }
 
-fn collect_active_filter_flags(args: &RepairPlanArgs) -> Vec<String> {
+fn collect_active_filter_flags(args: &RepairArgs) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
 
     if let Some(c) = args.confidence {
@@ -207,28 +230,16 @@ fn quote_if_glob(s: &str) -> String {
 }
 
 fn build_command(filter_flags: &[String], trailing: &[&str]) -> String {
-    let mut parts: Vec<String> = vec!["norn".into(), "repair".into(), "plan".into()];
+    let mut parts: Vec<String> = vec!["norn".into(), "repair".into(), "--plan".into()];
     parts.extend(filter_flags.iter().cloned());
     parts.extend(trailing.iter().map(|s| s.to_string()));
     parts.join(" ")
 }
 
-fn count_confidence(plan: &RepairPlan) -> (usize, usize) {
-    let mut high = 0usize;
-    let mut medium = 0usize;
-    for footnote in &plan.footnotes {
-        match footnote.confidence {
-            Confidence::High => high += 1,
-            Confidence::Medium => medium += 1,
-        }
-    }
-    (high, medium)
-}
-
-pub fn write_paths(plan: &RepairPlan) -> Result<()> {
+pub fn write_paths(plan: &MigrationPlan) -> Result<()> {
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
-    let paths: BTreeSet<&camino::Utf8Path> = plan.changes.iter().map(|c| c.path.as_ref()).collect();
+    let paths: BTreeSet<String> = plan.operations.iter().flat_map(op_paths).collect();
     for path in paths {
         writeln!(out, "{path}")?;
     }

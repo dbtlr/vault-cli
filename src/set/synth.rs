@@ -142,6 +142,7 @@ pub fn make_planned_change(
         link_risk: None,
         warnings: vec![],
         force: false,
+        parents: false,
     }
 }
 
@@ -626,6 +627,7 @@ pub fn synth_body_op(current_body: &str, new_body: &str) -> Option<PlannedChange
         link_risk: None,
         warnings: vec![],
         force: false,
+        parents: false,
     })
 }
 

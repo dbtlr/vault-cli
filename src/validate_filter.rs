@@ -5,7 +5,7 @@ use crate::standards::path_match::PathPattern;
 use crate::standards::{Finding, FindingBody};
 use anyhow::{bail, Result};
 
-use crate::cli::{RepairPlanArgs, ValidateArgs};
+use crate::cli::{RepairArgs, ValidateArgs};
 
 #[derive(Debug)]
 enum CodeMatcher {
@@ -57,8 +57,8 @@ impl<'a> From<&'a ValidateArgs> for ValidateFilterOptions<'a> {
     }
 }
 
-impl<'a> From<&'a RepairPlanArgs> for ValidateFilterOptions<'a> {
-    fn from(args: &'a RepairPlanArgs) -> Self {
+impl<'a> From<&'a RepairArgs> for ValidateFilterOptions<'a> {
+    fn from(args: &'a RepairArgs) -> Self {
         Self {
             codes: &args.triage.code,
             severities: &args.triage.severity,

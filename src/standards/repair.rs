@@ -201,6 +201,11 @@ pub struct PlannedChange {
     /// renaming. Defaults to false; skips serialization when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub force: bool,
+    /// When true, intermediate destination subdirectories are created at apply
+    /// time (analogous to `mkdir -p`). Propagated from `move_folder` ops.
+    /// Defaults to false; skips serialization when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub parents: bool,
 }
 
 fn derive_change_id(
@@ -307,6 +312,7 @@ fn handle_closest_match(
                 link_risk: None,
                 warnings: vec![],
                 force: false,
+                parents: false,
             };
 
             let footnote = PlanFootnote {
@@ -529,6 +535,7 @@ fn planned_change(
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         },
         RepairAction::RemoveFrontmatter { field } => PlannedChange {
             change_id: change_id.clone(),
@@ -545,6 +552,7 @@ fn planned_change(
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         },
         RepairAction::AddFrontmatter { field, value } => PlannedChange {
             change_id: change_id.clone(),
@@ -561,6 +569,7 @@ fn planned_change(
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         },
         RepairAction::MoveDocument { destination } => {
             let source_doc = documents.iter().find(|d| d.path == finding.path);
@@ -611,6 +620,7 @@ fn planned_change(
                 link_risk: Some(link_risk),
                 warnings,
                 force: false,
+                parents: false,
             }
         }
     })
@@ -1269,6 +1279,7 @@ mod tests {
                 link_risk: None,
                 warnings: vec![],
                 force: false,
+                parents: false,
             }],
             skipped_findings: vec![],
             footnotes: vec![PlanFootnote {
@@ -1606,6 +1617,7 @@ mod tests {
             link_risk: None,
             warnings: vec![],
             force: false,
+            parents: false,
         };
         let json = serde_json::to_string(&pc).unwrap();
         let round: PlannedChange = serde_json::from_str(&json).unwrap();

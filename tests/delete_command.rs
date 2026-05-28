@@ -158,14 +158,25 @@ fn delete_yes_format_json_emits_single_json_object() {
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    // The output must parse as a single JSON object, not two concatenated.
+    // The output must parse as a single JSON object (ApplyReport), not two concatenated.
     let trimmed = String::from_utf8_lossy(&out.stdout);
     let trimmed = trimmed.trim();
     let v: serde_json::Value = serde_json::from_str(trimmed)
         .unwrap_or_else(|e| panic!("output must be a single JSON object: {e}\ngot: {trimmed}"));
-    assert_eq!(v["operation"], "delete");
-    // applied = true: the mutation was performed
-    assert_eq!(v["applied"], true);
+    // ApplyReport shape: schema_version, dry_run, applied count, operations[].
+    assert_eq!(v["schema_version"], 1);
+    assert_eq!(v["dry_run"], false);
+    // applied count = 1: the delete_document op was executed.
+    assert_eq!(v["applied"], 1);
+    assert_eq!(v["operations"][0]["kind"], "delete_document");
+    assert!(
+        v["operations"][0]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("d.md"),
+        "summary should mention d.md: {:?}",
+        v["operations"][0]["summary"]
+    );
     // File must actually have been deleted
     assert!(
         !tmp.path().join("vault/d.md").exists(),
@@ -192,9 +203,18 @@ fn delete_dry_run_format_json_emits_envelope() {
     let v: serde_json::Value = serde_json::from_str(trimmed).unwrap_or_else(|e| {
         panic!("--dry-run --format json must emit a JSON envelope: {e}\ngot: {trimmed}")
     });
-    assert_eq!(v["operation"], "delete");
-    assert_eq!(v["target"], "d.md");
-    assert_eq!(v["applied"], false);
+    // ApplyReport shape.
+    assert_eq!(v["schema_version"], 1);
+    assert_eq!(v["dry_run"], true);
+    assert_eq!(v["operations"][0]["kind"], "delete_document");
+    assert!(
+        v["operations"][0]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("d.md"),
+        "summary should mention d.md: {:?}",
+        v["operations"][0]["summary"]
+    );
     // Dry-run must not mutate the filesystem.
     assert!(
         tmp.path().join("vault/d.md").exists(),
@@ -218,10 +238,18 @@ fn delete_format_json_emits_envelope() {
     );
     let v: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim())
         .expect("output must parse as JSON");
-    assert_eq!(v["operation"], "delete");
-    assert_eq!(v["target"], "b.md");
-    assert_eq!(v["applied"], false);
-    assert_eq!(v["rewrite_to"], serde_json::Value::Null);
+    // ApplyReport shape: --format json without --yes is implicitly dry-run.
+    assert_eq!(v["schema_version"], 1);
+    assert_eq!(v["dry_run"], true);
+    assert_eq!(v["operations"][0]["kind"], "delete_document");
+    assert!(
+        v["operations"][0]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("b.md"),
+        "summary should mention b.md: {:?}",
+        v["operations"][0]["summary"]
+    );
     // --format json without --yes is implicitly non-interactive; file must not be deleted.
     assert!(
         tmp.path().join("vault/b.md").exists(),

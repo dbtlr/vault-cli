@@ -29,7 +29,7 @@ pub fn fix_hint_for(code: &str) -> Option<&'static str> {
             "remove the alias from all but one document so resolution is unambiguous",
         ),
         "link-target-missing" => Some(
-            "fix the link target, or run `norn repair plan` for a closest-match proposal",
+            "fix the link target, or run `norn repair --plan` for a closest-match proposal",
         ),
         "link-anchor-missing" => Some(
             "fix the anchor (the heading may have been renamed), or remove the anchor from the link",

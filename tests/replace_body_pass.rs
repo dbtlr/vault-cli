@@ -1,4 +1,7 @@
-//! Integration tests for Pass 1d — `replace_body` wired into `vault repair apply`.
+//! Integration tests for `replace_body` applied through `norn migrate`.
+//!
+//! Ported from the retired `norn repair apply` surface (Plan Task 19): the
+//! `replace_body` op is applied via the unified MigrationPlan applier.
 
 use std::fs;
 use std::io::Write;
@@ -28,39 +31,47 @@ fn blake3_of_file(path: &std::path::Path) -> String {
     blake3::hash(&bytes).to_hex().to_string()
 }
 
+/// Build a one-op MigrationPlan with a `replace_body` op. The repair op fields
+/// (`change_id`, `document_hash`, etc.) nest under `fields`; `operation` is
+/// promoted to the op `kind`.
 fn plan_json(vault_root: &str, note_rel: &str, document_hash: &str, new_body: &str) -> String {
     serde_json::to_string(&serde_json::json!({
-        "schema_version": 9,
+        "schema_version": 1,
         "vault_root": vault_root,
-        "source_filters": {
-            "code": [], "severity": [], "field": [], "rule": [],
-            "path": [], "target": [], "reason": [], "skip_reason": []
-        },
-        "summary": {
-            "findings": 1,
-            "planned_changes": 1,
-            "skipped": {"by_reason": {}, "total": 0}
-        },
-        "changes": [{
-            "change_id": "replace-body-test",
-            "path": note_rel,
-            "document_hash": document_hash,
-            "finding_code": "operator-mutation",
-            "finding_rule": null,
-            "repair_rule": "vault-set",
-            "operation": "replace_body",
-            "field": null,
-            "expected_old_value": null,
-            "new_value": new_body,
-            "destination": null,
-            "link_risk": null,
-            "warnings": [],
-            "force": false
-        }],
-        "skipped_findings": [],
-        "footnotes": []
+        "operations": [{
+            "kind": "replace_body",
+            "fields": {
+                "change_id": "replace-body-test",
+                "path": note_rel,
+                "document_hash": document_hash,
+                "finding_code": "operator-mutation",
+                "repair_rule": "vault-set",
+                "new_value": new_body
+            }
+        }]
     }))
     .unwrap()
+}
+
+/// Run `norn migrate -` feeding `plan` on stdin, with the given extra args.
+fn run_migrate(vault_root: &str, plan: &str, extra: &[&str]) -> std::process::Output {
+    let mut args: Vec<&str> = vec!["--cwd", vault_root, "migrate", "-"];
+    args.extend_from_slice(extra);
+    let mut cmd = Command::new(norn_bin())
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("NO_COLOR", "1")
+        .spawn()
+        .unwrap();
+    cmd.stdin
+        .as_mut()
+        .unwrap()
+        .write_all(plan.as_bytes())
+        .unwrap();
+    drop(cmd.stdin.take());
+    cmd.wait_with_output().unwrap()
 }
 
 #[test]
@@ -75,23 +86,8 @@ fn pass_1d_applies_replace_body_via_orchestrator() {
         "brand new body\n",
     );
 
-    // vault repair apply applies directly when piped (non-TTY).
-    let mut cmd = Command::new(norn_bin())
-        .args(["--cwd", tmp.path().to_str().unwrap(), "repair", "apply"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env("NO_COLOR", "1")
-        .spawn()
-        .unwrap();
-
-    cmd.stdin
-        .as_mut()
-        .unwrap()
-        .write_all(plan.as_bytes())
-        .unwrap();
-
-    let output = cmd.wait_with_output().unwrap();
+    // --yes applies immediately (non-interactive).
+    let output = run_migrate(tmp.path().to_str().unwrap(), &plan, &["--yes"]);
     assert!(
         output.status.success(),
         "expected success; stderr={}",
@@ -117,28 +113,7 @@ fn pass_1d_dry_run_does_not_mutate_file() {
         "replaced body\n",
     );
 
-    let mut cmd = Command::new(norn_bin())
-        .args([
-            "--cwd",
-            tmp.path().to_str().unwrap(),
-            "repair",
-            "apply",
-            "--dry-run",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env("NO_COLOR", "1")
-        .spawn()
-        .unwrap();
-
-    cmd.stdin
-        .as_mut()
-        .unwrap()
-        .write_all(plan.as_bytes())
-        .unwrap();
-
-    let output = cmd.wait_with_output().unwrap();
+    let output = run_migrate(tmp.path().to_str().unwrap(), &plan, &["--dry-run"]);
     assert!(
         output.status.success(),
         "dry-run should succeed; stderr={}",
@@ -159,22 +134,7 @@ fn pass_1d_rejects_stale_hash() {
         "new body\n",
     );
 
-    let mut cmd = Command::new(norn_bin())
-        .args(["--cwd", tmp.path().to_str().unwrap(), "repair", "apply"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env("NO_COLOR", "1")
-        .spawn()
-        .unwrap();
-
-    cmd.stdin
-        .as_mut()
-        .unwrap()
-        .write_all(plan.as_bytes())
-        .unwrap();
-
-    let output = cmd.wait_with_output().unwrap();
+    let output = run_migrate(tmp.path().to_str().unwrap(), &plan, &["--yes"]);
     assert!(
         !output.status.success(),
         "stale hash should cause a non-zero exit"

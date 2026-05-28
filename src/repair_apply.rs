@@ -6,7 +6,7 @@ use crate::standards::apply::{
     changes_by_path, validate_plan_for_apply, ApplyError, CreateDocumentResult, DeleteResult,
     LinkRewriteResult, MoveResult, RepairApplyWarning,
 };
-use crate::standards::{Finding, PlannedChange, RepairPlan};
+use crate::standards::{PlannedChange, RepairPlan};
 use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 
@@ -20,10 +20,7 @@ pub struct CreateApplyContext {
     pub parents: bool,
 }
 
-#[allow(unused_imports)]
-pub use crate::standards::apply::{
-    RepairApplyPlanContext, RepairApplyReport, RepairApplyVerification,
-};
+pub use crate::standards::apply::RepairApplyReport;
 
 fn check_hash(
     current_hashes: &std::collections::BTreeMap<Utf8PathBuf, String>,
@@ -381,10 +378,6 @@ pub fn apply_repair_plan_with_context(
     Ok(report)
 }
 
-pub fn with_verification(report: RepairApplyReport, findings: &[Finding]) -> RepairApplyReport {
-    report.with_verification(findings)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,6 +437,7 @@ mod tests {
                 link_risk: None,
                 warnings: Vec::new(),
                 force: false,
+                parents: false,
             }],
             skipped_findings: Vec::new(),
             footnotes: Vec::new(),
@@ -562,6 +556,7 @@ mod tests {
                 link_risk: Some(risk),
                 warnings: Vec::new(),
                 force: false,
+                parents: false,
             }],
             skipped_findings: Vec::new(),
             footnotes: Vec::new(),
@@ -625,6 +620,7 @@ mod tests {
                 link_risk: None,
                 warnings: vec![],
                 force,
+                parents: false,
             }],
             skipped_findings: vec![],
             footnotes: vec![],
