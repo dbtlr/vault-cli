@@ -145,7 +145,7 @@ Flags:\n  \
 --dry-run        Show the preview and exit without writing or prompting.\n  \
 --force          Overwrite the destination if it already exists (otherwise refused with exit 2).\n  \
 --no-link-rewrite  Move the file but do NOT rewrite incoming links (they'll surface as broken).\n  \
---format records|json  Output shape. --format json is non-interactive and emits the MoveReport envelope.\n\
+--format records|json  Output shape. --format json is non-interactive and emits the ApplyReport envelope.\n\
 \n\
 Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-flight refusal."
     )]
@@ -166,7 +166,7 @@ Incoming links: norn delete REFUSES (exit 2) when the target has incoming links 
 Flags:\n  \
 --yes            Skip the confirmation prompt and apply.\n  \
 --dry-run        Show the preview and exit without writing or prompting.\n  \
---format records|json  Output shape. --format json is non-interactive and emits the DeleteReport envelope.\n\
+--format records|json  Output shape. --format json is non-interactive and emits the ApplyReport envelope.\n\
 \n\
 Exit codes: 0 success or dry-run, 1 user-cancelled or runtime failure, 2 pre-flight refusal."
     )]
@@ -765,7 +765,7 @@ pub struct MoveArgs {
     #[arg(long, short = 'r')]
     pub recursive: bool,
 
-    /// Stdout format. `records` is the default TTY summary; `json` emits the MoveReport.
+    /// Stdout format. `records` is the default TTY summary; `json` emits the ApplyReport.
     #[arg(long, value_enum, default_value_t = MoveFormat::Records)]
     pub format: MoveFormat,
 }
@@ -871,7 +871,7 @@ pub struct DeleteArgs {
     #[arg(long, value_name = "ALT_DOC")]
     pub rewrite_to: Option<String>,
 
-    /// Stdout format. `records` is the default TTY summary; `json` emits the DeleteReport.
+    /// Stdout format. `records` is the default TTY summary; `json` emits the ApplyReport.
     #[arg(long, value_enum, default_value_t = DeleteFormat::Records)]
     pub format: DeleteFormat,
 }

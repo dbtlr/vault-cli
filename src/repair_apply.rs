@@ -6,7 +6,7 @@ use crate::standards::apply::{
     changes_by_path, validate_plan_for_apply, ApplyError, CreateDocumentResult, DeleteResult,
     LinkRewriteResult, MoveResult, RepairApplyWarning,
 };
-use crate::standards::{Finding, PlannedChange, RepairPlan};
+use crate::standards::{PlannedChange, RepairPlan};
 use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 
@@ -20,10 +20,7 @@ pub struct CreateApplyContext {
     pub parents: bool,
 }
 
-#[allow(unused_imports)]
-pub use crate::standards::apply::{
-    RepairApplyPlanContext, RepairApplyReport, RepairApplyVerification,
-};
+pub use crate::standards::apply::RepairApplyReport;
 
 fn check_hash(
     current_hashes: &std::collections::BTreeMap<Utf8PathBuf, String>,
@@ -379,13 +376,6 @@ pub fn apply_repair_plan_with_context(
     report.warnings = warnings;
 
     Ok(report)
-}
-
-// Dead since `repair apply` was removed (Plan Task 19); the whole
-// RepairApplyReport machinery is deleted in Plan Task 20.
-#[allow(dead_code)]
-pub fn with_verification(report: RepairApplyReport, findings: &[Finding]) -> RepairApplyReport {
-    report.with_verification(findings)
 }
 
 #[cfg(test)]

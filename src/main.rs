@@ -21,7 +21,6 @@ mod links;
 mod migrate_cmd;
 pub mod migration_plan;
 pub mod move_doc;
-pub mod mutation_report;
 mod new;
 mod output;
 pub mod planner;
