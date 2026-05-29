@@ -550,24 +550,74 @@ fn post_validate(cfg: &VaultConfig, source_path: &Utf8Path) -> Result<(), Config
         }
     }
 
-    // frontmatter_defaults: reject conflicting values for the same field across rules.
+    // frontmatter_defaults: reject conflicting values for the same field across
+    // rules that can co-apply to the same document. Rules whose match predicates
+    // are provably disjoint (divergent literal path segments, or incompatible
+    // frontmatter predicates) can never both fire on one document, so differing
+    // defaults between them are not a conflict — e.g. tasks/ → `type: task` and
+    // notes/ → `type: note` is legal.
     {
-        let mut seen: std::collections::HashMap<&str, (&str, &serde_json::Value)> =
-            std::collections::HashMap::new();
-        for rule in &cfg.validate.rules {
-            let rule_label = rule.name.as_deref().unwrap_or("(unnamed)");
-            for (field, value) in &rule.frontmatter_defaults {
-                if let Some((other_rule, other_value)) = seen.get(field.as_str()) {
-                    if *other_value != value {
-                        return Err(ConfigError::Invalid {
-                            source_path: source_path.to_owned(),
-                            message: format!(
-                                "conflicting frontmatter_defaults for field `{field}`: rule `{other_rule}` and rule `{rule_label}` declare different values"
-                            ),
-                        });
+        // A path-glob segment is "literal" when it carries no glob metacharacter
+        // and no `{{capture}}` — it must match exactly that text.
+        fn is_literal_segment(seg: &str) -> bool {
+            !seg.contains(['*', '?', '{', '}', '[', ']'])
+        }
+
+        // Sound, conservative path-disjointness test: walk aligned segments
+        // left-to-right; if both sides hold differing literals before either
+        // reaches a `**` (which matches any number of segments and breaks
+        // positional alignment), the globs can never match the same path. When
+        // uncertain, return false (assume they may overlap, keeping the guard).
+        fn path_globs_disjoint(a: &str, b: &str) -> bool {
+            for (seg_a, seg_b) in a.split('/').zip(b.split('/')) {
+                if seg_a == "**" || seg_b == "**" {
+                    return false;
+                }
+                if is_literal_segment(seg_a) && is_literal_segment(seg_b) && seg_a != seg_b {
+                    return true;
+                }
+            }
+            false
+        }
+
+        // Two rules can co-apply unless their match predicates are provably
+        // disjoint: a shared frontmatter predicate demanding different values, or
+        // concrete path globs that cannot intersect. `exclude` / `path_not` are
+        // ignored — they only shrink a rule's match set, so skipping them keeps
+        // the test conservative (it never under-reports possible overlap).
+        fn rules_can_coapply(a: &ValidateRule, b: &ValidateRule) -> bool {
+            for (k, va) in &a.r#match.frontmatter {
+                if let Some(vb) = b.r#match.frontmatter.get(k) {
+                    if va != vb {
+                        return false;
                     }
-                } else {
-                    seen.insert(field, (rule_label, value));
+                }
+            }
+            !matches!(
+                (&a.r#match.path, &b.r#match.path),
+                (Some(pa), Some(pb)) if path_globs_disjoint(pa, pb)
+            )
+        }
+
+        let rules = &cfg.validate.rules;
+        for (i, rule_a) in rules.iter().enumerate() {
+            let label_a = rule_a.name.as_deref().unwrap_or("(unnamed)");
+            for rule_b in rules.iter().skip(i + 1) {
+                if !rules_can_coapply(rule_a, rule_b) {
+                    continue;
+                }
+                for (field, val_a) in &rule_a.frontmatter_defaults {
+                    if let Some(val_b) = rule_b.frontmatter_defaults.get(field) {
+                        if val_a != val_b {
+                            let label_b = rule_b.name.as_deref().unwrap_or("(unnamed)");
+                            return Err(ConfigError::Invalid {
+                                source_path: source_path.to_owned(),
+                                message: format!(
+                                    "conflicting frontmatter_defaults for field `{field}`: rule `{label_a}` and rule `{label_b}` declare different values"
+                                ),
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -1109,6 +1159,74 @@ validate:
         type: note
 "#;
         parse_config(yaml, camino::Utf8Path::new(".norn/config.yaml")).unwrap();
+    }
+
+    #[test]
+    fn config_load_accepts_disjoint_path_rules_with_differing_defaults() {
+        // tasks/ → type: task and notes/ → type: note diverge on a literal path
+        // segment, so the two rules can never co-apply: not a conflict.
+        let yaml = r#"
+validate:
+  rules:
+    - name: task-folder
+      match:
+        path: "Workspaces/{{workspace}}/tasks/*.md"
+      frontmatter_defaults:
+        type: task
+    - name: note-folder
+      match:
+        path: "Workspaces/{{workspace}}/notes/**/*.md"
+      frontmatter_defaults:
+        type: note
+"#;
+        parse_config(yaml, camino::Utf8Path::new(".norn/config.yaml")).unwrap();
+    }
+
+    #[test]
+    fn config_load_accepts_differing_defaults_when_frontmatter_predicates_disjoint() {
+        // Same path glob, but match.frontmatter predicates demand incompatible
+        // values — the rules cannot both fire on one document.
+        let yaml = r#"
+validate:
+  rules:
+    - name: note-rule
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: note
+      frontmatter_defaults:
+        status: backlog
+    - name: task-rule
+      match:
+        path: "**/*.md"
+        frontmatter:
+          type: task
+      frontmatter_defaults:
+        status: open
+"#;
+        parse_config(yaml, camino::Utf8Path::new(".norn/config.yaml")).unwrap();
+    }
+
+    #[test]
+    fn config_load_still_rejects_conflict_when_paths_can_overlap() {
+        // Both globs reach `**` before any literal divergence, so disjointness
+        // cannot be proven — the conflict guard must still fire.
+        let yaml = r#"
+validate:
+  rules:
+    - name: a
+      match:
+        path: "Workspaces/**/*.md"
+      frontmatter_defaults:
+        type: note
+    - name: b
+      match:
+        path: "Workspaces/**/foo.md"
+      frontmatter_defaults:
+        type: task
+"#;
+        let err = parse_config(yaml, camino::Utf8Path::new(".norn/config.yaml")).unwrap_err();
+        assert!(err.to_string().contains("conflict"), "msg was {err}");
     }
 
     #[test]
