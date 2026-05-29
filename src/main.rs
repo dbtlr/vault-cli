@@ -106,7 +106,13 @@ fn run(cli: Cli) -> Result<i32> {
                 input_format: args.input_format,
                 out: args.out,
             };
-            migrate_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
+            migrate_cmd::run(
+                run_args,
+                &cwd,
+                no_cache_refresh,
+                config_path.as_ref(),
+                verbose,
+            )
         }
         Command::RewriteWikilink(args) => {
             let run_args = RewriteWikilinkRunArgs {
@@ -117,7 +123,13 @@ fn run(cli: Cli) -> Result<i32> {
                 format: args.format,
                 out: args.out,
             };
-            rewrite_wikilink_cmd::run(run_args, &cwd, no_cache_refresh, config_path.as_ref())
+            rewrite_wikilink_cmd::run(
+                run_args,
+                &cwd,
+                no_cache_refresh,
+                config_path.as_ref(),
+                verbose,
+            )
         }
         Command::Repair(args) => {
             let ctx = crate::repair::RepairRunContext {
@@ -302,13 +314,10 @@ fn run(cli: Cli) -> Result<i32> {
                 }
             }
 
-            // ----------------------------------------------------------------
             // Pre-flight (single-file only): validate src/dst before building
-            // the MigrationPlan so we can exit 2 on refusal.
-            // ----------------------------------------------------------------
-            // For folder moves the expander handles its own validation; we only
-            // run the explicit preflight for single-file moves.
-            let (link_total, link_files) = if !is_folder {
+            // the MigrationPlan so we can exit 2 on refusal. The cascade counts
+            // for TTY rendering are read from the report after apply, not here.
+            if !is_folder {
                 let cfg = crate::move_doc::PreflightConfig {
                     src: &args.src,
                     dst: &args.dst,
@@ -317,40 +326,11 @@ fn run(cli: Cli) -> Result<i32> {
                     vault_root: &cwd,
                     index: &index,
                 };
-                let repair_plan = match crate::move_doc::preflight_and_plan(cfg) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("error: {e}");
-                        std::process::exit(2);
-                    }
-                };
-                // Compute link counts from link_risk for TTY rendering.
-                let move_op = repair_plan
-                    .changes
-                    .iter()
-                    .find(|c| c.operation == "move_document")
-                    .expect("plan must have a move_document op");
-                let (lt, lf) = if let Some(risk) = &move_op.link_risk {
-                    use std::collections::BTreeSet;
-                    let mut files: BTreeSet<&camino::Utf8Path> = BTreeSet::new();
-                    let mut total = 0usize;
-                    for a in risk
-                        .stem_links
-                        .iter()
-                        .chain(risk.path_qualified_wikilinks.iter())
-                        .chain(risk.markdown_links.iter())
-                    {
-                        files.insert(a.source_path.as_path());
-                        total += 1;
-                    }
-                    (total, files.len())
-                } else {
-                    (0, 0)
-                };
-                (lt, lf)
-            } else {
-                (0, 0)
-            };
+                if let Err(e) = crate::move_doc::preflight_and_plan(cfg) {
+                    eprintln!("error: {e}");
+                    std::process::exit(2);
+                }
+            }
 
             // ----------------------------------------------------------------
             // Resolve dry_run (extracted helper logic, shared across both paths).
@@ -396,6 +376,7 @@ fn run(cli: Cli) -> Result<i32> {
             let ctx = ApplyContext {
                 dry_run,
                 parents: args.parents,
+                verbose,
             };
             let report = match apply_migration_plan(&migration_plan, &index, ctx) {
                 Ok(r) => r,
@@ -411,6 +392,15 @@ fn run(cli: Cli) -> Result<i32> {
             if is_folder && !dry_run && exit == 0 {
                 remove_empty_dirs(src_full.as_std_path());
             }
+
+            // TTY cascade counts come from the move_document op's cascade
+            // (dry-run: applied == planned forecast; live: actuals).
+            let (link_total, link_files) = report
+                .operations
+                .iter()
+                .find(|o| o.kind == "move_document")
+                .and_then(|o| o.cascade.as_ref())
+                .map_or((0, 0), |c| (c.applied, c.files));
 
             // ----------------------------------------------------------------
             // Render output.
@@ -489,12 +479,6 @@ fn run(cli: Cli) -> Result<i32> {
                 }
                 seen.into_iter().collect()
             };
-            // rewrite_total: count from link_risk when --rewrite-to was used.
-            let rewrite_total = delete_op.link_risk.as_ref().map_or(0, |risk| {
-                risk.stem_links.len()
-                    + risk.path_qualified_wikilinks.len()
-                    + risk.markdown_links.len()
-            });
             // If rewrite_to is present but no incoming links broke, files list is the
             // rewrite sources (from link_risk source_path).
             if args.rewrite_to.is_some() && incoming_file_paths.is_empty() {
@@ -545,6 +529,7 @@ fn run(cli: Cli) -> Result<i32> {
             let ctx = ApplyContext {
                 dry_run,
                 parents: false,
+                verbose,
             };
             let report = match apply_migration_plan(&plan, &index, ctx) {
                 Ok(r) => r,
@@ -555,6 +540,14 @@ fn run(cli: Cli) -> Result<i32> {
             };
 
             let exit = if report.failed > 0 { 1 } else { 0 };
+
+            // rewrite_total comes from the delete_document op's cascade.
+            let rewrite_total = report
+                .operations
+                .iter()
+                .find(|o| o.kind == "delete_document")
+                .and_then(|o| o.cascade.as_ref())
+                .map_or(0, |c| c.applied);
 
             // ----------------------------------------------------------------
             // Render output.

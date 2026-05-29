@@ -3,8 +3,8 @@ use std::fs;
 use crate::core::GraphIndex;
 use crate::standards::apply::{
     apply_delete, apply_file_changes, apply_link_rewrites, apply_move, apply_rewrite_link,
-    changes_by_path, validate_plan_for_apply, ApplyError, CreateDocumentResult, DeleteResult,
-    LinkRewriteResult, MoveResult, RepairApplyWarning,
+    changes_by_path, validate_plan_for_apply, ApplyError, CascadeRecord, CreateDocumentResult,
+    DeleteResult, LinkRewriteResult, MoveResult, RepairApplyWarning,
 };
 use crate::standards::{PlannedChange, RepairPlan};
 use anyhow::{Context, Result};
@@ -39,6 +39,12 @@ fn check_hash(
         }));
     }
     Ok(())
+}
+
+fn count_planned_links(change: &PlannedChange) -> usize {
+    change.link_risk.as_ref().map_or(0, |r| {
+        r.stem_links.len() + r.path_qualified_wikilinks.len() + r.markdown_links.len()
+    })
 }
 
 pub fn apply_repair_plan(
@@ -157,8 +163,9 @@ pub fn apply_repair_plan_with_context(
         // Pass 1c.1: apply link rewrites if link_risk is attached (--rewrite-to case).
         // This runs BEFORE the delete so links can be rewritten in source docs.
         if change.link_risk.is_some() {
+            let planned = count_planned_links(change);
             if dry_run {
-                // Synthesize LinkRewriteResult entries for dry-run reporting.
+                let mut rewritten: Vec<LinkRewriteResult> = Vec::new();
                 if let Some(risk) = &change.link_risk {
                     for affected in risk
                         .stem_links
@@ -166,17 +173,29 @@ pub fn apply_repair_plan_with_context(
                         .chain(risk.path_qualified_wikilinks.iter())
                         .chain(risk.markdown_links.iter())
                     {
-                        report.rewritten_links.push(LinkRewriteResult {
+                        rewritten.push(LinkRewriteResult {
                             file: affected.source_path.clone(),
                             from: affected.raw.clone(),
                             to: affected.rewritten.clone(),
                         });
                     }
                 }
+                report.rewritten_links.extend(rewritten.clone());
+                report.cascades.push(CascadeRecord {
+                    source_path: change.path.clone(),
+                    planned,
+                    rewritten,
+                    skipped: Vec::new(),
+                });
             } else {
-                report
-                    .rewritten_links
-                    .extend(apply_link_rewrites(cwd, change)?);
+                let outcome = apply_link_rewrites(cwd, change)?;
+                report.rewritten_links.extend(outcome.rewritten.clone());
+                report.cascades.push(CascadeRecord {
+                    source_path: change.path.clone(),
+                    planned,
+                    rewritten: outcome.rewritten,
+                    skipped: outcome.skipped,
+                });
             }
         }
 
@@ -339,7 +358,11 @@ pub fn apply_repair_plan_with_context(
     // Pass 3: link rewrites (only after every move succeeded).
     let mut rewrites: Vec<LinkRewriteResult> = Vec::new();
     for change in &move_changes {
+        let planned = count_planned_links(change);
         if dry_run {
+            // Dry-run forecast: every planned link is reported as a would-be
+            // rewrite (applied == planned, skipped == 0).
+            let mut rewritten: Vec<LinkRewriteResult> = Vec::new();
             if let Some(risk) = &change.link_risk {
                 for affected in risk
                     .stem_links
@@ -347,15 +370,29 @@ pub fn apply_repair_plan_with_context(
                     .chain(risk.path_qualified_wikilinks.iter())
                     .chain(risk.markdown_links.iter())
                 {
-                    rewrites.push(LinkRewriteResult {
+                    rewritten.push(LinkRewriteResult {
                         file: affected.source_path.clone(),
                         from: affected.raw.clone(),
                         to: affected.rewritten.clone(),
                     });
                 }
             }
+            rewrites.extend(rewritten.clone());
+            report.cascades.push(CascadeRecord {
+                source_path: change.path.clone(),
+                planned,
+                rewritten,
+                skipped: Vec::new(),
+            });
         } else {
-            rewrites.extend(apply_link_rewrites(cwd, change)?);
+            let outcome = apply_link_rewrites(cwd, change)?;
+            rewrites.extend(outcome.rewritten.clone());
+            report.cascades.push(CascadeRecord {
+                source_path: change.path.clone(),
+                planned,
+                rewritten: outcome.rewritten,
+                skipped: outcome.skipped,
+            });
         }
     }
 
@@ -718,6 +755,46 @@ mod tests {
             root.join("deep/nested/dir/foo.md").as_std_path().exists(),
             "file should exist"
         );
+    }
+
+    #[test]
+    fn move_populates_cascade_record_from_actuals() {
+        let tmp = tempfile::Builder::new()
+            .prefix("cascade-rec-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path())
+            .unwrap()
+            .to_path_buf();
+        std::fs::create_dir_all(tmp.path().join(".norn")).unwrap();
+        std::fs::write(tmp.path().join(".norn/config.yaml"), "validate: {}\n").unwrap();
+        std::fs::write(root.join("a.md"), "---\ntype: note\n---\n# A\n").unwrap();
+        std::fs::write(root.join("d.md"), "---\ntype: note\n---\nsee [[a]]\n").unwrap();
+        let index = crate::graph::build_index(&root).unwrap();
+
+        let cfg = crate::move_doc::PreflightConfig {
+            src: "a.md",
+            dst: "b.md",
+            force: false,
+            no_link_rewrite: false,
+            vault_root: &root,
+            index: &index,
+        };
+        let plan = crate::move_doc::preflight_and_plan(cfg).unwrap();
+
+        let create_ctx = CreateApplyContext { parents: false };
+        let report =
+            apply_repair_plan_with_context(&root, &index, &plan, false, &create_ctx).unwrap();
+
+        let rec = report
+            .cascades
+            .iter()
+            .find(|c| c.source_path.as_str() == "a.md")
+            .expect("cascade record for the move");
+        assert_eq!(rec.planned, 1);
+        assert_eq!(rec.rewritten.len(), 1);
+        assert_eq!(rec.skipped.len(), 0);
+        assert_eq!(rec.rewritten[0].file.as_str(), "d.md");
     }
 
     #[test]

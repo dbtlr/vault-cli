@@ -34,6 +34,45 @@ pub struct ApplyReportOp {
     pub error: Option<ApplyError>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub footnote: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub cascade: Option<CascadeSummary>,
+}
+
+/// Per-op summary of the backlink cascade triggered by a `move_document` or
+/// `delete_document` op. Counts (`planned`/`applied`/`skipped`/`files`) are
+/// always present; `rewrites`/`skips` lists are populated only under
+/// `--verbose`.
+///
+/// - `planned`  — backlinks the plan intended to rewrite (from `link_risk`).
+/// - `applied`  — backlinks actually rewritten on disk (the actual, not the forecast).
+/// - `skipped`  — planned-not-applied (drift); each carries a reason.
+/// - `files`    — distinct files actually rewritten.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CascadeSummary {
+    pub planned: usize,
+    pub applied: usize,
+    pub skipped: usize,
+    pub files: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub rewrites: Vec<CascadeRewrite>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub skips: Vec<CascadeSkip>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CascadeRewrite {
+    pub file: String,
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CascadeSkip {
+    pub file: String,
+    pub from: String,
+    pub to: String,
+    /// Reason code (v1: `"drifted"`). Extensible — a later slice adds failure codes.
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,6 +121,7 @@ mod tests {
                 summary: "moved a.md → b.md".into(),
                 error: None,
                 footnote: None,
+                cascade: None,
             }],
             warnings: vec![],
         };
@@ -97,5 +137,54 @@ mod tests {
         assert_eq!(json, "\"not_run\"");
         let parsed: OpStatus = serde_json::from_str("\"failed\"").unwrap();
         assert_eq!(parsed, OpStatus::Failed);
+    }
+
+    #[test]
+    fn cascade_summary_serializes_counts_always_lists_when_present() {
+        let op = ApplyReportOp {
+            op_id: "0".into(),
+            kind: "move_document".into(),
+            status: OpStatus::Applied,
+            from: None,
+            summary: "moved a.md → b.md".into(),
+            error: None,
+            footnote: None,
+            cascade: Some(CascadeSummary {
+                planned: 3,
+                applied: 2,
+                skipped: 1,
+                files: 2,
+                rewrites: vec![CascadeRewrite {
+                    file: "x.md".into(),
+                    from: "[[a]]".into(),
+                    to: "[[b]]".into(),
+                }],
+                skips: vec![CascadeSkip {
+                    file: "y.md".into(),
+                    from: "[[a]]".into(),
+                    to: "[[b]]".into(),
+                    reason: "drifted".into(),
+                }],
+            }),
+        };
+        let json = serde_json::to_value(&op).unwrap();
+        assert_eq!(json["cascade"]["planned"], 3);
+        assert_eq!(json["cascade"]["applied"], 2);
+        assert_eq!(json["cascade"]["skipped"], 1);
+        assert_eq!(json["cascade"]["files"], 2);
+        assert_eq!(json["cascade"]["skips"][0]["reason"], "drifted");
+
+        let bare = ApplyReportOp {
+            op_id: "1".into(),
+            kind: "set_frontmatter".into(),
+            status: OpStatus::Applied,
+            from: None,
+            summary: "set type".into(),
+            error: None,
+            footnote: None,
+            cascade: None,
+        };
+        let bare_json = serde_json::to_value(&bare).unwrap();
+        assert!(bare_json.get("cascade").is_none());
     }
 }
