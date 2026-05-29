@@ -235,3 +235,77 @@ fn rewrite_wikilink_blocked_by_held_lock_exits_2() {
         "contention message missing; stderr: {stderr}"
     );
 }
+
+// ─── move ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn move_blocked_by_held_lock_exits_2() {
+    let tmp = TempDir::new().unwrap();
+    let vault = synth_vault(&tmp);
+
+    let _held = hold_mutation_lock(&vault);
+
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["move", "a.md", "alpha.md", "--yes"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(2), "expected exit 2");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("another norn mutation is in progress"),
+        "stderr: {stderr}"
+    );
+    assert!(vault.join("a.md").exists(), "a.md must not have moved");
+}
+
+#[test]
+fn move_dry_run_not_blocked_by_held_lock() {
+    let tmp = TempDir::new().unwrap();
+    let vault = synth_vault(&tmp);
+
+    let _held = hold_mutation_lock(&vault);
+
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["move", "a.md", "alpha.md", "--dry-run"])
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "dry-run must not be blocked; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+// ─── delete ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn delete_blocked_by_held_lock_exits_2() {
+    let tmp = TempDir::new().unwrap();
+    let vault = synth_vault(&tmp);
+
+    let _held = hold_mutation_lock(&vault);
+
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["delete", "a.md", "--allow-broken-links", "--yes"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(2), "expected exit 2");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("another norn mutation is in progress"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        vault.join("a.md").exists(),
+        "a.md must not have been deleted"
+    );
+}
