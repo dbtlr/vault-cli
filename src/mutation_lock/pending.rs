@@ -7,7 +7,6 @@ use sha2::{Digest, Sha256};
 use std::time::{Duration, SystemTime};
 
 /// How long pending plan files are kept before the TTL sweep removes them.
-#[allow(dead_code)]
 pub(crate) const PENDING_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Compute the content-addressed filename for a pending plan.
@@ -21,7 +20,6 @@ fn pending_filename(raw_plan: &str) -> String {
 /// Save `raw_plan` to `<state_dir>/pending/<hash>.plan.json`. Returns the
 /// path written. If the write fails, returns the IO error (caller decides
 /// whether to surface it as a warning).
-#[allow(dead_code)]
 pub fn save_pending_plan(state_dir: &Utf8Path, raw_plan: &str) -> Result<Utf8PathBuf, CacheError> {
     let pending_dir = state_dir.join("pending");
     std::fs::create_dir_all(pending_dir.as_std_path()).map_err(|e| CacheError::MutationLockIo {
@@ -39,14 +37,12 @@ pub fn save_pending_plan(state_dir: &Utf8Path, raw_plan: &str) -> Result<Utf8Pat
 
 /// Delete a previously-saved pending plan file. Best-effort: silently ignores
 /// errors (file already gone, permissions, etc.).
-#[allow(dead_code)]
 pub fn delete_pending_plan(path: &Utf8Path) {
     let _ = std::fs::remove_file(path.as_std_path());
 }
 
 /// Remove pending plan files whose mtime is older than `PENDING_TTL_SECS`.
 /// Best-effort — a failing sweep never fails the calling mutation.
-#[allow(dead_code)]
 pub fn sweep_pending(state_dir: &Utf8Path) {
     sweep_pending_older_than(state_dir, PENDING_TTL_SECS);
 }

@@ -4,17 +4,14 @@ use crate::cache::{acquire_flock, CacheError};
 use camino::Utf8Path;
 use std::time::Duration;
 
-#[allow(dead_code)]
 pub const MUTATION_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct MutationLock {
     _file: std::fs::File,
 }
 
 impl MutationLock {
-    #[allow(dead_code)]
     pub fn acquire_if_mutating(
         state_dir: &Utf8Path,
         is_apply: bool,

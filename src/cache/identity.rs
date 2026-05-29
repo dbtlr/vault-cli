@@ -51,7 +51,6 @@ pub fn cache_dir_for(vault_root: &Utf8Path) -> Result<(Utf8PathBuf, Utf8PathBuf)
     Ok((canonical, dir))
 }
 
-#[allow(dead_code)]
 fn xdg_state_home() -> Result<Utf8PathBuf, CacheError> {
     if let Ok(xdg) = std::env::var("XDG_STATE_HOME") {
         if !xdg.is_empty() {
@@ -72,7 +71,6 @@ fn xdg_state_home() -> Result<Utf8PathBuf, CacheError> {
 /// Parallel to `cache_dir_for` but uses the state dir (persists across cache
 /// clears) and the `norn/` app folder (post-rename; independent of the cache's
 /// legacy `vault/` folder).
-#[allow(dead_code)]
 pub fn state_dir_for(vault_root: &Utf8Path) -> Result<(Utf8PathBuf, Utf8PathBuf), CacheError> {
     let (canonical, hash) = vault_identity(vault_root)?;
     let base = xdg_state_home()?;
