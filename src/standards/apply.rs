@@ -1943,6 +1943,75 @@ mod tests {
     }
 
     #[test]
+    fn rewrite_one_backlink_rewrites_and_drifts() {
+        let tmp = tempfile::Builder::new()
+            .prefix("norn-rowb-rewrite-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let rel = camino::Utf8Path::new("b.md");
+        std::fs::write(root.join(rel), "see [[old]] here\n").unwrap();
+
+        // Success path: raw text present → Rewritten; file updated.
+        let result = rewrite_one_backlink(root, rel, "[[old]]", "[[new]]");
+        assert!(
+            matches!(result, LinkAttempt::Rewritten),
+            "expected Rewritten, got something else"
+        );
+        let content = std::fs::read_to_string(root.join(rel)).unwrap();
+        assert!(
+            content.contains("[[new]]"),
+            "file should contain [[new]] after rewrite: {content}"
+        );
+        assert!(
+            !content.contains("[[old]]"),
+            "file should not contain [[old]] after rewrite: {content}"
+        );
+
+        // Drift path: raw text no longer present → Skipped(Drifted).
+        let result2 = rewrite_one_backlink(root, rel, "[[absent]]", "[[whatever]]");
+        assert!(
+            matches!(result2, LinkAttempt::Skipped(LinkSkipReason::Drifted)),
+            "expected Skipped(Drifted) when raw text absent"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn rewrite_one_backlink_write_failed_on_readonly_file() {
+        use std::fs::Permissions;
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::Builder::new()
+            .prefix("norn-rowb-readonly-")
+            .tempdir()
+            .unwrap();
+        let root = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let rel = camino::Utf8Path::new("b.md");
+        std::fs::write(root.join(rel), "see [[old]] here\n").unwrap();
+
+        // Make the file read-only.
+        std::fs::set_permissions(root.join(rel), Permissions::from_mode(0o444)).unwrap();
+
+        // Probe: if we can still open the file for writing, we're root or perms
+        // aren't enforced — skip the assertion rather than false-failing.
+        if std::fs::OpenOptions::new()
+            .write(true)
+            .open(root.join(rel))
+            .is_ok()
+        {
+            // Running as root or filesystem doesn't enforce permissions; skip.
+            return;
+        }
+
+        let result = rewrite_one_backlink(root, rel, "[[old]]", "[[new]]");
+        assert!(
+            matches!(result, LinkAttempt::Failed(LinkFailReason::WriteFailed, _)),
+            "expected Failed(WriteFailed, _) for read-only file"
+        );
+    }
+
+    #[test]
     fn apply_link_rewrites_records_hard_failure_and_continues() {
         // Two backlinkers: first is a DIRECTORY at its path (read_to_string fails,
         // non-NotFound); second is a real file containing [[a]].
