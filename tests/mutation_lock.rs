@@ -282,6 +282,58 @@ fn move_dry_run_not_blocked_by_held_lock() {
     );
 }
 
+// ─── set ──────────────────────────────────────────────────────────────────────
+
+#[test]
+fn set_blocked_by_held_lock_exits_2() {
+    let tmp = TempDir::new().unwrap();
+    let vault = synth_vault(&tmp);
+
+    let _held = hold_mutation_lock(&vault);
+
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["set", "a.md", "--field", "title=Test", "--yes"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(2), "expected exit 2");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("another norn mutation is in progress"),
+        "stderr: {stderr}"
+    );
+}
+
+// ─── new ──────────────────────────────────────────────────────────────────────
+
+#[test]
+fn new_blocked_by_held_lock_exits_2() {
+    let tmp = TempDir::new().unwrap();
+    let vault = synth_vault(&tmp);
+
+    let _held = hold_mutation_lock(&vault);
+
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["new", "new-doc.md", "--yes"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(2), "expected exit 2");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("another norn mutation is in progress"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        !vault.join("new-doc.md").exists(),
+        "new-doc.md must not have been created"
+    );
+}
+
 // ─── delete ───────────────────────────────────────────────────────────────────
 
 #[test]
