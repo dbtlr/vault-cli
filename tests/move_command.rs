@@ -772,6 +772,13 @@ fn move_with_unwritable_backlinker_warns_but_exits_zero() {
         failures[0]["reason"], "write_failed",
         "failure reason should be write_failed"
     );
+    let detail = failures[0]["detail"]
+        .as_str()
+        .expect("failures[0].detail must be a string (the underlying io error)");
+    assert!(
+        !detail.is_empty(),
+        "failures[0].detail must be non-empty (e.g. 'Permission denied (os error 13)')"
+    );
 }
 
 #[cfg(target_os = "macos")]

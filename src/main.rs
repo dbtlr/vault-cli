@@ -890,7 +890,10 @@ fn emit_cascade_failure_warnings(report: &crate::apply_report::ApplyReport) {
             if cascade.failed == 1 { "s" } else { "" },
         );
         for f in &cascade.failures {
-            eprintln!("  {}: {} → {} ({})", f.file, f.from, f.to, f.reason);
+            match &f.detail {
+                Some(d) => eprintln!("  {}: {} → {} ({}: {})", f.file, f.from, f.to, f.reason, d),
+                None => eprintln!("  {}: {} → {} ({})", f.file, f.from, f.to, f.reason),
+            }
         }
         eprintln!("  fix manually, or run `norn validate` to list dangling links.");
     }

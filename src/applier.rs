@@ -417,6 +417,11 @@ fn build_cascade_summary(rec: Option<&CascadeRecord>, verbose: bool) -> CascadeS
             from: f.from.clone(),
             to: f.to.clone(),
             reason: f.reason.code().to_string(),
+            detail: if f.detail.is_empty() {
+                None
+            } else {
+                Some(f.detail.clone())
+            },
         })
         .collect();
     CascadeSummary {

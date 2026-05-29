@@ -75,6 +75,10 @@ pub struct CascadeFailure {
     pub to: String,
     /// Reason code: `read_failed` | `write_failed`.
     pub reason: String,
+    /// The underlying io error string (e.g. "Permission denied (os error 13)").
+    /// Present when known; the actionable "why" behind the reason code.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -223,11 +227,16 @@ mod tests {
                 from: "[[a]]".into(),
                 to: "[[b]]".into(),
                 reason: "write_failed".into(),
+                detail: Some("Permission denied (os error 13)".into()),
             }],
         };
         let json = serde_json::to_value(&summary).unwrap();
         assert_eq!(json["failed"], 1);
         assert_eq!(json["failures"][0]["reason"], "write_failed");
         assert_eq!(json["failures"][0]["file"], "d.md");
+        assert_eq!(
+            json["failures"][0]["detail"],
+            "Permission denied (os error 13)"
+        );
     }
 }

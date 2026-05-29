@@ -153,7 +153,6 @@ pub struct LinkFailResult {
     pub to: String,
     pub reason: LinkFailReason,
     /// The underlying io error string, for the human-facing `what`.
-    #[allow(dead_code)] // surfaced in stderr warning output (Task 5)
     pub detail: String,
 }
 
