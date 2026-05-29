@@ -10,6 +10,10 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+## v0.35.0 - 2026-05-29
+
+The safe-mutation release. The mutation surface that landed piecemeal in v0.32–v0.33 is now unified and made trustworthy. Three arcs ship together: (1) **mutation unification** — `move`, `delete`, `rewrite-wikilink`, and the new `migrate` command all build a `MigrationPlan` (schema v1), expand it through one shared planner, and apply it through one shared applier, emitting a single `ApplyReport` (schema v2); `norn repair --plan` generates plans that `norn migrate` applies, retiring `repair apply`. (2) **safe-mutation guarantees** — an exclusive per-vault mutation lock guards every mutating command; the backlink cascade goes from atomic-abort to best-effort collect-and-continue with a bounded retry pass and explicit failure reporting; and an always-on, append-only OTEL-Logs-Data-Model JSONL event stream in the XDG state dir becomes the authoritative record of every mutation, with each command's `--format json` summary folded from the same in-memory event stream (a summary can't disagree with its log). (3) **query reach** — `norn find` (and `norn count`) gain link-relationship predicates (`--links-to`, `--unresolved-links`), closing the last 2026-05-27 migration-dogfood tool gap. Pre-1.0, so the unification carries breaking JSON/CLI changes with no migration shims; regenerate any persisted plans and update scripts that parsed the old report envelopes.
+
 ### Breaking changes
 
 - **`norn repair apply <plan>` removed.** Use `norn migrate <plan>` instead — it applies any migration plan, including repair-generated ones. The canonical auto-fix pipeline is now `norn repair --plan --format json | norn migrate -`. Invoking `norn repair apply` exits non-zero (the subcommand no longer exists). No migration shim.
