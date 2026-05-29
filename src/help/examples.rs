@@ -50,6 +50,10 @@ pub fn examples_for(cmd_path: &str) -> Vec<(String, String)> {
                 "norn find --in type:note,log --sort modified --desc",
                 "two types, newest first",
             ),
+            (
+                "norn find --eq type:task --links-to norn --format paths",
+                "tasks that link to a doc; pipe-friendly paths",
+            ),
         ],
         "norn count" => &[
             ("norn count", "total document count in the vault"),

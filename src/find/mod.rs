@@ -25,6 +25,8 @@ fn has_predicate(args: &FindArgs) -> bool {
         || !args.filters.after.is_empty()
         || !args.filters.on.is_empty()
         || !args.filters.path.is_empty()
+        || !args.filters.links_to.is_empty()
+        || args.filters.unresolved_links
 }
 
 /// Print `norn find --help` to stderr. Used as the "missing predicate" gate.
@@ -65,7 +67,11 @@ pub fn run(
     }
 
     let cache = crate::cache_cmd::open_for_query(cwd, alias_field, no_cache_refresh)?;
-    let query = self::query::build_find_query(&args)?;
+    let mut query = self::query::build_find_query(&args)?;
+    // `--links-to` targets resolve against the cache (stem/alias lookup), so
+    // resolution happens here rather than in the pure query builder.
+    query.predicates.links_to =
+        crate::filter_args::resolve_links_to(&cache, &args.filters.links_to)?;
     let result = cache.find_documents(&query)?;
 
     let format = resolve_format(args.format);

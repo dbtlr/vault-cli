@@ -58,7 +58,44 @@ pub fn build_document_query(args: &FilterArgs) -> Result<DocumentQuery> {
         date_after,
         date_on,
         path_globs: args.path.clone(),
+        // `links_to` is resolved at the command layer (needs the cache); see
+        // `resolve_links_to`. `has_unresolved_links` is a pure flag passthrough.
+        links_to: Vec::new(),
+        has_unresolved_links: args.unresolved_links,
     })
+}
+
+/// Resolve each `--links-to TARGET` string to a vault-relative document path,
+/// reusing the same path/stem/wikilink/alias resolution as `norn get`.
+///
+/// `resolve_target` does not `Err` on no-match — it returns empty `paths`. So
+/// a non-unique resolution is a hard error here (propagates to exit 1, matching
+/// `norn get`'s missing-target behavior): no match → `no document matched`,
+/// more than one → `ambiguous target`.
+/// The returned paths are `documents.path` values, byte-identical to the
+/// `links.resolved_path` column the SQL predicate matches against.
+pub fn resolve_links_to(
+    cache: &crate::cache::Cache,
+    raw: &[String],
+) -> Result<Vec<camino::Utf8PathBuf>> {
+    let mut resolved = Vec::with_capacity(raw.len());
+    for target in raw {
+        let r = crate::show::target::resolve_target(cache, target)?;
+        match r.paths.as_slice() {
+            [path] => resolved.push(path.clone()),
+            [] => return Err(anyhow!("no document matched: {target}")),
+            many => {
+                return Err(anyhow!(
+                    "ambiguous target: {target}; candidates: {}",
+                    many.iter()
+                        .map(|p| p.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            }
+        }
+    }
+    Ok(resolved)
 }
 
 fn parse_field_value(spec: &str, flag: &str) -> Result<(String, Value)> {
@@ -151,6 +188,63 @@ mod tests {
 
     fn empty() -> FilterArgs {
         FilterArgs::default()
+    }
+
+    #[test]
+    fn unresolved_links_flag_passes_through_and_links_to_stays_empty() {
+        let mut a = empty();
+        a.unresolved_links = true;
+        a.links_to = vec!["hub".to_string()];
+        let q = build_document_query(&a).unwrap();
+        assert!(q.has_unresolved_links);
+        // links_to is resolved at the command layer, not by the pure builder.
+        assert!(q.links_to.is_empty());
+    }
+
+    mod resolve {
+        use crate::cache::Cache;
+        use camino::Utf8PathBuf;
+        use tempfile::TempDir;
+
+        fn vault(files: &[(&str, &str)]) -> (TempDir, Cache) {
+            let tmp = TempDir::new().unwrap();
+            let root = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
+                .unwrap()
+                .join("vault");
+            std::fs::create_dir_all(root.as_std_path()).unwrap();
+            for (path, body) in files {
+                let full = root.join(path);
+                std::fs::create_dir_all(full.parent().unwrap().as_std_path()).unwrap();
+                std::fs::write(full.as_std_path(), body).unwrap();
+            }
+            let mut cache = Cache::open(&root).unwrap();
+            cache.rebuild(&root).unwrap();
+            (tmp, cache)
+        }
+
+        #[test]
+        fn unique_target_resolves_to_path() {
+            let (_tmp, cache) = vault(&[("hub.md", "---\ntype: note\n---\n")]);
+            let resolved = super::super::resolve_links_to(&cache, &["hub".to_string()]).unwrap();
+            assert_eq!(resolved, vec![Utf8PathBuf::from("hub.md")]);
+        }
+
+        #[test]
+        fn no_match_is_error() {
+            let (_tmp, cache) = vault(&[("hub.md", "---\ntype: note\n---\n")]);
+            let err = super::super::resolve_links_to(&cache, &["ghost".to_string()]).unwrap_err();
+            assert!(err.to_string().contains("no document matched"));
+        }
+
+        #[test]
+        fn ambiguous_target_is_error() {
+            let (_tmp, cache) = vault(&[
+                ("a/hub.md", "---\ntype: note\n---\n"),
+                ("b/hub.md", "---\ntype: note\n---\n"),
+            ]);
+            let err = super::super::resolve_links_to(&cache, &["hub".to_string()]).unwrap_err();
+            assert!(err.to_string().contains("ambiguous target"));
+        }
     }
 
     #[test]

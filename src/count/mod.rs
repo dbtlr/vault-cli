@@ -27,7 +27,8 @@ pub enum CountOutput {
 }
 
 pub fn run(cache: &Cache, args: &CountArgs) -> Result<CountOutput> {
-    let query = build_document_query(&args.filters)?;
+    let mut query = build_document_query(&args.filters)?;
+    query.links_to = crate::filter_args::resolve_links_to(cache, &args.filters.links_to)?;
     let docs = cache.documents_matching(&query)?;
     let total = docs.len();
 

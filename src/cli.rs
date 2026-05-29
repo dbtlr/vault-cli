@@ -488,6 +488,20 @@ pub struct FilterArgs {
     /// Path glob pattern.
     #[arg(long = "path", value_name = "GLOB", help_heading = "Filter options")]
     pub path: Vec<String>,
+
+    /// Documents whose outgoing links resolve to TARGET (path, stem, or
+    /// `[[wikilink]]`). Repeatable; multiple targets are AND'd. Resolved-only —
+    /// TARGET must resolve to an existing document.
+    #[arg(
+        long = "links-to",
+        value_name = "TARGET",
+        help_heading = "Filter options"
+    )]
+    pub links_to: Vec<String>,
+
+    /// Documents with at least one unresolved link.
+    #[arg(long = "unresolved-links", help_heading = "Filter options")]
+    pub unresolved_links: bool,
 }
 
 #[derive(Args, Debug)]
