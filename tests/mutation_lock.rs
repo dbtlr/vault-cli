@@ -211,3 +211,27 @@ fn validate_not_blocked_by_held_mutation_lock() {
         "validate must never show the contention message"
     );
 }
+
+// ─── rewrite-wikilink ─────────────────────────────────────────────────────────
+
+#[test]
+fn rewrite_wikilink_blocked_by_held_lock_exits_2() {
+    let tmp = TempDir::new().unwrap();
+    let vault = synth_vault(&tmp);
+
+    let _held = hold_mutation_lock(&vault);
+
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["rewrite-wikilink", "a", "alpha", "--yes"])
+        .output()
+        .unwrap();
+
+    assert_eq!(out.status.code(), Some(2), "expected exit 2");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("another norn mutation is in progress"),
+        "contention message missing; stderr: {stderr}"
+    );
+}
