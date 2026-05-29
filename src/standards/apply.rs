@@ -138,7 +138,6 @@ pub enum LinkFailReason {
 }
 
 impl LinkFailReason {
-    #[allow(dead_code)] // read by the cascade summary renderer (later slice)
     pub fn code(self) -> &'static str {
         match self {
             LinkFailReason::ReadFailed => "read_failed",
@@ -149,16 +148,12 @@ impl LinkFailReason {
 
 #[derive(Debug, Clone)]
 pub struct LinkFailResult {
-    #[allow(dead_code)] // surfaced in cascade summary output (later slice)
     pub file: Utf8PathBuf,
-    #[allow(dead_code)] // surfaced in cascade summary output (later slice)
     pub from: String,
-    #[allow(dead_code)] // surfaced in cascade summary output (later slice)
     pub to: String,
-    #[allow(dead_code)] // surfaced in cascade summary output (later slice)
     pub reason: LinkFailReason,
     /// The underlying io error string, for the human-facing `what`.
-    #[allow(dead_code)] // surfaced in cascade summary output (later slice)
+    #[allow(dead_code)] // surfaced in stderr warning output (Task 5)
     pub detail: String,
 }
 
@@ -181,7 +176,6 @@ pub struct CascadeRecord {
     pub planned: usize,
     pub rewritten: Vec<LinkRewriteResult>,
     pub skipped: Vec<LinkSkipResult>,
-    #[allow(dead_code)] // read by cascade summary renderer (later slice)
     pub failed: Vec<LinkFailResult>,
 }
 

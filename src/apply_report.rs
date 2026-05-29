@@ -46,17 +46,35 @@ pub struct ApplyReportOp {
 /// - `planned`  — backlinks the plan intended to rewrite (from `link_risk`).
 /// - `applied`  — backlinks actually rewritten on disk (the actual, not the forecast).
 /// - `skipped`  — planned-not-applied (drift); each carries a reason.
+/// - `failed`   — backlinks that hit a real FS error and remained un-rewritten.
 /// - `files`    — distinct files actually rewritten.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CascadeSummary {
     pub planned: usize,
     pub applied: usize,
     pub skipped: usize,
+    /// Backlinks that hit a real FS error and remained un-rewritten after the
+    /// retry pass (dangling). Always present.
+    pub failed: usize,
     pub files: usize,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub rewrites: Vec<CascadeRewrite>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub skips: Vec<CascadeSkip>,
+    /// Per-failure detail. NOT verbose-gated — a failure is ERROR-severity and
+    /// must be visible by default (and feeds the stderr warning). Present
+    /// whenever non-empty.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub failures: Vec<CascadeFailure>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CascadeFailure {
+    pub file: String,
+    pub from: String,
+    pub to: String,
+    /// Reason code: `read_failed` | `write_failed`.
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +171,7 @@ mod tests {
                 planned: 3,
                 applied: 2,
                 skipped: 1,
+                failed: 0,
                 files: 2,
                 rewrites: vec![CascadeRewrite {
                     file: "x.md".into(),
@@ -165,6 +184,7 @@ mod tests {
                     to: "[[b]]".into(),
                     reason: "drifted".into(),
                 }],
+                failures: vec![],
             }),
         };
         let json = serde_json::to_value(&op).unwrap();
@@ -186,5 +206,28 @@ mod tests {
         };
         let bare_json = serde_json::to_value(&bare).unwrap();
         assert!(bare_json.get("cascade").is_none());
+    }
+
+    #[test]
+    fn cascade_summary_serializes_failed_count_and_failures_list() {
+        let summary = CascadeSummary {
+            planned: 3,
+            applied: 1,
+            skipped: 1,
+            failed: 1,
+            files: 1,
+            rewrites: vec![],
+            skips: vec![],
+            failures: vec![CascadeFailure {
+                file: "d.md".into(),
+                from: "[[a]]".into(),
+                to: "[[b]]".into(),
+                reason: "write_failed".into(),
+            }],
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["failed"], 1);
+        assert_eq!(json["failures"][0]["reason"], "write_failed");
+        assert_eq!(json["failures"][0]["file"], "d.md");
     }
 }
