@@ -90,7 +90,7 @@ pub fn run(cfg: &RunConfig) -> Result<(SelfUpdateReport, i32)> {
         anyhow!(
             "BLOCK::unknown_target: norn was built for a target cargo-dist \
             does not produce a release artifact for (receipt says {})",
-            receipt.target
+            receipt.target.as_deref().unwrap_or("none")
         )
     })?;
 

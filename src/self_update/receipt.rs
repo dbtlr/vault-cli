@@ -12,12 +12,30 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 /// Subset of the cargo-dist install-receipt.json shape that we care about.
-/// We deliberately ignore other fields with `#[serde(default)]`-friendly
-/// permissiveness via serde's default deny-unknown-fields behavior (off).
+/// Both fields are optional: the receipt shape varies across cargo-dist
+/// versions (newer receipts omit the top-level `target`), and neither field is
+/// load-bearing for an update — the asset triple comes from the compile-time
+/// `resolve::TARGET_TRIPLE` and the current version from `CARGO_PKG_VERSION`.
+/// We only need the receipt to *exist and parse* to gate self-update; `target`
+/// is surfaced cosmetically in one error message. Unknown fields are ignored.
 #[derive(Debug, Deserialize)]
 pub struct Receipt {
-    pub target: String,
-    pub version: String,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+/// cargo-dist names the install-receipt directory and file after the install
+/// "app name" — the published package name (`norn-run`), NOT the binary name
+/// (`norn`) — as `<app>/<app>-receipt.json`. Deriving the app name from
+/// `CARGO_PKG_NAME` keeps this aligned with what cargo-dist writes, including
+/// across future renames (the v0.34 vault-cli → norn rename broke this by
+/// leaving the path hardcoded to the binary name).
+const APP_NAME: &str = env!("CARGO_PKG_NAME");
+
+fn receipt_relative_path() -> PathBuf {
+    PathBuf::from(APP_NAME).join(format!("{APP_NAME}-receipt.json"))
 }
 
 /// Resolve the conventional install-receipt path for this user.
@@ -28,10 +46,14 @@ pub fn receipt_path() -> Option<PathBuf> {
 
 fn receipt_path_with_env<F: Fn(&str) -> Option<String>>(get: F) -> Option<PathBuf> {
     if let Some(xdg) = get("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(xdg).join("norn/install-receipt.json"));
+        return Some(PathBuf::from(xdg).join(receipt_relative_path()));
     }
     let home = get("HOME").filter(|s| !s.is_empty())?;
-    Some(PathBuf::from(home).join(".config/norn/install-receipt.json"))
+    Some(
+        PathBuf::from(home)
+            .join(".config")
+            .join(receipt_relative_path()),
+    )
 }
 
 /// Cheap, side-effect-free presence check. Runs on every CLI invocation
@@ -92,11 +114,38 @@ mod tests {
         "target": "aarch64-apple-darwin"
     }"#;
 
+    /// The current cargo-dist (0.32.0) receipt shape actually written to disk:
+    /// no top-level `target`, app_name is the package name `norn-run`.
+    const CURRENT_RECEIPT: &str = r#"{
+        "binaries": ["norn"],
+        "binary_aliases": {},
+        "install_prefix": "/Users/drew/.cargo",
+        "install_layout": "cargo-home",
+        "modify_path": true,
+        "provider": { "source": "cargo-dist", "version": "0.32.0" },
+        "source": {
+            "app_name": "norn-run",
+            "name": "norn",
+            "owner": "dbtlr",
+            "release_type": "github"
+        },
+        "version": "0.35.1"
+    }"#;
+
     #[test]
     fn parses_target_from_receipt() {
         let receipt: Receipt = serde_json::from_str(SAMPLE_RECEIPT).unwrap();
-        assert_eq!(receipt.target, "aarch64-apple-darwin");
-        assert_eq!(receipt.version, "0.32.0");
+        assert_eq!(receipt.target.as_deref(), Some("aarch64-apple-darwin"));
+        assert_eq!(receipt.version.as_deref(), Some("0.32.0"));
+    }
+
+    #[test]
+    fn parses_current_cargo_dist_receipt_without_target() {
+        // Regression: the on-disk receipt has no top-level `target` field.
+        // It must still parse (target is optional + cosmetic).
+        let receipt: Receipt = serde_json::from_str(CURRENT_RECEIPT).unwrap();
+        assert_eq!(receipt.target, None);
+        assert_eq!(receipt.version.as_deref(), Some("0.35.1"));
     }
 
     #[test]
@@ -112,7 +161,11 @@ mod tests {
             "XDG_CONFIG_HOME" => Some(tmp.path().to_string_lossy().into_owned()),
             _ => None,
         });
-        assert_eq!(path, Some(tmp.path().join("norn/install-receipt.json")));
+        // cargo-dist writes <config>/<app>/<app>-receipt.json with app=norn-run.
+        assert_eq!(
+            path,
+            Some(tmp.path().join("norn-run/norn-run-receipt.json"))
+        );
     }
 
     #[test]
@@ -124,7 +177,10 @@ mod tests {
             "HOME" => Some(home.to_string_lossy().into_owned()),
             _ => None,
         });
-        assert_eq!(path, Some(home.join(".config/norn/install-receipt.json")));
+        assert_eq!(
+            path,
+            Some(home.join(".config/norn-run/norn-run-receipt.json"))
+        );
     }
 
     #[test]
