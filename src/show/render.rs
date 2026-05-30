@@ -6,35 +6,11 @@ use std::io::Write;
 
 use crate::output::palette::Palette;
 use crate::output::primitives::{record_block, separator, Field};
-
-/// The structural facets of a document, addressed in `--col` with a leading
-/// dot (`.body`, `.headings`, …). Bare `--col` names are frontmatter field
-/// names (matching `norn find`); the dot distinguishes the fixed structural
-/// facets so a frontmatter key named e.g. `body` never collides with the body
-/// facet.
-const KNOWN_FACETS: &[&str] = &[
-    "path",
-    "frontmatter",
-    "headings",
-    "outgoing_links",
-    "unresolved_links",
-    "incoming_links",
-    "body",
-];
-
-/// Partition `--col` tokens into structural facets (dot-prefixed, dot stripped)
-/// and frontmatter field names (bare).
-fn split_cols(cols: &[String]) -> (Vec<String>, Vec<String>) {
-    let mut facets = Vec::new();
-    let mut fields = Vec::new();
-    for col in cols {
-        match col.strip_prefix('.') {
-            Some(facet) => facets.push(facet.to_string()),
-            None => fields.push(col.clone()),
-        }
-    }
-    (facets, fields)
-}
+use crate::output::projection::{
+    filter_frontmatter, frontmatter_to_display, headings_to_display, incoming_links_to_display,
+    json_value_inline, outgoing_links_to_display, split_cols, unknown_facet_message,
+    unresolved_links_to_display, KNOWN_FACETS,
+};
 
 /// Warn to `stderr` for `--col` tokens that won't resolve: a dot-prefixed facet
 /// that isn't a known structural facet, or a bare frontmatter field absent from
@@ -47,15 +23,7 @@ pub fn warn_unknown_cols(
     let (facets, fields) = split_cols(cols);
     for facet in &facets {
         if !KNOWN_FACETS.contains(&facet.as_str()) {
-            let valid = KNOWN_FACETS
-                .iter()
-                .map(|f| format!(".{f}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            writeln!(
-                stderr,
-                "warn: unknown --col facet '.{facet}' (valid facets: {valid}; bare names select frontmatter fields)"
-            )?;
+            writeln!(stderr, "warn: {}", unknown_facet_message(facet))?;
         }
     }
     for field in &fields {
@@ -109,7 +77,10 @@ fn narrow_to_json(record: &super::ShowRecord, cols: &[String]) -> Value {
                 serde_json::to_value(&record.frontmatter).unwrap(),
             );
         } else if !fields.is_empty() {
-            map.insert("frontmatter".into(), filter_frontmatter(record, &fields));
+            map.insert(
+                "frontmatter".into(),
+                filter_frontmatter(record.frontmatter.as_ref(), &fields),
+            );
         }
         if allow.contains("headings") {
             map.insert(
@@ -138,38 +109,52 @@ fn narrow_to_json(record: &super::ShowRecord, cols: &[String]) -> Value {
         if allow.contains("body") {
             map.insert("body".into(), serde_json::to_value(&record.body).unwrap());
         }
+        // `.raw` last: the heaviest/most-derived facet (whole source file from
+        // disk). Omit the key when the file was unreadable.
+        if allow.contains("raw") {
+            if let Some(raw) = &record.raw {
+                map.insert("raw".into(), serde_json::Value::String(raw.clone()));
+            }
+        }
         obj
     }
 }
 
-/// Project a record's frontmatter down to the named fields. Absent fields are
-/// silently dropped (the warning path flags them). Mirrors `norn find`'s
-/// `filter_frontmatter`.
-fn filter_frontmatter(record: &super::ShowRecord, fields: &[String]) -> Value {
-    let Some(Value::Object(obj)) = record.frontmatter.as_ref() else {
-        return Value::Object(serde_json::Map::new());
-    };
-    let mut filtered = serde_json::Map::new();
-    for field in fields {
-        if let Some(v) = obj.get(field) {
-            filtered.insert(field.clone(), v.clone());
-        }
+/// `paths` output: one document path per line. `--col` is inert (the caller
+/// warns); identity is all this format carries.
+pub fn render_paths(report: &super::ShowReport) -> String {
+    let mut buf = String::new();
+    for record in &report.records {
+        buf.push_str(record.path.as_str());
+        buf.push('\n');
     }
-    Value::Object(filtered)
+    buf
 }
 
-/// Text output with optional `--col` narrowing.
+/// `jsonl` output: one JSON record object per line, `--col`-narrowed the same
+/// way as the `json` array. The line-per-record shape is the streaming sibling
+/// of [`render_json_with_col`].
+pub fn render_jsonl_with_col(report: &super::ShowReport, cols: &[String]) -> String {
+    let mut buf = String::new();
+    for record in &report.records {
+        buf.push_str(&serde_json::to_string(&narrow_to_json(record, cols)).unwrap());
+        buf.push('\n');
+    }
+    buf
+}
+
+/// `records` output with optional `--col` narrowing.
 ///
 /// Emits one records-block per [`ShowRecord`], separated by a horizontal-rule
-/// line between records. Fields in order: `frontmatter`, `headings`,
-/// `outgoing_links`, `unresolved_links`, `incoming_links`, `body` (only when
-/// present). `path` is always emitted as the record-block header.
+/// line between records. Default field order: each frontmatter field, then
+/// `headings`, `outgoing_links`, `unresolved_links`, `incoming_links`, `body`
+/// (only when present). `path` is always emitted as the record-block header.
 ///
 /// When `cols` is non-empty, only fields whose names appear in `cols` are
 /// emitted (plus `path` which is always the header).
 ///
 /// Empty fields (no headings, no links, etc.) are omitted silently.
-pub fn render_text_with_col(report: &super::ShowReport, cols: &[String]) -> String {
+pub fn render_records_with_col(report: &super::ShowReport, cols: &[String]) -> String {
     let palette = Palette::off();
     let term_width = terminal_size::terminal_size()
         .map(|(w, _)| w.0 as usize)
@@ -205,11 +190,11 @@ pub fn render_text_with_col(report: &super::ShowReport, cols: &[String]) -> Stri
     String::from_utf8(buf).unwrap()
 }
 
-/// Convenience: emit text with all default fields.
+/// Convenience: emit records with all default fields.
 // Only called from unit-test helpers; suppress dead_code for non-test builds.
 #[cfg(test)]
-pub fn render_text(report: &super::ShowReport) -> String {
-    render_text_with_col(report, &[])
+pub fn render_records(report: &super::ShowReport) -> String {
+    render_records_with_col(report, &[])
 }
 
 // ---------------------------------------------------------------------------
@@ -244,8 +229,22 @@ fn build_text_fields(
         }
     }
 
-    // `.frontmatter` (or the no-`--col` default) emits the whole block.
-    if all_cols || facet_set.contains("frontmatter") {
+    // Default (no `--col`): every frontmatter key as its own labeled line,
+    // matching `norn find`'s records projection — a bare field is a column.
+    if all_cols {
+        if let Some(serde_json::Value::Object(obj)) = &record.frontmatter {
+            for (key, value) in obj {
+                fields.push(FieldOwned {
+                    label: key.clone(),
+                    value: json_value_inline(value),
+                });
+            }
+        }
+    }
+
+    // `.frontmatter` facet emits the whole consolidated block (recovers the
+    // pre-unification default form).
+    if facet_set.contains("frontmatter") {
         if let Some(fm) = &record.frontmatter {
             let value = frontmatter_to_display(fm);
             if !value.is_empty() {
@@ -300,6 +299,18 @@ fn build_text_fields(
         }
     }
 
+    // `.raw` last, and never in the default dump (heavy/disk; opt-in by name).
+    if facet_set.contains("raw") {
+        if let Some(raw) = &record.raw {
+            if !raw.is_empty() {
+                fields.push(FieldOwned {
+                    label: "raw".into(),
+                    value: raw.clone(),
+                });
+            }
+        }
+    }
+
     fields
 }
 
@@ -307,101 +318,6 @@ fn build_text_fields(
 struct FieldOwned {
     label: String,
     value: String,
-}
-
-// ---------------------------------------------------------------------------
-// Per-field display helpers
-// ---------------------------------------------------------------------------
-
-/// Flatten frontmatter into `key: value\nkey: value\n…` lines.
-///
-/// For a JSON object, each key-value pair is one `key: value` line where the
-/// value is displayed as its natural string form.  For non-object JSON (rare),
-/// falls back to the raw JSON string.
-fn frontmatter_to_display(fm: &serde_json::Value) -> String {
-    match fm {
-        serde_json::Value::Object(obj) => {
-            let lines: Vec<String> = obj
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k, json_value_inline(v)))
-                .collect();
-            lines.join("\n")
-        }
-        other => other.to_string(),
-    }
-}
-
-/// Format a JSON value as a concise single-line string for display.
-fn json_value_inline(v: &serde_json::Value) -> String {
-    match v {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::Bool(b) => b.to_string(),
-        serde_json::Value::Null => "null".to_string(),
-        serde_json::Value::Array(arr) => arr
-            .iter()
-            .map(json_value_inline)
-            .collect::<Vec<_>>()
-            .join(", "),
-        serde_json::Value::Object(_) => v.to_string(),
-    }
-}
-
-/// Render headings as `#`-prefixed lines, one per heading.
-fn headings_to_display(headings: &[crate::core::Heading]) -> String {
-    headings
-        .iter()
-        .map(|h| {
-            let prefix = "#".repeat(h.level as usize);
-            format!("{} {}", prefix, h.text)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Render outgoing (resolved) links: `target → resolved_path`.
-fn outgoing_links_to_display(links: &[crate::core::Link]) -> String {
-    links
-        .iter()
-        .map(|l| {
-            if let Some(resolved) = &l.resolved_path {
-                format!("{}  →  {}", l.target, resolved)
-            } else {
-                l.target.clone()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Render unresolved links: `target  (unresolved: reason)`.
-fn unresolved_links_to_display(links: &[crate::core::Link]) -> String {
-    links
-        .iter()
-        .map(|l| {
-            let reason = l
-                .unresolved_reason
-                .as_ref()
-                .map(|r| match r {
-                    crate::core::UnresolvedReason::TargetMissing => "target-missing",
-                    crate::core::UnresolvedReason::AnchorMissing => "anchor-missing",
-                    crate::core::UnresolvedReason::BlockRefMissing => "block-ref-missing",
-                    crate::core::UnresolvedReason::Ambiguous => "ambiguous",
-                })
-                .unwrap_or("unknown");
-            format!("{}  (unresolved: {})", l.target, reason)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Render incoming links: `source_path  raw_link_text`.
-fn incoming_links_to_display(links: &[crate::cache::IncomingLink]) -> String {
-    links
-        .iter()
-        .map(|il| format!("{}  {}", il.source_path, il.link.raw))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 // ---------------------------------------------------------------------------

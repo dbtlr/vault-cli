@@ -21,6 +21,8 @@ pub struct ShowRecord {
     pub incoming_links: Vec<IncomingLink>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -36,6 +38,14 @@ pub fn run(cache: &Cache, args: &GetArgs) -> Result<ShowReport> {
     let mut records: Vec<ShowRecord> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
 
+    // A requested heavy facet must load itself, independent of any flag.
+    // `.body` (cache-served) loads when `--all-cols` (full dump) OR `.body`
+    // is requested; `.raw` (disk read) loads when `.raw` is requested.
+    // `--all-cols` is cache-only by design, so it never triggers a `.raw` read.
+    let (facets, _fields) = crate::output::projection::split_cols(&args.col);
+    let wants_body = args.all_cols || facets.iter().any(|f| f == "body");
+    let wants_raw = facets.iter().any(|f| f == "raw");
+
     for raw in &args.targets {
         let resolved = target::resolve_target(cache, raw)?;
         if resolved.paths.is_empty() {
@@ -50,12 +60,17 @@ pub fn run(cache: &Cache, args: &GetArgs) -> Result<ShowReport> {
             ));
         }
         for path in &resolved.paths {
-            let Some(deep) = cache.document_with_connections(path.as_path(), args.body)? else {
+            let Some(deep) = cache.document_with_connections(path.as_path(), wants_body)? else {
                 notes.push(format!(
                     "error: '{}' missing from cache after resolution",
                     path
                 ));
                 continue;
+            };
+            let raw = if wants_raw {
+                crate::output::projection::read_raw(&cache.vault_root, &deep.path)
+            } else {
+                None
             };
             records.push(ShowRecord {
                 path: deep.path,
@@ -65,11 +80,69 @@ pub fn run(cache: &Cache, args: &GetArgs) -> Result<ShowReport> {
                 unresolved_links: deep.unresolved_links,
                 incoming_links: deep.incoming_links,
                 body: deep.body,
+                raw,
             });
         }
     }
 
+    // Sort / limit / paging are applied in-memory, post-resolution. get's sort
+    // is a simple display-string field compare (not find's SQL collation) —
+    // acceptable divergence for a targeted, already-resolved record set.
+    // For `markdown` they're irrelevant (it returns a single byte-faithful
+    // doc and still errors on >1 selected); skip so limit can't mask that.
+    if !matches!(args.format, crate::cli::GetFormat::Markdown) {
+        apply_sort(&mut records, args.sort.as_deref(), args.desc);
+        apply_paging(&mut records, args.starts_at, args.limit);
+    }
+
     Ok(ShowReport { records, notes })
+}
+
+/// Stably sort `records` by `field` (a frontmatter key or the identity `path`).
+/// Records missing the field sort last. `desc` reverses the comparison.
+fn apply_sort(records: &mut [ShowRecord], field: Option<&str>, desc: bool) {
+    let Some(field) = field else { return };
+
+    // Key for a record: Some(display string) when the field is present, None
+    // when absent (absent sorts last regardless of direction).
+    let key = |r: &ShowRecord| -> Option<String> {
+        if field == "path" {
+            return Some(r.path.as_str().to_string());
+        }
+        r.frontmatter
+            .as_ref()
+            .and_then(|fm| fm.as_object())
+            .and_then(|obj| obj.get(field))
+            .map(crate::output::projection::json_value_inline)
+    };
+
+    records.sort_by(|a, b| {
+        let (ka, kb) = (key(a), key(b));
+        let ord = match (&ka, &kb) {
+            (Some(x), Some(y)) => x.cmp(y),
+            (Some(_), None) => std::cmp::Ordering::Less, // present before absent
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        };
+        // Only invert the present/present comparison on --desc; absent always
+        // sorts last in both directions.
+        match (&ka, &kb) {
+            (Some(_), Some(_)) if desc => ord.reverse(),
+            _ => ord,
+        }
+    });
+}
+
+/// Apply the 1-indexed `starts_at` offset, then an optional `limit`, as an
+/// in-memory slice of the (possibly sorted) records.
+fn apply_paging(records: &mut Vec<ShowRecord>, starts_at: usize, limit: Option<usize>) {
+    let offset = starts_at.saturating_sub(1);
+    if offset > 0 {
+        records.drain(..offset.min(records.len()));
+    }
+    if let Some(n) = limit {
+        records.truncate(n);
+    }
 }
 
 #[cfg(test)]
@@ -106,12 +179,17 @@ mod tests {
         cache
     }
 
-    fn args(targets: Vec<&str>, body: bool) -> crate::cli::GetArgs {
+    fn args(targets: Vec<&str>, all_cols: bool) -> crate::cli::GetArgs {
         crate::cli::GetArgs {
             targets: targets.into_iter().map(String::from).collect(),
-            body,
+            all_cols,
             col: vec![],
-            format: crate::cli::GetFormat::Text,
+            format: crate::cli::GetFormat::Records,
+            sort: None,
+            desc: false,
+            limit: None,
+            no_limit: false,
+            starts_at: 1,
         }
     }
 
@@ -143,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn body_flag_includes_content() {
+    fn all_cols_includes_body_content() {
         let (_t, root) = synth_pair();
         let cache = open(&root);
         let r = run(&cache, &args(vec!["a.md"], true)).unwrap();
@@ -168,7 +246,12 @@ mod tests {
         let cache = open(&root);
         let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
-            body: false,
+            all_cols: false,
+            sort: None,
+            desc: false,
+            limit: None,
+            no_limit: false,
+            starts_at: 1,
             col: vec![".incoming_links".to_string()],
             format: crate::cli::GetFormat::Json,
         };
@@ -189,7 +272,12 @@ mod tests {
         let cache = open(&root);
         let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
-            body: false,
+            all_cols: false,
+            sort: None,
+            desc: false,
+            limit: None,
+            no_limit: false,
+            starts_at: 1,
             col: vec![".headings".to_string(), ".outgoing_links".to_string()],
             format: crate::cli::GetFormat::Json,
         };
@@ -208,7 +296,12 @@ mod tests {
         let cache = open(&root);
         let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
-            body: false,
+            all_cols: false,
+            sort: None,
+            desc: false,
+            limit: None,
+            no_limit: false,
+            starts_at: 1,
             col: vec![],
             format: crate::cli::GetFormat::Json,
         };
@@ -232,12 +325,17 @@ mod tests {
         let cache = open(&root);
         let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
-            body: false,
+            all_cols: false,
+            sort: None,
+            desc: false,
+            limit: None,
+            no_limit: false,
+            starts_at: 1,
             col: vec![],
-            format: crate::cli::GetFormat::Text,
+            format: crate::cli::GetFormat::Records,
         };
         let r = run(&cache, &args).unwrap();
-        let text = render::render_text(&r);
+        let text = render::render_records(&r);
         assert!(text.contains("a.md"), "expected path in output: {text:?}");
         assert!(
             text.contains("A heading"),
@@ -251,7 +349,12 @@ mod tests {
         let cache = open(&root);
         let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string()],
-            body: false,
+            all_cols: false,
+            sort: None,
+            desc: false,
+            limit: None,
+            no_limit: false,
+            starts_at: 1,
             col: vec!["nonexistent_field".to_string()],
             format: crate::cli::GetFormat::Json,
         };
@@ -269,12 +372,17 @@ mod tests {
         let cache = open(&root);
         let args = crate::cli::GetArgs {
             targets: vec!["a.md".to_string(), "b.md".to_string()],
-            body: false,
+            all_cols: false,
+            sort: None,
+            desc: false,
+            limit: None,
+            no_limit: false,
+            starts_at: 1,
             col: vec![],
-            format: crate::cli::GetFormat::Text,
+            format: crate::cli::GetFormat::Records,
         };
         let r = run(&cache, &args).unwrap();
-        let text = render::render_text(&r);
+        let text = render::render_records(&r);
         // Both paths must appear.
         assert!(text.contains("a.md"), "expected a.md in output: {text:?}");
         assert!(text.contains("b.md"), "expected b.md in output: {text:?}");
@@ -285,5 +393,113 @@ mod tests {
             text.contains('─'),
             "expected separator (─) between records: {text:?}"
         );
+    }
+
+    // ---- sort / limit / paging (in-memory, post-resolution) ----
+
+    fn rec(path: &str, fm: serde_json::Value) -> ShowRecord {
+        ShowRecord {
+            path: Utf8PathBuf::from(path),
+            frontmatter: Some(fm),
+            headings: vec![],
+            outgoing_links: vec![],
+            unresolved_links: vec![],
+            incoming_links: vec![],
+            body: None,
+            raw: None,
+        }
+    }
+
+    #[test]
+    fn sort_orders_records_by_frontmatter_field() {
+        let mut records = vec![
+            rec("a.md", serde_json::json!({"order": "c"})),
+            rec("b.md", serde_json::json!({"order": "a"})),
+            rec("c.md", serde_json::json!({"order": "b"})),
+        ];
+        apply_sort(&mut records, Some("order"), false);
+        let paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, vec!["b.md", "c.md", "a.md"]);
+    }
+
+    #[test]
+    fn sort_desc_reverses() {
+        let mut records = vec![
+            rec("a.md", serde_json::json!({"order": "a"})),
+            rec("b.md", serde_json::json!({"order": "b"})),
+        ];
+        apply_sort(&mut records, Some("order"), true);
+        let paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, vec!["b.md", "a.md"]);
+    }
+
+    #[test]
+    fn sort_by_path_identity() {
+        let mut records = vec![
+            rec("c.md", serde_json::json!({})),
+            rec("a.md", serde_json::json!({})),
+            rec("b.md", serde_json::json!({})),
+        ];
+        apply_sort(&mut records, Some("path"), false);
+        let paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, vec!["a.md", "b.md", "c.md"]);
+    }
+
+    #[test]
+    fn sort_missing_field_sorts_last() {
+        let mut records = vec![
+            rec("a.md", serde_json::json!({})),
+            rec("b.md", serde_json::json!({"order": "z"})),
+        ];
+        apply_sort(&mut records, Some("order"), false);
+        let paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, vec!["b.md", "a.md"], "absent field sorts last");
+    }
+
+    #[test]
+    fn limit_truncates() {
+        let mut records = vec![
+            rec("a.md", serde_json::json!({})),
+            rec("b.md", serde_json::json!({})),
+            rec("c.md", serde_json::json!({})),
+        ];
+        apply_paging(&mut records, 1, Some(2));
+        let paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, vec!["a.md", "b.md"]);
+    }
+
+    #[test]
+    fn no_limit_returns_all() {
+        let mut records = vec![
+            rec("a.md", serde_json::json!({})),
+            rec("b.md", serde_json::json!({})),
+        ];
+        apply_paging(&mut records, 1, None);
+        assert_eq!(records.len(), 2);
+    }
+
+    #[test]
+    fn starts_at_offsets() {
+        let mut records = vec![
+            rec("a.md", serde_json::json!({})),
+            rec("b.md", serde_json::json!({})),
+            rec("c.md", serde_json::json!({})),
+        ];
+        apply_paging(&mut records, 2, None);
+        let paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, vec!["b.md", "c.md"]);
+    }
+
+    #[test]
+    fn starts_at_then_limit() {
+        let mut records = vec![
+            rec("a.md", serde_json::json!({})),
+            rec("b.md", serde_json::json!({})),
+            rec("c.md", serde_json::json!({})),
+            rec("d.md", serde_json::json!({})),
+        ];
+        apply_paging(&mut records, 2, Some(2));
+        let paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, vec!["b.md", "c.md"]);
     }
 }

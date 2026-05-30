@@ -44,6 +44,7 @@ mod tests {
             no_limit: false,
             starts_at: 1,
             format: None,
+            all_cols: false,
             col: vec![],
             no_pager: false,
             all: false,
