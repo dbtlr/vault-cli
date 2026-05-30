@@ -224,6 +224,47 @@ fn run(cli: Cli) -> Result<i32> {
             )?;
             let report = show::run(&cache, &args)?;
 
+            // `markdown` is the one principled divergence: a single, byte-faithful
+            // document straight from disk. It is selection-bound (meaningful only
+            // for one doc), so it errors unless exactly one document is selected.
+            if matches!(args.format, cli::GetFormat::Markdown) {
+                let stderr = std::io::stderr();
+                let mut stderr_lock = stderr.lock();
+                crate::output::projection::warn_col_ignored(
+                    &args.col,
+                    Some("markdown"),
+                    &mut stderr_lock,
+                )?;
+                for note in &report.notes {
+                    eprintln!("{}", note);
+                }
+                return match report.records.len() {
+                    1 => {
+                        let path = &report.records[0].path;
+                        match crate::output::projection::read_raw(&cache.vault_root, path) {
+                            // Byte-faithful: print verbatim, no trailing-newline fixup.
+                            Some(raw) => {
+                                print!("{}", raw);
+                                Ok(0)
+                            }
+                            None => {
+                                eprintln!("error: could not read source file for '{}'", path);
+                                Ok(1)
+                            }
+                        }
+                    }
+                    // No records: the per-target errors are already in `notes`.
+                    0 => Ok(1),
+                    n => {
+                        eprintln!(
+                            "error: --format markdown returns a single document; {n} selected \
+                             — use --format json --col .raw for multiple"
+                        );
+                        Ok(1)
+                    }
+                };
+            }
+
             let stdout_text = match args.format {
                 cli::GetFormat::Json => show::render::render_json_with_col(&report, &args.col),
                 cli::GetFormat::Jsonl => show::render::render_jsonl_with_col(&report, &args.col),
@@ -231,6 +272,7 @@ fn run(cli: Cli) -> Result<i32> {
                 cli::GetFormat::Records => {
                     show::render::render_records_with_col(&report, &args.col)
                 }
+                cli::GetFormat::Markdown => unreachable!("markdown handled above"),
             };
             print!("{}", stdout_text);
             if !stdout_text.ends_with('\n') {
@@ -239,9 +281,9 @@ fn run(cli: Cli) -> Result<i32> {
 
             let stderr = std::io::stderr();
             let mut stderr_lock = stderr.lock();
-            crate::output::projection::warn_col_ignored_on_paths(
+            crate::output::projection::warn_col_ignored(
                 &args.col,
-                matches!(args.format, cli::GetFormat::Paths),
+                matches!(args.format, cli::GetFormat::Paths).then_some("paths"),
                 &mut stderr_lock,
             )?;
             show::render::warn_unknown_cols(&args.col, &report, &mut stderr_lock)?;

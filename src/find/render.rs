@@ -404,9 +404,9 @@ pub fn warn_col_ignored_on_paths(
     format: crate::cli::FindFormat,
     stderr: &mut dyn Write,
 ) -> std::io::Result<()> {
-    crate::output::projection::warn_col_ignored_on_paths(
+    crate::output::projection::warn_col_ignored(
         cols,
-        format == crate::cli::FindFormat::Paths,
+        (format == crate::cli::FindFormat::Paths).then_some("paths"),
         stderr,
     )
 }

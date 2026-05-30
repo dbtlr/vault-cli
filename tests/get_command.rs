@@ -450,3 +450,67 @@ fn get_default_no_col_omits_raw() {
         v
     );
 }
+
+#[test]
+fn get_markdown_single_doc_is_byte_faithful() {
+    let tmp = synth();
+    let vault = tmp.path().join("vault");
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["get", "a.md", "--format", "markdown"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // stdout is the source file, verbatim — no count line, no record block.
+    let disk = std::fs::read_to_string(vault.join("a.md")).unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), disk);
+}
+
+#[test]
+fn get_markdown_multiple_targets_errors() {
+    let tmp = synth();
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(tmp.path().join("vault"))
+        .args(["get", "a.md", "b.md", "--format", "markdown"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "expected non-zero exit for >1 doc");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("single document") && stderr.contains("2 selected"),
+        "expected limit-1 error; got: {stderr}"
+    );
+    // No document was printed.
+    assert!(String::from_utf8_lossy(&out.stdout).trim().is_empty());
+}
+
+#[test]
+fn get_markdown_col_is_inert_and_warns() {
+    let tmp = synth();
+    let vault = tmp.path().join("vault");
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(&vault)
+        .args(["get", "a.md", "--col", "type", "--format", "markdown"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--col is ignored with --format markdown"),
+        "expected col-ignored warning; got: {stderr}"
+    );
+    // --col had no effect: still the whole faithful document.
+    let disk = std::fs::read_to_string(vault.join("a.md")).unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), disk);
+}

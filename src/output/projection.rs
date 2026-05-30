@@ -184,17 +184,20 @@ pub fn incoming_links_to_display(links: &[crate::cache::IncomingLink]) -> String
         .join("\n")
 }
 
-/// Warn (once) that `--col` has no effect with `--format paths`. Shared by
-/// both read commands so the message stays single-sourced. `is_paths` is the
-/// caller's "is the active format paths?" test (the format enums differ per
-/// command, so the comparison happens at the call site).
-pub fn warn_col_ignored_on_paths(
+/// Warn (once) that `--col` has no effect with a format that ignores it.
+/// `inert_format` is `Some("paths")`/`Some("markdown")` when the active format
+/// disregards `--col` (the identity-only / whole-document formats), `None`
+/// otherwise. Shared by both read commands so the message stays single-sourced
+/// (the format enums differ per command, so the caller maps to the name).
+pub fn warn_col_ignored(
     cols: &[String],
-    is_paths: bool,
+    inert_format: Option<&str>,
     stderr: &mut dyn Write,
 ) -> std::io::Result<()> {
-    if !cols.is_empty() && is_paths {
-        writeln!(stderr, "warning: --col is ignored with --format paths")?;
+    if let Some(fmt) = inert_format {
+        if !cols.is_empty() {
+            writeln!(stderr, "warning: --col is ignored with --format {fmt}")?;
+        }
     }
     Ok(())
 }

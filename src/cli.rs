@@ -651,6 +651,9 @@ pub enum GetFormat {
     Json,
     /// One JSON record object per line.
     Jsonl,
+    /// The single selected document, byte-faithful from disk. Errors unless
+    /// exactly one document is selected; `--col` is ignored.
+    Markdown,
 }
 
 #[derive(Args, Debug)]
