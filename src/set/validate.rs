@@ -124,16 +124,88 @@ pub fn is_required_field(cfg: &VaultConfig, doc: &Document, field: &str) -> bool
     false
 }
 
+/// Is `field` known to the schema for this document? True when any matching rule
+/// declares it via `field_types`, `allowed_values`, or `required_frontmatter`.
+///
+/// This is deliberately separate from [`lookup_field_type`]: that answers "what
+/// coercion type does the field have?" and returns `None` for a field governed
+/// only by `allowed_values`/`required_frontmatter` (e.g. `status`). Using the
+/// type lookup as the "is this field known?" oracle is what produced the
+/// spurious `unknown field` warning — a field can be fully schema-declared yet
+/// have no special coercion type.
+pub fn is_known_field(cfg: &VaultConfig, doc: &Document, field: &str) -> bool {
+    for rule in &cfg.validate.rules {
+        if !crate::standards::engine::rule_matches(doc, rule) {
+            continue;
+        }
+        if rule.field_types.contains_key(field)
+            || rule.allowed_values.contains_key(field)
+            || rule.required_frontmatter.iter().any(|f| f == field)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// The allowed-value set for `field` from the first matching rule that declares
+/// one, or `None` when no matching rule constrains the field's values.
+pub fn lookup_allowed_values(cfg: &VaultConfig, doc: &Document, field: &str) -> Option<Vec<Value>> {
+    for rule in &cfg.validate.rules {
+        if !crate::standards::engine::rule_matches(doc, rule) {
+            continue;
+        }
+        if let Some(values) = rule.allowed_values.get(field) {
+            return Some(values.clone());
+        }
+    }
+    None
+}
+
+/// Does `value` satisfy the `allowed` set? Scalars must match one entry; arrays
+/// (e.g. a `list_of_strings` field) require every element to match. Mirrors
+/// validate's scalar comparison via `frontmatter_value_matches` (which only
+/// compares scalars), so an array is checked element-by-element here.
+fn value_in_allowed(value: &Value, allowed: &[Value]) -> bool {
+    let matches_one = |v: &Value| {
+        allowed
+            .iter()
+            .any(|a| crate::standards::predicates::frontmatter_value_matches(v, a))
+    };
+    match value {
+        Value::Array(items) => items.iter().all(matches_one),
+        scalar => matches_one(scalar),
+    }
+}
+
+/// Render an allowed-value set for an error message: `a, b, c`.
+fn display_allowed(allowed: &[Value]) -> String {
+    allowed
+        .iter()
+        .map(|v| match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Output type for `coerce_kv_slice`: typed pairs + any emitted warnings.
 type CoercedKvs = (Vec<(String, Value)>, Vec<SetWarning>);
 
 /// Coerce one `KEY=raw` slice into typed `(KEY, Value)` pairs.
 /// Returns `(typed_pairs, warnings)`.
+///
+/// When `enforce_allowed_values` is set (the scalar set paths — `--field` and
+/// `--field-json`), a coerced value outside its field's `allowed_values` set is
+/// refused unless `force`, mirroring how a type mismatch is refused. `--force`
+/// writes verbatim and emits a `ForceBypass` warning.
 fn coerce_kv_slice(
     raw_kvs: &[String],
     force: bool,
     cfg: &VaultConfig,
     doc: &Document,
+    enforce_allowed_values: bool,
 ) -> Result<CoercedKvs> {
     let mut out = Vec::new();
     let mut w = Vec::new();
@@ -146,16 +218,39 @@ fn coerce_kv_slice(
                     field: key.clone(),
                     message: format!("--force bypassed type validation for '{key}'"),
                 });
-                Value::String(raw)
+                Value::String(raw.clone())
             }
             None => {
-                w.push(SetWarning::UnknownField {
-                    field: key.clone(),
-                    message: format!("field '{key}' not declared in schema"),
-                });
+                // "Known to the schema" is the union of field_types,
+                // allowed_values, and required_frontmatter — not field_types
+                // alone. Only warn when the field is declared by none of them.
+                if !is_known_field(cfg, doc, &key) {
+                    w.push(SetWarning::UnknownField {
+                        field: key.clone(),
+                        message: format!("field '{key}' not declared in schema"),
+                    });
+                }
                 crate::set::synth::infer_scalar(&raw)
             }
         };
+
+        if enforce_allowed_values {
+            if let Some(allowed) = lookup_allowed_values(cfg, doc, &key) {
+                if !value_in_allowed(&coerced, &allowed) {
+                    if !force {
+                        anyhow::bail!(
+                            "value '{raw}' is not allowed for '{key}' (allowed: {}); use --force to override",
+                            display_allowed(&allowed)
+                        );
+                    }
+                    w.push(SetWarning::ForceBypass {
+                        field: key.clone(),
+                        message: format!("--force bypassed allowed-values validation for '{key}'"),
+                    });
+                }
+            }
+        }
+
         out.push((key, coerced));
     }
     Ok((out, w))
@@ -185,11 +280,14 @@ pub fn synth_with_schema(
 
     let mut warnings: Vec<SetWarning> = Vec::new();
 
-    let (fields_typed, w) = coerce_kv_slice(fields, force, cfg, doc)?;
+    // --field is a scalar set → enforce allowed_values. --push / --pop operate on
+    // list elements; per-element allowed_values is not a validated concept today,
+    // so they only get the known-field warning suppression, not enforcement.
+    let (fields_typed, w) = coerce_kv_slice(fields, force, cfg, doc, true)?;
     warnings.extend(w);
-    let (push_typed, w) = coerce_kv_slice(push, force, cfg, doc)?;
+    let (push_typed, w) = coerce_kv_slice(push, force, cfg, doc, false)?;
     warnings.extend(w);
-    let (pop_typed, w) = coerce_kv_slice(pop, force, cfg, doc)?;
+    let (pop_typed, w) = coerce_kv_slice(pop, force, cfg, doc, false)?;
     warnings.extend(w);
 
     // --field-json: raw JSON; validate against schema unless --force.
@@ -211,12 +309,29 @@ pub fn synth_with_schema(
                     message: format!("--force bypassed type validation for '{key}'"),
                 });
             }
-        } else {
+        } else if !is_known_field(cfg, doc, &key) {
             warnings.push(SetWarning::UnknownField {
                 field: key.clone(),
                 message: format!("field '{key}' not declared in schema"),
             });
         }
+
+        // allowed_values enforcement, same as the scalar --field path.
+        if let Some(allowed) = lookup_allowed_values(cfg, doc, &key) {
+            if !value_in_allowed(&parsed, &allowed) {
+                if !force {
+                    anyhow::bail!(
+                        "--field-json value for '{key}' is not allowed (allowed: {}); use --force to override",
+                        display_allowed(&allowed)
+                    );
+                }
+                warnings.push(SetWarning::ForceBypass {
+                    field: key.clone(),
+                    message: format!("--force bypassed allowed-values validation for '{key}'"),
+                });
+            }
+        }
+
         field_json_typed.push((key, parsed));
     }
 
@@ -604,5 +719,111 @@ validate:
         let (_tmp, index) = fixture_index_with_docs(&["notes/foo.md"]);
         let warnings = check_wikilink_resolution(&index, "workspace", "[[foo]]");
         assert!(warnings.is_empty());
+    }
+
+    // ── allowed_values: known-field oracle + write-time enforcement ───────────
+
+    /// A field governed by `allowed_values` + `required_frontmatter` but with no
+    /// `field_types` entry — exactly the `status` shape that surfaced the bug.
+    fn fixture_config_with_allowed_values() -> VaultConfig {
+        let yaml = r#"
+validate:
+  rules:
+    - name: note-status
+      match:
+        frontmatter:
+          kind: note
+      allowed_values:
+        status:
+          - backlog
+          - completed
+      required_frontmatter:
+        - status
+"#;
+        crate::standards::parse_config(yaml, camino::Utf8Path::new("fixture.yaml"))
+            .expect("config should parse")
+    }
+
+    #[test]
+    fn is_known_field_true_for_allowed_values_only_field() {
+        let doc = fixture_doc_kind_note();
+        let cfg = fixture_config_with_allowed_values();
+        // Known to the schema via allowed_values + required_frontmatter...
+        assert!(is_known_field(&cfg, &doc, "status"));
+        // ...even though it has no field_type (the conflation that caused the bug).
+        assert_eq!(lookup_field_type(&cfg, &doc, "status"), None);
+        // A genuinely undeclared field is still unknown.
+        assert!(!is_known_field(&cfg, &doc, "madeup"));
+    }
+
+    #[test]
+    fn synth_no_unknown_field_warning_for_allowed_values_field() {
+        let doc = fixture_doc_kind_note();
+        let cfg = fixture_config_with_allowed_values();
+        let fm = current_fm(&doc);
+        let result = synth_with_schema(
+            &cfg,
+            &doc,
+            &fm,
+            &["status=completed".to_string()],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        )
+        .unwrap();
+        assert_eq!(result.changes[0].new_value, Some(json!("completed")));
+        assert!(
+            !result
+                .warnings
+                .iter()
+                .any(|w| matches!(w, SetWarning::UnknownField { .. })),
+            "status is schema-declared via allowed_values; no UnknownField expected"
+        );
+    }
+
+    #[test]
+    fn synth_refuses_value_outside_allowed_set_without_force() {
+        let doc = fixture_doc_kind_note();
+        let cfg = fixture_config_with_allowed_values();
+        let fm = current_fm(&doc);
+        let result = synth_with_schema(
+            &cfg,
+            &doc,
+            &fm,
+            &["status=bogus".to_string()],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not allowed"));
+    }
+
+    #[test]
+    fn synth_force_bypasses_allowed_values_with_warning() {
+        let doc = fixture_doc_kind_note();
+        let cfg = fixture_config_with_allowed_values();
+        let fm = current_fm(&doc);
+        let result = synth_with_schema(
+            &cfg,
+            &doc,
+            &fm,
+            &["status=bogus".to_string()],
+            &[],
+            &[],
+            &[],
+            &[],
+            true,
+        )
+        .expect("--force should bypass allowed-values validation");
+        assert_eq!(result.changes[0].new_value, Some(json!("bogus")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| matches!(w, SetWarning::ForceBypass { .. })));
     }
 }

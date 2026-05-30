@@ -10,8 +10,13 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+### Changed
+
+- **`norn set` now refuses a value outside a field's `allowed_values` set.** Previously `set` keyed its schema validation entirely off `field_types`, so `norn set <doc> --field status=bogus` would write `bogus` without complaint even when the schema declared `allowed_values: [backlog, in_progress, completed]` for `status` (only `norn validate` caught it, after the fact). `set` now refuses a disallowed value with a clear error listing the allowed set and exits non-zero (2), mirroring how it already refuses `datetime`/`wikilink` type mismatches. `--force` writes the value verbatim and emits a `--force bypass` warning. Enforcement applies to the scalar set paths (`--field`, `--field-json`); list-element (`--push`/`--pop`) enforcement is not included.
+
 ### Fixed
 
+- **`norn set` no longer prints a spurious `unknown field` warning for `allowed_values`/required-only fields.** `set` treated a field as "unknown to the schema" whenever it lacked a `field_types` entry — so a field declared via `allowed_values` and/or `required_frontmatter` but with no special coercion type (e.g. `status`) drew a false `warning: unknown field: status` on every write. "Known to the schema" is now the union of `field_types`, `allowed_values`, and `required_frontmatter`; the warning fires only when the field is declared by none of them. (The "is this field known?" check is now a dedicated `is_known_field` oracle, split out of the `lookup_field_type` coercion lookup that was overloaded to answer both questions.)
 - **Concurrent cache opens no longer spuriously fail with `database is locked`.** Two `norn` invocations opening the same vault cache at the same moment could race on the brief write locks taken during schema setup (fresh open) and the journal/integrity pragmas (inspecting open), with the loser returning `SQLITE_BUSY` immediately because SQLite's default lock-wait is zero. Every cache connection now sets a 5s `busy_timeout` right after open — matching the 5s advisory flock that `rebuild` already holds — so these brief collisions are absorbed instead of erroring. (Surfaced as an intermittent `two_simultaneous_rebuilds_serialize` failure on macOS CI.)
 
 ## v0.35.2 - 2026-05-29
