@@ -6,6 +6,20 @@ use rusqlite::Connection;
 use crate::cache::error::CacheError;
 use crate::cache::identity::cache_dir_for;
 
+/// Lock-wait applied to every cache connection immediately after open.
+///
+/// A fresh open runs schema DDL and an inspecting open runs the
+/// `journal_mode` / `integrity_check` pragmas — both take brief write locks
+/// on the SQLite file. When two threads or processes open the same cache at
+/// once (two concurrent `norn` invocations, or the `two_simultaneous_rebuilds`
+/// concurrency test's two rebuild threads), SQLite's default zero lock-wait
+/// makes the loser return `SQLITE_BUSY` immediately rather than waiting. A 5s
+/// busy_timeout lets SQLite's own concurrency control absorb these brief
+/// collisions, matching the 5s advisory flock that `rebuild` already holds.
+/// This is deliberately cheaper than moving the schema DDL behind the advisory
+/// lock, which would change `open`'s blocking semantics for every caller.
+const CACHE_BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5000);
+
 impl crate::cache::Cache {
     /// Open the cache for a vault. Creates the cache directory and database
     /// if missing; inspects an existing cache file and either reuses it,
@@ -111,6 +125,11 @@ fn inspect_existing_cache(
             )));
         }
     };
+    if let Err(e) = conn.busy_timeout(CACHE_BUSY_TIMEOUT) {
+        return Ok(InspectResult::RebuildNeeded(RebuildReason::Corrupted(
+            format!("could not set busy_timeout: {e}"),
+        )));
+    }
     if let Err(e) = conn.pragma_update(None, "journal_mode", "WAL") {
         return Ok(InspectResult::RebuildNeeded(RebuildReason::Corrupted(
             format!("could not set journal_mode: {e}"),
@@ -208,6 +227,7 @@ fn open_fresh(
     alias_field: Option<&str>,
 ) -> Result<crate::cache::Cache, CacheError> {
     let conn = Connection::open(db_path.as_std_path())?;
+    conn.busy_timeout(CACHE_BUSY_TIMEOUT)?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     secure_file(db_path)?;

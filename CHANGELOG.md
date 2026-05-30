@@ -10,6 +10,10 @@ once it ships v1.0. Pre-1.0 versions may include breaking changes in minor relea
 
 Entries here have landed on `main` but have not yet been cut into a tagged release. When a release is cut, this section is promoted to `## v0.X.0 - YYYY-MM-DD` and a fresh `## [Unreleased]` header is added above it.
 
+### Fixed
+
+- **Concurrent cache opens no longer spuriously fail with `database is locked`.** Two `norn` invocations opening the same vault cache at the same moment could race on the brief write locks taken during schema setup (fresh open) and the journal/integrity pragmas (inspecting open), with the loser returning `SQLITE_BUSY` immediately because SQLite's default lock-wait is zero. Every cache connection now sets a 5s `busy_timeout` right after open — matching the 5s advisory flock that `rebuild` already holds — so these brief collisions are absorbed instead of erroring. (Surfaced as an intermittent `two_simultaneous_rebuilds_serialize` failure on macOS CI.)
+
 ## v0.35.2 - 2026-05-29
 
 Patch release. Fixes `norn self-update`, which has been broken for every GitHub-installer install since the v0.34 rename. **One-time upgrade step:** because the broken version can't update itself, re-run the installer once to land on v0.35.2 — `self-update` works normally thereafter.
