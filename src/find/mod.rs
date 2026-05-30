@@ -79,12 +79,16 @@ pub fn run(
     // each `DocumentSummary`. Only pay the join cost when a deep facet is asked
     // for — the default frontmatter-only path stays at zero extra queries.
     let (facets, _fields) = crate::output::projection::split_cols(&args.col);
-    let needs_deep = facets.iter().any(|f| {
-        matches!(
-            f.as_str(),
-            "headings" | "outgoing_links" | "unresolved_links" | "incoming_links"
-        )
-    });
+    // `--all-cols` dumps every cache-served facet, so it implies the deep fetch
+    // (headings + link sets). Body comes from `DocumentSummary.body_text`; raw
+    // is excluded by design, so `--all-cols` never triggers a disk read.
+    let needs_deep = args.all_cols
+        || facets.iter().any(|f| {
+            matches!(
+                f.as_str(),
+                "headings" | "outgoing_links" | "unresolved_links" | "incoming_links"
+            )
+        });
     let deep: Vec<Option<crate::cache::DocumentDeep>> = if needs_deep {
         let mut out = Vec::with_capacity(result.matches.len());
         for doc in &result.matches {

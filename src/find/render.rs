@@ -86,8 +86,9 @@ fn doc_to_json(
     deep: Option<&DocumentDeep>,
     raw: Option<&str>,
     cols: &[String],
+    all_cols: bool,
 ) -> serde_json::Value {
-    if cols.is_empty() {
+    if cols.is_empty() && !all_cols {
         return serde_json::json!({
             "path": doc.path.as_str(),
             "frontmatter": filter_frontmatter(doc.frontmatter.as_ref(), &[]),
@@ -99,8 +100,9 @@ fn doc_to_json(
     let mut obj = serde_json::json!({ "path": doc.path.as_str() });
     let map = obj.as_object_mut().unwrap();
 
+    // `--all-cols`: whole frontmatter + every cache-served facet + body.
     // `.frontmatter` emits the whole block; bare field names filter it.
-    if allow.contains("frontmatter") {
+    if all_cols || allow.contains("frontmatter") {
         map.insert(
             "frontmatter".into(),
             filter_frontmatter(doc.frontmatter.as_ref(), &[]),
@@ -111,39 +113,40 @@ fn doc_to_json(
             filter_frontmatter(doc.frontmatter.as_ref(), &fields),
         );
     }
-    if allow.contains("headings") {
+    if all_cols || allow.contains("headings") {
         let headings = deep.map(|d| d.headings.as_slice()).unwrap_or(&[]);
         map.insert("headings".into(), serde_json::to_value(headings).unwrap());
     }
-    if allow.contains("outgoing_links") {
+    if all_cols || allow.contains("outgoing_links") {
         let links = deep.map(|d| d.outgoing_links.as_slice()).unwrap_or(&[]);
         map.insert(
             "outgoing_links".into(),
             serde_json::to_value(links).unwrap(),
         );
     }
-    if allow.contains("unresolved_links") {
+    if all_cols || allow.contains("unresolved_links") {
         let links = deep.map(|d| d.unresolved_links.as_slice()).unwrap_or(&[]);
         map.insert(
             "unresolved_links".into(),
             serde_json::to_value(links).unwrap(),
         );
     }
-    if allow.contains("incoming_links") {
+    if all_cols || allow.contains("incoming_links") {
         let links = deep.map(|d| d.incoming_links.as_slice()).unwrap_or(&[]);
         map.insert(
             "incoming_links".into(),
             serde_json::to_value(links).unwrap(),
         );
     }
-    if allow.contains("body") {
+    if all_cols || allow.contains("body") {
         map.insert(
             "body".into(),
             serde_json::Value::String(doc.body_text.clone()),
         );
     }
-    // `.raw` last: byte-faithful whole source file from disk. Omit when unreadable.
-    if allow.contains("raw") {
+    // `.raw` last: byte-faithful whole source file from disk. Omit when
+    // unreadable. Never emitted by `--all-cols` (cache-only dump).
+    if !all_cols && allow.contains("raw") {
         if let Some(raw) = raw {
             map.insert("raw".into(), serde_json::Value::String(raw.to_string()));
         }
@@ -166,7 +169,15 @@ fn render_json(
         .matches
         .iter()
         .enumerate()
-        .map(|(i, d)| doc_to_json(d, deep_at(deep, i), raw_at(raw, i), &args.col))
+        .map(|(i, d)| {
+            doc_to_json(
+                d,
+                deep_at(deep, i),
+                raw_at(raw, i),
+                &args.col,
+                args.all_cols,
+            )
+        })
         .collect();
 
     let payload = serde_json::json!({
@@ -187,7 +198,13 @@ fn render_jsonl(
     stderr: &mut dyn Write,
 ) -> std::io::Result<()> {
     for (i, doc) in result.matches.iter().enumerate() {
-        let line = doc_to_json(doc, deep_at(deep, i), raw_at(raw, i), &args.col);
+        let line = doc_to_json(
+            doc,
+            deep_at(deep, i),
+            raw_at(raw, i),
+            &args.col,
+            args.all_cols,
+        );
         writeln!(stdout, "{}", serde_json::to_string(&line)?)?;
     }
     if result.truncated {
@@ -232,7 +249,13 @@ fn render_records(
         if i > 0 {
             separator(stdout, palette, term_width)?;
         }
-        let pairs = build_record_pairs(doc, deep_at(deep, i), raw_at(raw, i), &args.col);
+        let pairs = build_record_pairs(
+            doc,
+            deep_at(deep, i),
+            raw_at(raw, i),
+            &args.col,
+            args.all_cols,
+        );
         let fields: Vec<Field<'_>> = pairs
             .iter()
             .map(|(k, v)| Field {
@@ -278,10 +301,11 @@ fn build_record_pairs(
     deep: Option<&DocumentDeep>,
     raw: Option<&str>,
     cols: &[String],
+    all_cols: bool,
 ) -> Vec<(String, String)> {
     let fm_object = doc.frontmatter.as_ref().and_then(|fm| fm.as_object());
 
-    if cols.is_empty() {
+    if cols.is_empty() && !all_cols {
         // Legacy default: every frontmatter key as its own labeled row.
         let mut pairs = Vec::new();
         if let Some(obj) = fm_object {
@@ -295,6 +319,16 @@ fn build_record_pairs(
     let (facets, fields) = split_cols(cols);
     let facet_set: HashSet<&str> = facets.iter().map(String::as_str).collect();
     let mut pairs = Vec::new();
+
+    // `--all-cols`: per-field frontmatter rows (like the default), then every
+    // cache-served facet. No consolidated `.frontmatter` block, no `.raw`.
+    if all_cols {
+        if let Some(obj) = fm_object {
+            for (key, value) in obj {
+                pairs.push((key.clone(), json_value_inline(value)));
+            }
+        }
+    }
 
     // Bare fields: individual frontmatter keys, in requested order.
     for field in &fields {
@@ -313,21 +347,21 @@ fn build_record_pairs(
         }
     }
 
-    if facet_set.contains("headings") {
+    if all_cols || facet_set.contains("headings") {
         let headings = deep.map(|d| d.headings.as_slice()).unwrap_or(&[]);
         if !headings.is_empty() {
             pairs.push(("headings".into(), headings_to_display(headings)));
         }
     }
 
-    if facet_set.contains("outgoing_links") {
+    if all_cols || facet_set.contains("outgoing_links") {
         let links = deep.map(|d| d.outgoing_links.as_slice()).unwrap_or(&[]);
         if !links.is_empty() {
             pairs.push(("outgoing_links".into(), outgoing_links_to_display(links)));
         }
     }
 
-    if facet_set.contains("unresolved_links") {
+    if all_cols || facet_set.contains("unresolved_links") {
         let links = deep.map(|d| d.unresolved_links.as_slice()).unwrap_or(&[]);
         if !links.is_empty() {
             pairs.push((
@@ -337,14 +371,14 @@ fn build_record_pairs(
         }
     }
 
-    if facet_set.contains("incoming_links") {
+    if all_cols || facet_set.contains("incoming_links") {
         let links = deep.map(|d| d.incoming_links.as_slice()).unwrap_or(&[]);
         if !links.is_empty() {
             pairs.push(("incoming_links".into(), incoming_links_to_display(links)));
         }
     }
 
-    if facet_set.contains("body") {
+    if all_cols || facet_set.contains("body") {
         let body = doc.body_text.trim();
         if !body.is_empty() {
             pairs.push(("body".into(), body.to_string()));
@@ -352,8 +386,8 @@ fn build_record_pairs(
     }
 
     // `.raw` last: byte-faithful whole source file from disk. Omit when
-    // unreadable or empty.
-    if facet_set.contains("raw") {
+    // unreadable or empty. Never emitted by `--all-cols` (cache-only dump).
+    if !all_cols && facet_set.contains("raw") {
         if let Some(raw) = raw {
             if !raw.is_empty() {
                 pairs.push(("raw".into(), raw.to_string()));
@@ -474,6 +508,7 @@ mod tests {
             no_limit: false,
             starts_at: 1,
             format: None,
+            all_cols: false,
             col: vec![],
             no_pager: false,
             all: false,

@@ -365,3 +365,69 @@ fn default_no_col_omits_raw() {
         "raw must not appear by default: {a}"
     );
 }
+
+#[test]
+fn all_cols_expands_to_full_dump() {
+    // `--all-cols` dumps whole frontmatter + every cache-served facet + body,
+    // a superset of the frontmatter-only default. Excludes `.raw`.
+    let tmp = synth_vault();
+    let v = json_out(
+        &tmp,
+        &[
+            "find",
+            "--eq",
+            "title:Alpha",
+            "--all-cols",
+            "--format",
+            "json",
+        ],
+    );
+    let a = doc_a(&v);
+    assert_eq!(a["frontmatter"]["title"], "Alpha");
+    assert!(a.get("headings").is_some(), "headings present: {a}");
+    assert!(a.get("outgoing_links").is_some(), "outgoing present: {a}");
+    assert!(
+        a.get("unresolved_links").is_some(),
+        "unresolved present: {a}"
+    );
+    assert!(a.get("incoming_links").is_some(), "incoming present: {a}");
+    assert!(
+        a["body"].as_str().unwrap().contains("alpha body"),
+        "body present: {a}"
+    );
+    assert!(a.get("raw").is_none(), "all-cols excludes .raw: {a}");
+}
+
+#[test]
+fn default_omits_facets_that_all_cols_adds() {
+    // Baseline: the default emits only path + frontmatter, none of the facets
+    // that `--all-cols` adds.
+    let tmp = synth_vault();
+    let v = json_out(&tmp, &["find", "--eq", "title:Alpha", "--format", "json"]);
+    let a = doc_a(&v);
+    assert!(a.get("headings").is_none());
+    assert!(a.get("incoming_links").is_none());
+    assert!(a.get("body").is_none());
+}
+
+#[test]
+fn all_cols_conflicts_with_col() {
+    let tmp = synth_vault();
+    let out = run(
+        &tmp,
+        &[
+            "find",
+            "--eq",
+            "title:Alpha",
+            "--all-cols",
+            "--col",
+            "title",
+        ],
+    );
+    assert!(!out.status.success(), "--all-cols + --col should conflict");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("conflict"),
+        "expected conflict error; got: {stderr}"
+    );
+}

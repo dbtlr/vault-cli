@@ -179,12 +179,13 @@ fn get_col_unknown_facet_warns() {
 }
 
 #[test]
-fn get_body_flag_includes_content() {
+fn get_all_cols_includes_body_content() {
+    // `--body` is gone; body now comes via `--all-cols` (full dump).
     let tmp = synth();
     let out = Command::new(norn_bin())
         .args(["--cwd"])
         .arg(tmp.path().join("vault"))
-        .args(["get", "a.md", "--body", "--format", "json"])
+        .args(["get", "a.md", "--all-cols", "--format", "json"])
         .output()
         .unwrap();
     assert!(
@@ -195,6 +196,102 @@ fn get_body_flag_includes_content() {
     let v: serde_json::Value =
         serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
     assert!(v[0]["body"].as_str().unwrap().contains("A"));
+    // Full structured dump: frontmatter + headings + links present; `.raw` not.
+    assert!(v[0]["frontmatter"].is_object());
+    assert!(v[0].get("headings").is_some());
+    assert!(v[0].get("incoming_links").is_some());
+    assert!(v[0].get("raw").is_none(), "all-cols excludes .raw");
+}
+
+#[test]
+fn get_body_flag_is_removed() {
+    // Breaking change: `--body` no longer exists; clap rejects it.
+    let tmp = synth();
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(tmp.path().join("vault"))
+        .args(["get", "a.md", "--body"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "--body should be an unknown flag");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--body") || stderr.contains("unexpected"),
+        "expected unknown-flag error; got: {stderr}"
+    );
+}
+
+#[test]
+fn get_all_cols_conflicts_with_col() {
+    let tmp = synth();
+    let out = Command::new(norn_bin())
+        .args(["--cwd"])
+        .arg(tmp.path().join("vault"))
+        .args(["get", "a.md", "--all-cols", "--col", "type"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "--all-cols + --col should conflict");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cannot be used with") || stderr.contains("conflict"),
+        "expected conflict error; got: {stderr}"
+    );
+}
+
+#[test]
+fn get_sort_orders_records() {
+    let tmp = tempfile::Builder::new()
+        .prefix("norn-get-sort-")
+        .tempdir()
+        .unwrap();
+    let root = tmp.path().join("vault");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(root.join("a.md"), "---\norder: 3\n---\n").unwrap();
+    std::fs::write(root.join("b.md"), "---\norder: 1\n---\n").unwrap();
+    std::fs::write(root.join("c.md"), "---\norder: 2\n---\n").unwrap();
+
+    let run = |extra: &[&str]| -> Vec<String> {
+        let mut args = vec!["get", "a.md", "b.md", "c.md", "--format", "jsonl"];
+        args.extend_from_slice(extra);
+        let out = Command::new(norn_bin())
+            .args(["--cwd"])
+            .arg(&root)
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(|l| {
+                let v: serde_json::Value = serde_json::from_str(l).unwrap();
+                v["path"].as_str().unwrap().to_string()
+            })
+            .collect()
+    };
+
+    // Ascending by `order`.
+    assert_eq!(run(&["--sort", "order"]), vec!["b.md", "c.md", "a.md"]);
+    // Descending reverses.
+    assert_eq!(
+        run(&["--sort", "order", "--desc"]),
+        vec!["a.md", "c.md", "b.md"]
+    );
+    // No --limit/--sort: all named targets, in the order given.
+    assert_eq!(run(&[]), vec!["a.md", "b.md", "c.md"]);
+    // --limit truncates (after sort).
+    assert_eq!(
+        run(&["--sort", "order", "--limit", "2"]),
+        vec!["b.md", "c.md"]
+    );
+    // --starts-at offsets.
+    assert_eq!(
+        run(&["--sort", "order", "--starts-at", "2"]),
+        vec!["c.md", "a.md"]
+    );
 }
 
 #[test]

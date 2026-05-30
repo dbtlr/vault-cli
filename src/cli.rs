@@ -81,7 +81,7 @@ pub enum Command {
     #[command(
         disable_help_flag = true,
         about = "Get one or more documents — frontmatter, headings, outgoing/incoming/unresolved links",
-        long_about = "Get one or more documents in detail.\n\nEach target may be a vault-relative path, a unique case-insensitive document stem, or a wikilink-shaped string (with or without brackets, with or without anchor / block-ref / pipe-alias suffix). Ambiguous targets emit one record per resolved candidate. --body adds full body content; --col narrows the default field set."
+        long_about = "Get one or more documents in detail.\n\nEach target may be a vault-relative path, a unique case-insensitive document stem, or a wikilink-shaped string (with or without brackets, with or without anchor / block-ref / pipe-alias suffix). Ambiguous targets emit one record per resolved candidate. --all-cols adds the full structured dump (incl. body); --col narrows the default field set. Supports --sort/--limit/--starts-at over the named targets."
     )]
     Get(GetArgs),
     #[command(
@@ -553,8 +553,16 @@ pub struct FindArgs {
     #[arg(long, value_enum, help_heading = "Output")]
     pub format: Option<FindFormat>,
 
+    /// Emit the full structured dump for each match: whole frontmatter plus
+    /// every cache-served facet (`.headings`, the three link sets, `.body`).
+    /// Excludes `.raw` (so a broad query never fans out to N file reads).
+    /// Mutually exclusive with `--col`.
+    #[arg(long = "all-cols", conflicts_with = "col", help_heading = "Output")]
+    pub all_cols: bool,
+
     /// Comma-separated list of frontmatter fields to include in output.
-    /// Default: all (records/json/jsonl). Ignored with warning on paths format.
+    /// Default: frontmatter only (records/json/jsonl). Ignored with warning
+    /// on paths format.
     #[arg(
         long,
         value_name = "FIELD1,FIELD2,...",
@@ -618,16 +626,57 @@ pub struct GetArgs {
     #[arg(required = true, num_args = 1.., value_name = "DOC")]
     pub targets: Vec<String>,
 
-    /// Include full body content in each record.
-    #[arg(long, help_heading = "Output")]
-    pub body: bool,
+    // ── Sort / limit / paging ───────────────────────────────────────────
+    // NOTE: these mirror `FindArgs`'s sort/limit/paging fields. find models
+    // them as direct fields (`limit: usize` with default 10); get's default
+    // is no-limit (the caller named the targets, truncating would surprise),
+    // so `limit` is `Option<usize>` (default None). A future refactor could
+    // extract a shared `SortPaginateArgs` for both commands.
+    /// Sort by field (frontmatter key or `path`). Ascending by default.
+    #[arg(long, value_name = "FIELD", help_heading = "Sort and paging")]
+    pub sort: Option<String>,
+
+    /// Sort descending (only meaningful with --sort).
+    #[arg(long, help_heading = "Sort and paging")]
+    pub desc: bool,
+
+    /// Maximum number of records to return. Default: no limit (all named
+    /// targets) — unlike `norn find`, which defaults to 10.
+    #[arg(
+        long,
+        value_name = "N",
+        conflicts_with = "no_limit",
+        help_heading = "Sort and paging"
+    )]
+    pub limit: Option<usize>,
+
+    /// Return all records; no limit. (The default already implies this.)
+    #[arg(long = "no-limit", help_heading = "Sort and paging")]
+    pub no_limit: bool,
+
+    /// 1-indexed starting offset for paging. Default 1.
+    #[arg(
+        long = "starts-at",
+        value_name = "N",
+        default_value = "1",
+        help_heading = "Sort and paging"
+    )]
+    pub starts_at: usize,
+
+    // ── Output ───────────────────────────────────────────────────────────
+    /// Emit the full structured dump: every frontmatter field plus every
+    /// cache-served facet (`.headings`, the three link sets, `.body`).
+    /// Excludes `.raw` (the disk-read representation, always requested by
+    /// name). Mutually exclusive with `--col`.
+    #[arg(long = "all-cols", conflicts_with = "col", help_heading = "Output")]
+    pub all_cols: bool,
 
     /// Comma-separated columns to include. Bare names select frontmatter
     /// fields (e.g. `status,title`), exactly like `norn find`. Structural
     /// facets are dot-prefixed: `.path`, `.frontmatter` (the whole block),
     /// `.headings`, `.outgoing_links`, `.unresolved_links`, `.incoming_links`,
-    /// `.body` (the last only meaningful with --body). Without --col, every
-    /// default facet is emitted.
+    /// `.body`, `.raw`. Without --col, frontmatter + headings + links are
+    /// emitted (body only with --all-cols or `--col .body`).
     #[arg(
         long,
         value_name = "COL1,COL2,...",
@@ -1168,12 +1217,61 @@ mod get_cli_tests {
     }
 
     #[test]
-    fn get_parses_body_flag() {
-        let cli = Cli::try_parse_from(["vault", "get", "a.md", "--body"]).unwrap();
+    fn get_body_flag_is_removed() {
+        // Breaking change: `--body` no longer exists. Body now comes via
+        // `--all-cols` (full dump) or `--col .body` (body only).
+        let res = Cli::try_parse_from(["vault", "get", "a.md", "--body"]);
+        assert!(res.is_err(), "expected --body to be an unknown flag");
+    }
+
+    #[test]
+    fn get_parses_all_cols_flag() {
+        let cli = Cli::try_parse_from(["vault", "get", "a.md", "--all-cols"]).unwrap();
         match cli.command {
-            Command::Get(args) => assert!(args.body),
+            Command::Get(args) => assert!(args.all_cols),
             _ => panic!("expected Get variant"),
         }
+    }
+
+    #[test]
+    fn get_all_cols_conflicts_with_col() {
+        let res = Cli::try_parse_from(["vault", "get", "a.md", "--all-cols", "--col", "type"]);
+        assert!(res.is_err(), "--all-cols and --col are mutually exclusive");
+    }
+
+    #[test]
+    fn get_parses_sort_and_paging() {
+        let cli = Cli::try_parse_from([
+            "vault",
+            "get",
+            "a.md",
+            "--sort",
+            "modified",
+            "--desc",
+            "--limit",
+            "5",
+            "--starts-at",
+            "2",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Get(args) => {
+                assert_eq!(args.sort.as_deref(), Some("modified"));
+                assert!(args.desc);
+                assert_eq!(args.limit, Some(5));
+                assert_eq!(args.starts_at, 2);
+            }
+            _ => panic!("expected Get variant"),
+        }
+    }
+
+    #[test]
+    fn get_limit_conflicts_with_no_limit() {
+        let res = Cli::try_parse_from(["vault", "get", "a.md", "--limit", "5", "--no-limit"]);
+        assert!(
+            res.is_err(),
+            "--limit and --no-limit are mutually exclusive"
+        );
     }
 
     #[test]
